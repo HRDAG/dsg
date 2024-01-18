@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import os
-import os.path
 from datetime import datetime
 import re
 import subprocess 
@@ -10,8 +9,26 @@ import git
 
 
 def find_repo_root(repopath: Path | str) -> Path:
-    " walks repopath to find .btrsnap.ini, returns its parent "
-    return Path(repopath)
+    """ walks up repopath to find .btrsnap.ini, returns its parent 
+        note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
+    """
+    repopath = Path(repopath)
+    root = Path(repopath.root)
+    while True:
+        if repopath == Path.home():
+            raise FileNotFoundError(".btrsnap.ini not found (~) ")
+        if repopath == root: 
+            raise FileNotFoundError(".btrsnap.ini not found (/) ")
+        if any('.btrsnap.ini' in str(f) for f in repopath.iterdir()):
+            if (any('.git' in f for f in repopath.iterdir())):
+                pass   # ok!
+            elif str(repodir.parts[:-2]) == ['btrsnap', 'data']:
+                pass  # ok, test environment
+            else:
+                raise OSError(f"wait, where are we?? {repopath}")
+            return repopath
+        repopath = repopath.parent
+
 
 # btrsnap has to be installed on the local and the remote machine.
 def get_repo_state(pth: str | Path,  scott: bool) -> list[str]:

@@ -3,20 +3,28 @@
 import os 
 import sys
 from pathlib import Path
-import bin.btrsnap
+import pytest
+import bin.btrsnap as btrsnap
 
-sys.path.append(str(Path(sys.path[0]) / "bin"))
-print(sys.path)
+# TODO: make data paths
+# bin.btrsnap.__file__ == '/Users/pball/projects/hrdag/btrsnap/bin/btrsnap.py'
+datapath = Path(*Path(btrsnap.__file__).parts[:-2]) / "data"
 
 
 def test_find_repo_root_root():
-    print("in test")
     print(f"{sys.path=}")
-    print(f"{dir(bin.btrsnap)}")
-    print(f"{bin.btrsnap.__file__=}")
-    print(f"{bin.btrsnap.__name__=}")
-    print(f"{bin.btrsnap.__package__=}")
-    r = bin.btrsnap.get_last_state()
-
+    print(f"{btrsnap.__file__=}")
+    print(f"{btrsnap.__name__=}")
+    print(f"{btrsnap.__package__=}")
+    print(f"{datapath=}")
+    r = btrsnap.find_repo_root(datapath)
+    assert list(r.parts[-2:]) == ['btrsnap', 'data'], f"{r=}"
+    dpath2 = datapath / "task1"
+    r = btrsnap.find_repo_root(dpath2)
+    assert list(r.parts[-2:]) == ['btrsnap', 'data'], f"{r=}"
+    with pytest.raises(FileNotFoundError) as exc_info:
+        r = btrsnap.find_repo_root(datapath.parent)
+    with pytest.raises(FileNotFoundError) as exc_info:
+        r = btrsnap.find_repo_root('/usr/local')
 
 # done
