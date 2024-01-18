@@ -9,6 +9,11 @@ import subprocess
 import git
 
 
+def find_repo_root(repopath: Path | str) -> Path:
+    " walks repopath to find .btrsnap.ini, returns its parent "
+    return Path(repopath)
+
+# btrsnap has to be installed on the local and the remote machine.
 def get_repo_state(pth: str | Path,  scott: bool) -> list[str]:
     splitter = re.compile(r'\|\|')
     pth = Path(pth) 
