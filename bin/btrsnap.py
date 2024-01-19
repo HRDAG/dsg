@@ -1,29 +1,27 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
 
 from pathlib import Path
 import os
 from datetime import datetime
 import re
-import subprocess 
+import subprocess
 import git
 
 
 def find_repo_root(repopath: Path | str) -> Path:
-    """ walks up repopath to find .btrsnap.ini, returns its parent 
-        note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
+    """walks up repopath to find .btrsnap.ini, returns its parent
+    note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
     """
     repopath = Path(repopath)
     root = Path(repopath.root)
     while True:
         if repopath == Path.home():
             raise FileNotFoundError(".btrsnap.ini not found (~) ")
-        if repopath == root: 
+        if repopath == root:
             raise FileNotFoundError(".btrsnap.ini not found (/) ")
-        if any('.btrsnap.ini' in str(f) for f in repopath.iterdir()):
-            if (any('.git' in f for f in repopath.iterdir())):
-                pass   # ok!
-            elif str(repodir.parts[:-2]) == ['btrsnap', 'data']:
-                pass  # ok, test environment
+        if any(".btrsnap.ini" in str(f) for f in repopath.iterdir()):
+            if any(".git" in str(f) for f in repopath.iterdir()):
+                pass  # ok!
             else:
                 raise OSError(f"wait, where are we?? {repopath}")
             return repopath
@@ -31,13 +29,14 @@ def find_repo_root(repopath: Path | str) -> Path:
 
 
 # btrsnap has to be installed on the local and the remote machine.
-def get_repo_state(pth: str | Path,  scott: bool) -> list[str]:
-    splitter = re.compile(r'\|\|')
-    pth = Path(pth) 
-    ran = subprocess.run(f"ssh scott _find-repo-files -p {pth}",
-                         shell=True, capture_output=True)
+def get_repo_state(pth: str | Path, scott: bool) -> list[str]:
+    splitter = re.compile(r"\|\|")
+    pth = Path(pth)
+    ran = subprocess.run(
+        f"ssh scott _find-repo-files -p {pth}", shell=True, capture_output=True
+    )
     cmd = f'_find-repo-files -p "{pth}"'
-    if scott: 
+    if scott:
         cmd = f"ssh scott {cmd}"
     ran = subprocess.run(cmd, shell=True, capture_output=True)
     assert ran.returncode == 0, f"find failed: {ran}"
@@ -46,42 +45,41 @@ def get_repo_state(pth: str | Path,  scott: bool) -> list[str]:
 
 
 def get_last_state(localrepo):
-    snap_meta_path = Path(localrepo.working_tree_dir) / '.snap'
-    with open(snap_meta_path / 'last-sync-state', 'rt') as f:
+    snap_meta_path = Path(localrepo.working_tree_dir) / ".snap"
+    with open(snap_meta_path / "last-sync-state", "rt") as f:
         laststate = [r.strip() for r in f.readlines()]
     return laststate
 
 
-def state_to_dict(xstate: list[str], reponame: str) -> dict: 
+def state_to_dict(xstate: list[str], reponame: str) -> dict:
     p, targ, size, mtime = xstate[0].split("|")
     parts = Path(p).parts
     assert reponame in parts
-    # we want the path relative to the repo's root; we'll 
+    # we want the path relative to the repo's root; we'll
     # take the rightmost parts of each path reference below.
-    try: 
-        splt = parts.index('HEAD')
+    try:
+        splt = parts.index("HEAD")
     except ValueError:
         splt = parts.index(reponame)
-    splt += 1 
+    splt += 1
     statedict = dict()
-    for rec in xstate:#  (r for r in xstate if r.strip()):
+    for rec in xstate:  #  (r for r in xstate if r.strip()):
         if rec.strip() == "":
             continue
         try:
             pth, targ, size, mtime = rec.split("|")
         except ValueError:
-           raise AssertionError(f"rec.split failed with {rec}") 
+            raise AssertionError(f"rec.split failed with {rec}")
         pth = str(Path(*Path(pth).parts[splt:]))
         statedict[pth] = targ, size, mtime
     return statedict
 
 
-if __name__ == '__main__':
-
-    localrepo = git.Repo('/Users/pball/projects/hrdag/KO')
+if __name__ == "__main__":
+    localrepo = git.Repo("/Users/pball/projects/hrdag/KO")
     reponame = Path(str(localrepo.working_tree_dir)).name
     snaprepopath = Path(f"/var/repos/snap/{reponame}/HEAD")
-    dd_re = re.compile(r'\/input\b|\/output\b|\/frozen\b|\/note\b')
+    dd_re = re.compile(r"\/input\b|\/output\b|\/frozen\b|\/note\b")
 
     localstate = get_repo_state(str(localrepo.working_tree_dir), scott=False)
     remotestate = get_repo_state(snaprepopath, scott=True)
