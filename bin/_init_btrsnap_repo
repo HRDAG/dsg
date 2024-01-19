@@ -1,6 +1,7 @@
 #!/bin/bash
 # to be used to initialize a `btrsnap` repo.
 # pls don't use otherwise. lawnmower -> feet, etc.
+VARREPOSBTR="/var/repos/btrsnap"
 
 if ! sudo -v &>/dev/null; then
 	echo "You must have sudo to run this script, failing" && exit 1
@@ -11,10 +12,11 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
-if [ "$HOSTNAME" != scott ]; then
-	echo "this can only be run on scott, failing"
-	exit 1
-fi
+# FIXME: this doesn't work, needs attention
+# if [ "$HOSTNAME" != scott ]; then
+# 	echo "this can only be run on scott, failing"
+# 	exit 1
+# fi
 
 if [[ "$x" =~ [[:space:]] ]] ; then
 	echo "repo name cannot have whitespace in it: -${1}-"
