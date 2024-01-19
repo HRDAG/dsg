@@ -26,7 +26,7 @@ def test_find_repo_root(setup_testdirs):
     dpath2 = localrepo / "task1"
     r = btrsnap.find_repo_root(dpath2)
     assert list(r.parts[-1:]) == ["local"], f"{r=}"
-    with pytest.raises(FileNotFoundError) as exc_info:  # noqa: F401
+    with pytest.raises(FileNotFoundError) as exc_info:
         r = btrsnap.find_repo_root(localrepo.parent)
     with pytest.raises(FileNotFoundError) as exc_info:
         r = btrsnap.find_repo_root("/usr/local")
@@ -57,6 +57,11 @@ def test_get_repo_state(setup_testdirs):
             case "task1/output/result1.csv":
                 assert refpth == "None"
                 assert sz == 23
+
+
+def test_get_repo_state_remote():
+    r = btrsnap.get_repo_state("btrsnap_test", scott=True)
+    pass
 
 
 # done

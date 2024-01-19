@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 from pathlib import Path
-import os
-from datetime import datetime
 import re
 import subprocess
 import git
@@ -16,10 +14,10 @@ def find_repo_root(repopath: Path | str) -> Path:
     root = Path(repopath.root)
     while True:
         if repopath == Path.home():
-            raise FileNotFoundError(".btrsnap.ini not found (~) ")
+            raise FileNotFoundError(".btrsnap not found (~) ")
         if repopath == root:
-            raise FileNotFoundError(".btrsnap.ini not found (/) ")
-        if any(".btrsnap.ini" in str(f) for f in repopath.iterdir()):
+            raise FileNotFoundError(".btrsnap not found (/) ")
+        if any(".btrsnap" in str(f) for f in repopath.iterdir()):
             if any(".git" in str(f) for f in repopath.iterdir()):
                 pass  # ok!
             else:
