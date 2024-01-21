@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+# TODO: make a new script backend_test_fixture
+# this will eventually create various backend test fixtures.
+# write it in python.
+# first up: just copy the test data to the btrsnap directory.
+
+import argparse
+
+# where are the test data? /usr/local/share/btrsnap/data
+# simplify: for scott|snowball,
+# ln -sf $PATH_TO_BTRSNAP_DEV/data /usr/local/share/btrsnap/data
+# import bin.btrsnap as btrsnap
+# test_data_path = Path(*Path(btrsnap.__file__).parts[:-2]) / "data"
+
+
+def getargs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'cmd', nargs=1,
+        choices=['clone',],
+        default='clone')
+    args = parser.parse_args()
+    return args
+
+
+def clone_test_data() -> None:
+    # we're running on scott|snowball
+    # /var/repos/btrsnap is dst
+    # src?
+    pass
+
+
+if __name__ == "__main__":
+    args = getargs()
+    if args.cmd in 'clone|':
+        clone_test_data()
+
+# done.

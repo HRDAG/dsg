@@ -60,8 +60,13 @@ def test_get_repo_state(setup_testdirs):
 
 
 def test_get_repo_state_remote():
+    # TODO: make a new script backend_test_fixture
+    # this will eventually create various backend test fixtures.
+    # write it in python.
+    # first up: just copy the test data to the btrsnap directory.
+    #
     r = btrsnap.get_repo_state("btrsnap_test", scott=True)
-    pass
+    assert False.
 
 
 # done

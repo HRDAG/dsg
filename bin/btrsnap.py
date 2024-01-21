@@ -26,7 +26,8 @@ def find_repo_root(repopath: Path | str) -> Path:
         repopath = repopath.parent
 
 
-# btrsnap has to be installed on the local and the remote machine.
+# NOTE: btrsnap has to be installed on the local and the remote machine.
+# FIXME: needs to get remote name & path from .btrsnap/config
 def get_repo_state(pth: str | Path, scott: bool) -> list[str]:
     splitter = re.compile(r"\|\|")
     pth = Path(pth)
