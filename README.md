@@ -1,7 +1,6 @@
 # btrsnap
 
-A simple data versioning system
-
+A data versioning system based on `btrfs`, `rsync`, and some lightweight metadata management.
 
 ## installation
 
