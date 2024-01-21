@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 import shutil
 
-INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/"
+INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/data"
 
 
 def getargs() -> argparse.Namespace:
@@ -28,15 +28,15 @@ def clone_to_backend() -> None:
     # src = /usr/local/share/btrsnap/data (confirm)
     # dst = /var/repos/btrsnap/test/s1/data (confirm is btrsnap)
     src = Path(INSTALLED_TEST_DATA_PATH)
-    assert src.exists()
-    dst = Path("/var/repos/btrsnap")
-    assert dst.exists()
-    shutil.copytree(src, dst, symlinks=True)
+    assert src.exists(), f"{src} does not exist"
+    dst = Path("/var/repos/btrsnap/s1")
+    assert dst.exists(), f"{dst} does not exist"
+    shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
 
 
 if __name__ == "__main__":
     args = getargs()
-    if args.cmd in 'clone|':
+    if args.cmd[0] in 'clone|':
         clone_to_backend()
 
 # done.
