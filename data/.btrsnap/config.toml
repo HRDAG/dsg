@@ -1,0 +1,12 @@
+# vi: ft=toml
+
+[server]
+# this is needed for every setup
+sshname = snowball
+repopath = /var/repos/btrsnap
+
+[testing]
+reponame = test
+installed_test_data_path = /usr/local/share/btrsnap
+
+# done.

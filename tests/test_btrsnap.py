@@ -5,15 +5,20 @@ from pathlib import Path
 import pytest
 import bin.btrsnap as btrsnap
 
+# FIXME: data is not at btrsnap.__file__/data;
+# move to
+INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/"
+
 
 @pytest.fixture
 def setup_testdirs(tmp_path) -> tuple[Path, Path]:
-    test_data_path = Path(*Path(btrsnap.__file__).parts[:-2]) / "data"
+    test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
+    assert test_data_path.exists()
     localrepo = tmp_path / "local"
     remoterepo = tmp_path / "remote"
-    shutil.copytree(test_data_path, localrepo, symlinks=True, dirs_exist_ok=True)
+    shutil.copytree(test_data_path, localrepo, symlinks=True, dirs_exist_ok=False)
     (localrepo / ".git").touch(exist_ok=True)
-    shutil.copytree(test_data_path, remoterepo, symlinks=True, dirs_exist_ok=True)
+    shutil.copytree(test_data_path, remoterepo, symlinks=True, dirs_exist_ok=False)
     (remoterepo / ".git").touch(exist_ok=True)
     return localrepo, remoterepo
 
@@ -59,14 +64,14 @@ def test_get_repo_state(setup_testdirs):
                 assert sz == 23
 
 
-def test_get_repo_state_remote():
-    # TODO: make a new script backend_test_fixture
-    # this will eventually create various backend test fixtures.
-    # write it in python.
-    # first up: just copy the test data to the btrsnap directory.
-    #
-    r = btrsnap.get_repo_state("btrsnap_test", scott=True)
-    assert False.
+# def test_get_repo_state_remote():
+#     # TODO: make a new script backend_test_fixture
+#     # this will eventually create various backend test fixtures.
+#     # write it in python.
+#     # first up: just copy the test data to the btrsnap directory.
+#     #
+#     r = btrsnap.get_repo_state("btrsnap_test", scott=True)
+#     assert False.
 
 
 # done

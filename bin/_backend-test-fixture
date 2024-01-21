@@ -3,15 +3,13 @@
 # TODO: make a new script backend_test_fixture
 # this will eventually create various backend test fixtures.
 # write it in python.
-# first up: just copy the test data to the btrsnap directory.
+# note that ./install.sh sets up the symlink to dst.
 
 import argparse
+from pathlib import Path
+import shutil
 
-# where are the test data? /usr/local/share/btrsnap/data
-# simplify: for scott|snowball,
-# ln -sf $PATH_TO_BTRSNAP_DEV/data /usr/local/share/btrsnap/data
-# import bin.btrsnap as btrsnap
-# test_data_path = Path(*Path(btrsnap.__file__).parts[:-2]) / "data"
+INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/"
 
 
 def getargs() -> argparse.Namespace:
@@ -24,16 +22,21 @@ def getargs() -> argparse.Namespace:
     return args
 
 
-def clone_test_data() -> None:
+# first up: just copy the test data to the btrsnap directory.
+def clone_to_backend() -> None:
     # we're running on scott|snowball
-    # /var/repos/btrsnap is dst
-    # src?
-    pass
+    # src = /usr/local/share/btrsnap/data (confirm)
+    # dst = /var/repos/btrsnap/test/s1/data (confirm is btrsnap)
+    src = Path(INSTALLED_TEST_DATA_PATH)
+    assert src.exists()
+    dst = Path("/var/repos/btrsnap")
+    assert dst.exists()
+    shutil.copytree(src, dst, symlinks=True)
 
 
 if __name__ == "__main__":
     args = getargs()
     if args.cmd in 'clone|':
-        clone_test_data()
+        clone_to_backend()
 
 # done.

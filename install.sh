@@ -9,13 +9,13 @@ if [[ ! -f install.sh ]] ; then
 	exit 1
 fi
 # make sure user has root:
-if [[ ! sudo -v ]] ; then
+if [[ $(sudo -v) ]] ; then
 	echo "you can only run this script if you have sudo privs"
 	exit 1
 fi
 
 export PATH_TO_BTRSNAP_DEV=$(pwd)
 
-sudo ln -sf $PATH_TO_BTRSNAP_DEV/data /usr/local/share/btrsnap/data
+sudo ln -sf $PATH_TO_BTRSNAP_DEV/data/ /usr/local/share/btrsnap
 
 # done.
