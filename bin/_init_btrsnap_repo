@@ -7,16 +7,16 @@ if ! sudo -v &>/dev/null; then
 	echo "You must have sudo to run this script, failing" && exit 1
 fi
 
+STATUS=$(echo $(hostname) | egrep 'snowball|scott')
+if [[ $? -ne 0  ]]; then
+	echo "this can only be run on scott or snowball, failing"
+	exit 1
+fi
+
 if [ $# -eq 0 ]; then
 	echo "No reponame provided, failing"
 	exit 1
 fi
-
-# FIXME: this doesn't work, needs attention
-# if [ "$HOSTNAME" != scott ]; then
-# 	echo "this can only be run on scott, failing"
-# 	exit 1
-# fi
 
 if [[ "$x" =~ [[:space:]] ]] ; then
 	echo "repo name cannot have whitespace in it: -${1}-"
@@ -35,7 +35,8 @@ sudo rm -r $VARREPOSBTR >/dev/null 2>&1
 sudo mkdir $VARREPOSBTR >/dev/null 2>&1
 
 set -e
-sudo chown -R pball:$1 $VARREPOSBTR
+# TODO: what's the group here? btrsnap until creator fixes it
+sudo chown -R root:btrsnap $VARREPOSBTR
 sudo chmod -R 770 $VARREPOSBTR
 sudo chmod -R g+s $VARREPOSBTR
 sudo setfacl -Rdm g::rwx $VARREPOSBTR

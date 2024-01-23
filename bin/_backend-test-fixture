@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+#!/opt/anaconda3/bin/python3
+
+# the hardcoding is unavoidable bc prob run as root. 
 
 # TODO: make a new script backend_test_fixture
 # this will eventually create various backend test fixtures.
@@ -8,8 +10,11 @@
 import argparse
 from pathlib import Path
 import shutil
+import subprocess
+import grp
 
 INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/data"
+bgrp = grp.getgrnam('btrsnap')
 
 
 def getargs() -> argparse.Namespace:
@@ -29,9 +34,16 @@ def clone_to_backend() -> None:
     # dst = /var/repos/btrsnap/test/s1/data (confirm is btrsnap)
     src = Path(INSTALLED_TEST_DATA_PATH)
     assert src.exists(), f"{src} does not exist"
-    dst = Path("/var/repos/btrsnap/s1")
-    assert dst.exists(), f"{dst} does not exist"
+
+    dst = Path("/var/repos/btrsnap/test")
+    if dst.exists():
+        shutil.rmtree(dst)
+    subprocess.run("_init_btrsnap_repo test", shell=True)
+
+    dst = dst / "s1" 
+    dst.mkdir(mode=0o770, parents=False, exist_ok=False)
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
+    subprocess.run(f"sudo chown -R root:btrsnap {dst.parent}", shell=True)
 
 
 if __name__ == "__main__":

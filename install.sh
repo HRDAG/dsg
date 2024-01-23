@@ -16,6 +16,6 @@ fi
 
 export PATH_TO_BTRSNAP_DEV=$(pwd)
 
-sudo ln -sf $PATH_TO_BTRSNAP_DEV/data/ /usr/local/share/btrsnap
+sudo ln -sf $PATH_TO_BTRSNAP_DEV/data/ /usr/local/share/btrsnap/data/
 
 # done.
