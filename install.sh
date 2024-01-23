@@ -16,6 +16,12 @@ fi
 
 export PATH_TO_BTRSNAP_DEV=$(pwd)
 
-sudo ln -sf $PATH_TO_BTRSNAP_DEV/data/ /usr/local/share/btrsnap/data/
+sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_find-repo-files /usr/local/bin/
+sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_backend-test-fixture /usr/local/bin/
+sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_init-btrsnap-repo /usr/local/bin/
+
+# for testing
+sudo mkdir -p /usr/local/share/btrsnap && \
+	cd $_ && ln -sf $PATH_TO_BTRSNAP_DEV/data .
 
 # done.
