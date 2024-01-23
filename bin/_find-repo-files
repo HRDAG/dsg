@@ -15,10 +15,10 @@ from datetime import datetime
 import os
 import re
 import argparse
-import sys
 
 ig = re.compile(r'\..*ignore')
-dts = re.compile(r'([.]\d+)$')
+dts = re.compile(r'([.]\d+)$')   # the seconds part of a date string, if it exists
+# TODO: move the definition of datadirs to .btrsnap/config 
 datadirs = {'input', 'output', 'frozen', 'note'}
 
 

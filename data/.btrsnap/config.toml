@@ -5,6 +5,10 @@
 sshname = snowball
 repopath = /var/repos/btrsnap
 
+[repo]
+# this can be adjusted. 
+datadirs = [ 'input', 'output', 'frozen', 'note' ] 
+
 [testing]
 reponame = test
 installed_test_data_path = /usr/local/share/btrsnap
