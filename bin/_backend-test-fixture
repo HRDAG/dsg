@@ -1,11 +1,8 @@
 #!/opt/anaconda3/bin/python3
 
-# the hardcoding is unavoidable bc prob run as root. 
-
-# TODO: make a new script backend_test_fixture
+# the hardcoding is unavoidable bc prob run as root.
 # this will eventually create various backend test fixtures.
 # write it in python.
-# note that ./install.sh sets up the symlink to dst.
 
 import argparse
 from pathlib import Path
@@ -27,6 +24,10 @@ def getargs() -> argparse.Namespace:
     return args
 
 
+def ping() -> None:
+    print("pong.")
+
+
 # first up: just copy the test data to the btrsnap directory.
 def clone_to_backend() -> None:
     # we're running on scott|snowball
@@ -40,7 +41,7 @@ def clone_to_backend() -> None:
         shutil.rmtree(dst)
     subprocess.run("_init_btrsnap_repo test", shell=True)
 
-    dst = dst / "s1" 
+    dst = dst / "s1"
     dst.mkdir(mode=0o770, parents=False, exist_ok=False)
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
     subprocess.run(f"sudo chown -R root:btrsnap {dst.parent}", shell=True)
@@ -48,7 +49,9 @@ def clone_to_backend() -> None:
 
 if __name__ == "__main__":
     args = getargs()
-    if args.cmd[0] in 'clone|':
+    if args.cmd[0] == 'ping':
+        ping()
+    if args.cmd[0] == 'clone':
         clone_to_backend()
 
 # done.
