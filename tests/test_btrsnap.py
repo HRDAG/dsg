@@ -7,9 +7,8 @@ from pathlib import Path
 import pytest
 import bin.btrsnap as btrsnap
 
-# FIXME: data is not at btrsnap.__file__/data;
-# move to
 INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/"
+REMOTE_TEST_REPO_PATH = "/var/repos/btrsnap/test"
 
 
 @pytest.fixture
@@ -77,20 +76,36 @@ def test_remote_pong():
 
 
 def test_get_repo_state_remote():
-    cmd = "ssh snowball sudo _backend-test-fixture clone"
-    ran = subprocess.run(
-        cmd,
-        shell=True,
-        capture_output=True,
-    )
+    def sr(cmd: str) -> subprocess.CompletedProcess:
+        cmd = f"ssh snowball sudo {cmd}"
+        return subprocess.run(cmd, shell=True, capture_output=True)
+
+    ran = sr("_backend-test-fixture clone")
     assert "OK" in str(ran.stdout), f"clone failed: {ran}"
 
-    # TODO: make a new script backend_test_fixture
-    #
-    # this will eventually create various backend test fixtures.
-    # first up: just copy the test data to the btrsnap directory.
-    # r = btrsnap.get_repo_state("btrsnap_test", scott=True)
-    # assert False.
+    # FIXME: use btrsnap.get_repo_state
+    ran = sr(f"_find-repo-files -p {REMOTE_TEST_REPO_PATH}")
+    assert ran.returncode == 0, f"_find-repo-files failed: {ran}"
+    remote_state = list()
+    for rec in str(ran.stdout).split("||"):
+        pth, refpth, sz, dt = rec.split("|")
+        pth = str(Path(*Path(pth).parts[6:]))
+        if refpth != "None":
+            refpth = str(Path(*Path(refpth).parts[6:]))
+        remote_state.append("|".join([pth, refpth, sz, dt]))
+
+    test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
+    local_state = btrsnap.get_repo_state(test_data_path, scott=False)
+    for i, rec in enumerate(local_state):
+        pth, refpth, sz, dt = rec.split("|")
+        pth = str(Path(*Path(pth).parts[6:]))
+        if refpth != "None":
+            refpth = str(Path(*Path(refpth).parts[6:]))
+        local_state[i] = "|".join([pth, refpth, sz, dt])
+
+    assert (
+        local_state == remote_state
+    ), f"local!=remote: {local_state=}, {remote_state=}"
 
 
 # done
