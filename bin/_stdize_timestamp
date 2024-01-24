@@ -1,0 +1,12 @@
+#! /usr/bin/env zsh
+# https://unix.stackexchange.com/questions/1524
+# update timestamps in cwd and below to time of README.md
+# check for README.md  task1  task2
+if [[ -f "README.md" && -d "task1" && -d "task2" ]]; then
+    find . -type f -exec touch -r ./README.md {} +
+else
+    echo "must be in top-level of data/ directory to run, failing"
+    exit 1
+fi
+# done.
+
