@@ -66,16 +66,29 @@ def test_get_repo_state(setup_testdirs):
                 assert sz == 23
 
 
-def test_get_repo_state_remote():
-    #     # TODO: make a new script backend_test_fixture
-    #     # this will eventually create various backend test fixtures.
-    #     # write it in python.
-    #     # first up: just copy the test data to the btrsnap directory.
-    #     #
+def test_remote_pong():
+    cmd = "ssh snowball sudo _backend-test-fixture ping"
+    ran = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+    )
+    assert "pong." in str(ran.stdout), f"clone failed: {ran}"
 
-    assert Path(os.getcwd()).parts[-1] == "btrsnap"
-    ran = subprocess.run("sudo _backend_test_fixture clone")
-    assert ran.returncode == 0, f"clone failed: {ran}"
+
+def test_get_repo_state_remote():
+    cmd = "ssh snowball sudo _backend-test-fixture clone"
+    ran = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+    )
+    assert "OK" in str(ran.stdout), f"clone failed: {ran}"
+
+    # TODO: make a new script backend_test_fixture
+    #
+    # this will eventually create various backend test fixtures.
+    # first up: just copy the test data to the btrsnap directory.
     # r = btrsnap.get_repo_state("btrsnap_test", scott=True)
     # assert False.
 

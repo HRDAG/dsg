@@ -1,6 +1,6 @@
 #!/opt/anaconda3/bin/python3
 
-# the hardcoding is unavoidable bc prob run as root.
+# the hardcoding is unavoidable bc this must run as root.
 # this will eventually create various backend test fixtures.
 # write it in python.
 
@@ -44,7 +44,9 @@ def clone_to_backend() -> None:
     dst = dst / "s1"
     dst.mkdir(mode=0o770, parents=False, exist_ok=False)
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
-    subprocess.run(f"sudo chown -R root:btrsnap {dst.parent}", shell=True)
+    ran = subprocess.run(f"chown -R root:btrsnap {dst.parent}", shell=True)
+    assert ran.returncode == 0
+    print("OK")
 
 
 if __name__ == "__main__":
