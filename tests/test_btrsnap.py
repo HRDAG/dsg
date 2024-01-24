@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import shutil
+import os
+import subprocess
 from pathlib import Path
 import pytest
 import bin.btrsnap as btrsnap
@@ -64,14 +66,18 @@ def test_get_repo_state(setup_testdirs):
                 assert sz == 23
 
 
-# def test_get_repo_state_remote():
-#     # TODO: make a new script backend_test_fixture
-#     # this will eventually create various backend test fixtures.
-#     # write it in python.
-#     # first up: just copy the test data to the btrsnap directory.
-#     #
-#     r = btrsnap.get_repo_state("btrsnap_test", scott=True)
-#     assert False.
+def test_get_repo_state_remote():
+    #     # TODO: make a new script backend_test_fixture
+    #     # this will eventually create various backend test fixtures.
+    #     # write it in python.
+    #     # first up: just copy the test data to the btrsnap directory.
+    #     #
+
+    assert Path(os.getcwd()).parts[-1] == "btrsnap"
+    ran = subprocess.run("sudo _backend_test_fixture clone")
+    assert ran.returncode == 0, f"clone failed: {ran}"
+    # r = btrsnap.get_repo_state("btrsnap_test", scott=True)
+    # assert False.
 
 
 # done
