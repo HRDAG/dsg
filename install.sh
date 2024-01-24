@@ -21,6 +21,9 @@ sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_backend-test-fixture /usr/local/bi
 sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_init-btrsnap-repo /usr/local/bin/
 
 # for testing
+# probably should run btrsnap/bin/_stdize_timestamp on the data
+cd $PATH_TO_BTRSNAP_DEV/data && $PATH_TO_BTRSNAP_DEV/bin/_stdize_timestamp
+
 sudo mkdir -p /usr/local/share/btrsnap && \
 	cd $_ && ln -sf $PATH_TO_BTRSNAP_DEV/data .
 
