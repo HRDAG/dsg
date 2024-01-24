@@ -41,6 +41,7 @@ def clone_to_backend() -> None:
         shutil.rmtree(dst)
     subprocess.run("_init_btrsnap_repo test", shell=True)
 
+    # TODO: set std timestamp
     dst = dst / "s1"
     dst.mkdir(mode=0o770, parents=False, exist_ok=False)
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
