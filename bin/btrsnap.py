@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from pathlib import Path
+import typing
 import re
 import subprocess
 import git
@@ -28,17 +29,17 @@ def find_repo_root(repopath: Path | str) -> Path:
 
 # NOTE: btrsnap has to be installed on the local and the remote machine.
 # FIXME: needs to get remote name & path from .btrsnap/config
-def get_repo_state(pth: str | Path, scott: bool) -> list[str]:
-    splitter = re.compile(r"\|\|")
-    pth = Path(pth)
-    ran = subprocess.run(
-        f"ssh scott _find-repo-files -p {pth}", shell=True, capture_output=True
-    )
+def get_repo_state(pth: str | Path, server: typing.Optional[str] = None) -> list[str]:
     cmd = f'_find-repo-files -p "{pth}"'
-    if scott:
-        cmd = f"ssh scott {cmd}"
+    if server in {"scott", "snowball"}:
+        cmd = f"ssh {server} {cmd}"
+    # TODO: not sure this is needed? It might just fail, ok?
+    elif server is not None:
+        raise NotImplementedError(f"{server} is not known to btrsnap")
     ran = subprocess.run(cmd, shell=True, capture_output=True)
     assert ran.returncode == 0, f"find failed: {ran}"
+
+    splitter = re.compile(r"\|\|")
     recs = [s.strip() for s in splitter.split(ran.stdout.decode("utf-8"))]
     return recs
 

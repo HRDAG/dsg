@@ -17,6 +17,7 @@ def setup_testdirs(tmp_path) -> tuple[Path, Path]:
     assert test_data_path.exists()
     localrepo = tmp_path / "local"
     remoterepo = tmp_path / "remote"
+    # NB: copytree preserves mtims
     shutil.copytree(test_data_path, localrepo, symlinks=True, dirs_exist_ok=False)
     (localrepo / ".git").touch(exist_ok=True)
     shutil.copytree(test_data_path, remoterepo, symlinks=True, dirs_exist_ok=False)
@@ -44,11 +45,11 @@ def test_get_repo_state(setup_testdirs):
     def last3(pthparts: tuple) -> str:
         return "/".join(pthparts[-3:])
 
-    state = btrsnap.get_repo_state(localrepo, scott=False)
+    state = btrsnap.get_repo_state(localrepo)
     assert len(state) == 5
     print(state)
     for rec in state:
-        pth, refpth, sz, dt = rec.split("|")
+        pth, refpth, sz, dt = rec.split("|")  # type: ignore
         sz = int(sz)
         pthparts = Path(pth).parts
         assert pthparts[-4] == "local"
@@ -81,7 +82,7 @@ def test_get_repo_state_remote():
         return subprocess.run(cmd, shell=True, capture_output=True)
 
     ran = sr("_backend-test-fixture clone")
-    assert "OK" in str(ran.stdout), f"clone failed: {ran}"
+    assert ran.returncode == 0 and "OK" in str(ran.stdout), f"clone failed: {ran}"
 
     # FIXME: use btrsnap.get_repo_state
     ran = sr(f"_find-repo-files -p {REMOTE_TEST_REPO_PATH}")
@@ -93,15 +94,18 @@ def test_get_repo_state_remote():
         if refpth != "None":
             refpth = str(Path(*Path(refpth).parts[6:]))
         remote_state.append("|".join([pth, refpth, sz, dt]))
+    remote_state.sort()
+    print(f"remote: \n{remote_state}")
 
     test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
-    local_state = btrsnap.get_repo_state(test_data_path, scott=False)
+    local_state = btrsnap.get_repo_state(test_data_path)
     for i, rec in enumerate(local_state):
         pth, refpth, sz, dt = rec.split("|")
         pth = str(Path(*Path(pth).parts[6:]))
         if refpth != "None":
             refpth = str(Path(*Path(refpth).parts[6:]))
         local_state[i] = "|".join([pth, refpth, sz, dt])
+    local_state.sort()
 
     assert (
         local_state == remote_state

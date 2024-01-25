@@ -11,7 +11,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 if [[ -f "README.md" && -d "task1" && -d "task2" ]]; then
-    find . -type f -exec touch --date "2024-01-17 19:56:23.778041463 -0800" {} +
+    find . -type f -exec touch -h --date "2024-01-17 19:56:23.778041463 -0800" {} +
 else
     echo "must be in top-level of data/ directory to run, failing"
     exit 1
