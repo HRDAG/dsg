@@ -18,17 +18,12 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
-if [[ "$x" =~ [[:space:]] ]] ; then
+if [[ "$1" =~ [[:space:]] ]] ; then
 	echo "repo name cannot have whitespace in it: -${1}-"
 	exit 1
 fi
 
-# TODO: confirm
-
 VARREPOSBTR="/var/repos/btrsnap/$1"
-
-# read -e -p "This will delete existing $VARREPOSBTR. yN? " choice
-# [[ "$choice" != [Yy]* ]] && echo "Aborting" && exit 1
 
 set +e
 sudo rm -r $VARREPOSBTR >/dev/null 2>&1

@@ -44,6 +44,7 @@ def clone_to_backend() -> None:
     # TODO: set std timestamp
     dst = dst / "s1"
     dst.mkdir(mode=0o770, parents=False, exist_ok=False)
+    # NB: copytree preserves mtime
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
     ran = subprocess.run(f"chown -R root:btrsnap {dst.parent}", shell=True)
     assert ran.returncode == 0
