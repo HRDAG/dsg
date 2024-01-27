@@ -42,7 +42,8 @@ if __name__ == "__main__":
             stat = os.lstat(fullpath)
             if fullpath.is_symlink():
                 sz = 0
-                targ = fullpath.resolve()
+                targ_full = fullpath.resolve()
+                targ = targ_full.relative_to(start.absolute())
             else:
                 sz = stat.st_size
                 targ = None 
