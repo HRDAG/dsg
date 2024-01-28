@@ -1,10 +1,89 @@
-#!/usr/bin/env python
+#!find_files/usr/bin/env python
 
 from pathlib import Path
 import typing
 import re
 import subprocess
-import git
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+# does Filerec need the fullpath for push/pull?
+class Filerec:
+    """
+    left.cmp(right) yields:
+    'ne' if refpth or size not equal
+    'eq' if equal
+    'lt' if left < right by datestamp
+    'gt' if left > right by datestamp
+    """
+
+    refpth: str
+    size: int
+    datestamp: str
+
+    def __eq__(self, other):
+        return self.cmp(other) == "eq"
+
+    def cmp(self, other):
+        """ compare filerecs """
+        if isinstance(other, Filerec) and self.size == other.size and self.refpth == other.refpth:
+            if self.refpth == "None" or len(self.refpth) == 0:
+                if self.datestamp == other.datestamp:
+                    return "eq"
+                if self.datestamp < other.datestamp:
+                    return "lt"
+                return "gt"
+            else:
+                return "eq"
+        return 'ne'
+
+
+class RepoState(dict[str, Filerec]):
+    """
+    a dict of relpth:Filerec
+        where relpth is a (file's fullpath).relative_to(repopath)
+        and
+            self.server = where state lives {scott, snowball, localhost}
+            self.repoparent = the path on the server
+            self.reponame = obvs
+
+    for an element of repostt[myrelpth], fullpath = Path(repostt.root) / myrelpth
+    methods:
+        _getrelpth(self, fullpth) returns relpth by removing self.root
+        _getstate(self) reaches to server:root/reponame to get state, initializes itself
+        _ingestrec(self, rec) with a rec from _getstate, parse
+        _get_config(self) if exists
+        _get_laststate if exists; laststate is a RepoState
+    """
+
+    def __init__(self, server: str, repoparent: str, name: str):
+        assert not repoparent.endswith(name)
+        self.server = server
+        self.repoparent = Path(repoparent)
+        self.fullpth = self.repoparent / name
+        self.name = name
+        self._has_config = None  # check at root/reponame
+
+    def _relative(self, pth: str | Path) -> str:
+        if pth == "None" or pth == "":
+            return str(pth)
+        return str(Path(pth).relative_to(self.fullpth))
+
+    def _ingest(self, rec):
+        """given a str rec from getstate, add to self"""
+        pth, targ, size, mtime = rec.split("|")
+        pth = self._relative(pth)
+        targ = self._relative(targ)
+        self[pth] = Filerec(targ, int(size), mtime)
+
+    def __str__(self):
+        return (
+            f"RepoState(server={self.server}, "
+            f"repoparent={self.repoparent}, "
+            f"reponame={self.name}, "
+            f"filerecs={super().__repr__()})"
+        )
 
 
 def find_repo_root(repopath: Path | str) -> Path:
@@ -51,43 +130,87 @@ def get_last_state(localrepo):
     return laststate
 
 
-def state_to_dict(xstate: list[str], reponame: str) -> dict:
+def state_to_dict(xstate: list[str], reponame: str) -> dict[str, Filerec]:
     p, targ, size, mtime = xstate[0].split("|")
     parts = Path(p).parts
     assert reponame in parts
-    # we want the path relative to the repo's root; we'll
-    # take the rightmost parts of each path reference below.
-    try:
-        splt = parts.index("HEAD")
-    except ValueError:
-        splt = parts.index(reponame)
-    splt += 1
+
+    def _make_getrelative(reponame: str, parts: tuple[str, ...]):
+        """closure to keep splt contained"""
+        if "HEAD" in parts:
+            splt = parts.index("HEAD")
+        elif "s1" in parts:
+            splt = parts.index("s1")
+        else:  # we asserted reponame in parts
+            splt = parts.index(reponame)
+        splt += 1
+
+        def __getrelative(p: str) -> str:
+            """returns the right part of the path relative to reponame"""
+            return p if p == "None" else str(Path(*Path(p).parts[splt:]))
+
+        return __getrelative
+
+    _getrelative = _make_getrelative(reponame, parts)
+
     statedict = dict()
-    for rec in xstate:  #  (r for r in xstate if r.strip()):
-        if rec.strip() == "":
-            continue
+    for rec in (r for r in xstate if r.strip()):
         try:
             pth, targ, size, mtime = rec.split("|")
         except ValueError:
             raise AssertionError(f"rec.split failed with {rec}")
-        pth = str(Path(*Path(pth).parts[splt:]))
-        statedict[pth] = targ, size, mtime
+        pth = _getrelative(pth)
+        targ = _getrelative(targ)
+        statedict[pth] = Filerec(targ, int(size), mtime)
     return statedict
 
 
+def states_cmp(local: Filerec, last: Filerec, remote: Filerec) -> str:
+    """
+    | work | last | remote | action   |
+    | ---- | ---- | ------ | -------- |
+    There's more to this one...consider last:
+
+    what if work<last? this should never happen, throw exception
+    | T    | T    | T      | work==remote, NOP |
+
+    | T    | T    | T      | work<remote: pull |
+    | T    | T    | T      | work<remote: pull |
+    | T    | T    | T      | work>remote: push |
+
+    | T    | F    | T      | work==remote, NOP
+    | T    | F    | T      | work!=remote **conflict**
+
+    | T    | F    | F      | push
+
+    | T    | T    | F      | work==last: pull delete |
+    | T    | T    | F      | work>last: push |
+    | T    | T    | F      | work<last: WTF? |
+
+    | F    | F    | T      | pull |
+    | F    | T    | F      | NOP |
+
+    | F    | T    | T      | last<remote: pull | last |
+    | F    | T    | T      | last==remote: push delete |
+    | F    | T    | T      | last>remote: push delete |
+    """
+    # check existence, then cmp.
+
+
 if __name__ == "__main__":
-    localrepo = git.Repo("/Users/pball/projects/hrdag/KO")
-    reponame = Path(str(localrepo.working_tree_dir)).name
-    snaprepopath = Path(f"/var/repos/snap/{reponame}/HEAD")
-    dd_re = re.compile(r"\/input\b|\/output\b|\/frozen\b|\/note\b")
-
-    localstate = get_repo_state(str(localrepo.working_tree_dir), scott=False)
-    remotestate = get_repo_state(snaprepopath, scott=True)
-    laststate = get_last_state(localrepo)
-
-    local_state_d = state_to_dict(localstate, reponame)
-    remote_state_d = state_to_dict(remotestate, reponame)
-    last_state_d = state_to_dict(laststate, reponame)
+    pass
+    # localrepo = git.Repo("/Users/pball/projects/hrdag/KO")
+    # reponame = Path(str(localrepo.working_tree_dir)).name
+    # snaprepopath = Path(f"/var/repos/snap/{reponame}/HEAD")
+    # dd_re = re.compile(r"\/input\b|\/output\b|\/frozen\b|\/note\b")
+    #
+    # localstate = get_repo_state(str(localrepo.working_tree_dir))
+    # remotestate = get_repo_state(snaprepopath, server="scott")
+    # laststate = get_last_state(localrepo)
+    #
+    # local_state_d = state_to_dict(localstate, reponame)
+    # remote_state_d = state_to_dict(remotestate, reponame)
+    # last_state_d = state_to_dict(laststate, reponame)
 
 
 # done.
