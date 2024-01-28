@@ -32,16 +32,15 @@ def test_filerec():
 
 
 def test_repostate_init():
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     assert (
-        r1.server == "localhost"
-        and r1.repoparent == Path("/usr/local/share/btrsnap/")
+        r1.repoparent == Path("/usr/local/share/btrsnap/")
         and r1.name == "test"
     )
 
 
 def test_repostate_relative():
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     s1 = "/usr/local/share/btrsnap/test/task1/input/dt1.csv"
     s2 = "/usr/local/share/btrsnap/test/task1/output/dt2.csv"
     assert "task1/input/dt1.csv" == r1._relative(s1)
@@ -49,7 +48,7 @@ def test_repostate_relative():
 
 
 def test_repostate_ingest(helpers):
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
 
     rec1 = '|'.join(["/usr/local/share/btrsnap/test/task1/input/dt1.csv",
                      "None|50|2024-01-18T03:56:23"])
@@ -62,7 +61,7 @@ def test_repostate_ingest(helpers):
 
 
 def test_ingest_report(helpers):
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     cmd = f"_find-repo-files -p {Path(r1.fullpth)}"
     report = btrsnap.runner(cmd)
     r1.ingest_report(report)
@@ -71,22 +70,22 @@ def test_ingest_report(helpers):
 
 def test_get_repo_state_local(helpers):
     """ tests _find-repo-files and get_repo_state """
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     r1.get_state()
     helpers.test2pths(r1)   # unnecessary but good to remember
     assert helpers.test_state == r1._state
 
 
 def test_state_equal(helpers):
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     r1.get_state()
     assert not r1.state_equal("bobdog")
-    r2 = btrsnap.RepoState(None, "/usr/local/share/btrsnap/", "test")
+    r2 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     r2.get_state()
     assert r1.state_equal(r2)  # ignores server
     r2.pop(helpers.pth1, None)   # delete a Key
     assert not r1.state_equal(r2)
-    r3 = btrsnap.RepoState(None, "/usr/local/share/btrsnap/", "test")
+    r3 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     r3.get_state()
     assert r1.state_equal(r3)
     r3[helpers.pth1] = btrsnap.Filerec("None", 50, "2024-01-18T03:56:23")
@@ -100,19 +99,19 @@ def test_state_equal(helpers):
 def test_remote_snap_hist(helpers):
     ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
     assert "OK" in ran
-    r2 = btrsnap.RepoState("snowball", "/var/repos/btrsnap", "test")
+    r2 = btrsnap.RepoStateRemote("snowball", "/var/repos/btrsnap", "test")
     assert r2._next_snap_no == 2
 
 
 def test_get_repo_state_remote(helpers):
     """ tests _find-repo-files and get_repo_state """
-    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
     r1.ingest_report(helpers.test_state)
     helpers.test2pths(r1)
 
     ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
     assert "OK" in ran
-    r2 = btrsnap.RepoState("snowball", "/var/repos/btrsnap", "test")
+    r2 = btrsnap.RepoStateRemote("snowball", "/var/repos/btrsnap", "test")
     r2.get_state()
     assert r1.state_equal(r2)
 

@@ -52,7 +52,6 @@ class Filerec:
 
 
 class RepoState(dict[str, Filerec]):
-    # FIXME: refactor in to RepoStateLocal, RepoStateRemote
     """
     a dict of relpth:Filerec
         where relpth is a (file's fullpath).relative_to(repopath)
@@ -68,35 +67,11 @@ class RepoState(dict[str, Filerec]):
         state_equal(self, other)
     """
 
-    def __init__(self, server: str, repoparent: str, name: str):
+    def __init__(self, repoparent: str, name: str):
         assert not repoparent.endswith(name), f"don't repeat the reponame in repopath"
-        self.server = server
         self.repoparent = Path(repoparent)
         self.fullpth = self.repoparent / name
         self.name = name
-        self._has_config = None  # for RepoStateLocal
-        self._set_snap_hist()   # for RepoStateRemote
-
-    def _set_snap_hist(self):
-        # FIXME: refactor to RepoStateRemote
-        """ check remote:fullpth:
-            descend one more to HEAD or s1 if remote
-            set self.next_snap from max snap #
-        """
-        if self.server in {None, "localhost"}:
-            return
-        cmd = f"ssh {self.server} 'ls {self.fullpth}'"
-        self._snap_hist = runner(cmd)
-        if "HEAD" in self._snap_hist:
-            self.fullpth = self.fullpth / "HEAD"
-        elif "s1" in self._snap_hist:
-            self.fullpth = self.fullpth / "s1"
-        else:
-            raise AssertionError(f"can't find HEAD in remote, failing {self._snap_hist}")
-        self._next_snap_no = max([
-            int(s[1:])
-            for s in re.split(r'\s+', self._snap_hist)
-            if s.startswith('s')]) + 1
 
     def _relative(self, pth: str | Path) -> str:
         if pth == "None" or pth == "":
@@ -122,10 +97,7 @@ class RepoState(dict[str, Filerec]):
 
     # NOTE: btrsnap has to be installed on the local and the remote machine.
     def get_state(self) -> str:
-        cmd = f'_find-repo-files -p "{self.fullpth}"'
-        if self.server not in {None, 'localhost'}:  # in {"scott", "snowball"}:
-            cmd = f"ssh {self.server} '{cmd}'"
-        self._state = runner(cmd)
+        self._state = runner(self._get_state_cmd)
         self.ingest_report(self._state)
 
     def state_equal(self, other) -> bool:
@@ -135,14 +107,54 @@ class RepoState(dict[str, Filerec]):
 
     def __str__(self) -> str:
         return (
-            f"RepoState(server={self.server}, "
             f"repoparent={self.repoparent}, "
             f"reponame={self.name}, "
             f"filerecs={super().__repr__()})"
         )
 
 
+class RepoStateLocal(RepoState):
+    def __init__(self, repoparent: str, name: str):
+        super().__init__(repoparent, name)
+        self._has_config = None  # for RepoStateLocal
+        self._get_state_cmd = f'_find-repo-files -p "{self.fullpth}"'
 
+    def __str__(self) -> str:
+        return f"RepoStateLocal({super().__str__()})"
+
+
+class RepoStateRemote(RepoState):
+    def __init__(self, server: str, repoparent: str, name: str):
+        super().__init__(repoparent, name)
+        self.server = server
+        self._set_snap_hist()   # for RepoStateRemote
+        self._get_state_cmd = f"ssh {self.server} '_find-repo-files -p {self.fullpth}'"
+
+    def _set_snap_hist(self):
+        """ check remote:fullpth:
+            descend one more to HEAD or s1 if remote
+            set self.next_snap from max snap #
+        """
+        if self.server in {None, "localhost"}:
+            return
+        cmd = f"ssh {self.server} 'ls {self.fullpth}'"
+        self._snap_hist = runner(cmd)
+        if "HEAD" in self._snap_hist:
+            self.fullpth = self.fullpth / "HEAD"
+        elif "s1" in self._snap_hist:
+            self.fullpth = self.fullpth / "s1"
+        else:
+            raise AssertionError(f"can't find HEAD in remote, failing {self._snap_hist}")
+        self._next_snap_no = max([
+            int(s[1:])
+            for s in re.split(r'\s+', self._snap_hist)
+            if s.startswith('s')]) + 1
+
+    def __str__(self) -> str:
+        return (
+            f"RepoStateRemote(server={self.server}, "
+            f"{super().__str__()})"
+        )
 
 # TODO: reimplement
 # def get_last_state(localrepo):
