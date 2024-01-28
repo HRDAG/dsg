@@ -9,6 +9,9 @@
 # It must be on the PATH. It must be in python bc `find` and `stat`
 # are totally different on MacOS-BSD and gnu. Even python's `stat` returns
 # fractional seconds in MacOS but integer seconds on gnu/linux. sheesh.
+#
+# when called with subprocess.run(..., text=True, encoding='utf-8')
+# will solve a lot of problems
 # ============================================
 from pathlib import Path
 from datetime import datetime

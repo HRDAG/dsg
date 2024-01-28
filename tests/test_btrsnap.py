@@ -10,18 +10,18 @@ REMOTE_TEST_REPO_PATH = "/var/repos/btrsnap/test"
 
 
 # TODO: move setup_testdirs to conftest.py
-@pytest.fixture
-def setup_testdirs(tmp_path) -> tuple[Path, Path]:
-    test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
-    assert test_data_path.exists()
-    localrepo = tmp_path / "local"
-    remoterepo = tmp_path / "remote"
-    # NB: copytree preserves mtims
-    shutil.copytree(test_data_path, localrepo, symlinks=True, dirs_exist_ok=False)
-    (localrepo / ".git").touch(exist_ok=True)
-    shutil.copytree(test_data_path, remoterepo, symlinks=True, dirs_exist_ok=False)
-    (remoterepo / ".git").touch(exist_ok=True)
-    return localrepo, remoterepo
+# @pytest.fixture
+# def setup_testdirs(tmp_path) -> tuple[Path, Path]:
+#     test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
+#     assert test_data_path.exists()
+#     localrepo = tmp_path / "local"
+#     remoterepo = tmp_path / "remote"
+#     # NB: copytree preserves mtims
+#     shutil.copytree(test_data_path, localrepo, symlinks=True, dirs_exist_ok=False)
+#     (localrepo / ".git").touch(exist_ok=True)
+#     shutil.copytree(test_data_path, remoterepo, symlinks=True, dirs_exist_ok=False)
+#     (remoterepo / ".git").touch(exist_ok=True)
+#     return localrepo, remoterepo
 
 
 def test_filerec():
@@ -31,6 +31,7 @@ def test_filerec():
     f2 = btrsnap.Filerec("None", 250, "2024-01-18T03:56:23")
     assert f1 == f2
     assert f1.cmp(f2) == "eq"
+    assert f1.cmp('bobdog') == "ne"
 
     f2_2 = btrsnap.Filerec("None", 555, "2024-01-18T03:56:23")
     assert f1.cmp(f2_2) == "ne"
@@ -38,9 +39,9 @@ def test_filerec():
     f3 = btrsnap.Filerec("../input/dt1.csv", 0, "2024-01-18T03:56:23")
     assert not f1 == f3
     assert f1.cmp(f3) == "ne"
-    f4 = btrsnap.Filerec("../input/dt1.csv", 0, "2024-01-18T12:56:23")
+    f4 = btrsnap.Filerec("../input/dt1.csv", 0, "2024-01-18T11:44:22")
     assert f3 == f4
-    f4_1 = btrsnap.Filerec("../input/dt2.csv", 0, "2024-01-18T12:56:23")
+    f4_1 = btrsnap.Filerec("../input/dt2.csv", 0, "2024-01-18T11:44:22")
     assert f4.cmp(f4_1) == "ne"
 
     f5 = btrsnap.Filerec("None", 250, "2024-01-18T15:56:23")
@@ -50,7 +51,11 @@ def test_filerec():
 
 def test_repostate_init():
     r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
-    assert (r1.server == "localhost" and r1.repoparent == Path("/usr/local/share/btrsnap/") and r1.name == "test")
+    assert (
+        r1.server == "localhost"
+        and r1.repoparent == Path("/usr/local/share/btrsnap/")
+        and r1.name == "test"
+    )
 
 
 def test_repostate_relative():
@@ -64,26 +69,66 @@ def test_repostate_relative():
 def test_repostate_ingest():
     r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
 
-    rec1 = '/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23'
-    _ = '/usr/local/share/btrsnap/test/task1/input/dt2.csv|None|39|2024-01-18T03:56:23'
-    _ = '/usr/local/share/btrsnap/test/task1/output/dt2.csv|/usr/local/share/btrsnap/test/task1/input/dt2.csv|0|2024-01-18T03:23:31'
-    _ = '/usr/local/share/btrsnap/test/task1/output/result1.csv|None|23|2024-01-18T03:56:23'
-    rec5 = '/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49'
+    rec1 = (
+        "/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23"
+    )
+    rec5 = "/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49"
 
     r1._ingest(rec1)
     pth = "task1/input/dt1.csv"
-    assert (pth in r1 and r1[pth].refpth == "None" and r1[pth].size == 50
-            and r1[pth].datestamp == "2024-01-18T03:56:23"
-            )
+    assert (
+        pth in r1
+        and r1[pth].refpth == "None"
+        and r1[pth].size == 50
+        and r1[pth].datestamp == "2024-01-18T03:56:23"
+    )
 
     r1._ingest(rec5)
     pth = "task2/input/result1.csv"
+    assert (pth in r1
+            and r1[pth].refpth == "task1/output/result1.csv"
+            and r1[pth].size == 0
+            and r1[pth].datestamp == "2024-01-18T03:22:49"
+            )
+
+
+def test_ingest_report():
+    r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
+    cmd = f"_find-repo-files -p {Path(r1.fullpth)}"
+    report = btrsnap.runner(cmd)
+    r1.ingest_report(report)
+
+    pth = "task1/input/dt1.csv"
     assert (
         pth in r1
-        and r1[pth].refpth == "task1/output/result1.csv"
-        and r1[pth].size == 0
-        and r1[pth].datestamp == "2024-01-18T03:22:49"
+        and r1[pth].refpth == "None"
+        and r1[pth].size == 50
+        and r1[pth].datestamp == "2024-01-18T03:56:23"
     )
+
+    pth = "task2/input/result1.csv"
+    assert (pth in r1
+            and r1[pth].refpth == "task1/output/result1.csv"
+            and r1[pth].size == 0
+            and r1[pth].datestamp == "2024-01-18T03:22:49"
+            )
+
+
+def test_get_repo_state_local():
+    """ tests _find-repo-files and get_repo_state """
+    test_path = "/usr/local/share/btrsnap/test"
+    test_state = "/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/input/dt2.csv|None|39|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/output/dt2.csv|/usr/local/share/btrsnap/test/task1/input/dt2.csv|0|2024-01-18T03:23:31||/usr/local/share/btrsnap/test/task1/output/result1.csv|None|23|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49"  # noqa E501
+    state = btrsnap.get_repo_state(test_path)
+    assert test_state == state.strip()
+
+
+def test_get_repo_state_remote():
+    """ tests _find-repo-files and get_repo_state """
+    test_path = "/usr/local/share/btrsnap/test"
+    test_state = "/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/input/dt2.csv|None|39|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/output/dt2.csv|/usr/local/share/btrsnap/test/task1/input/dt2.csv|0|2024-01-18T03:23:31||/usr/local/share/btrsnap/test/task1/output/result1.csv|None|23|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49"  # noqa E501
+    state = btrsnap.get_repo_state(test_path, server='snowball')
+    print(f"snowball: {state=}")
+    assert test_state == state.strip()
 
 
 # def test_find_repo_root(setup_testdirs):
@@ -100,31 +145,6 @@ def test_repostate_ingest():
 #         r = btrsnap.find_repo_root("/usr/local")
 #
 #
-# def test_get_repo_state(setup_testdirs):
-#     localrepo, _ = setup_testdirs
-#
-#     def last3(pthparts: tuple) -> str:
-#         return "/".join(pthparts[-3:])
-#
-#     state = btrsnap.get_repo_state(localrepo)
-#     assert len(state) == 5
-#     print(state)
-#     for rec in state:
-#         pth, refpth, sz, dt = rec.split("|")  # type: ignore
-#         sz = int(sz)
-#         pthparts = Path(pth).parts
-#         assert pthparts[-4] == "local"
-#         match last3(pthparts):
-#             case "task1/input/dt1.csv":
-#                 assert refpth == "None"
-#                 assert sz == 50
-#             case "task2/input/result1.csv":
-#                 refpth = last3(Path(refpth).parts)
-#                 assert refpth == "task1/output/result1.csv"
-#                 assert sz == 0
-#             case "task1/output/result1.csv":
-#                 assert refpth == "None"
-#                 assert sz == 23
 #
 #
 # def test_remote_pong(helpers):

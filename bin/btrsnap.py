@@ -1,10 +1,13 @@
 #!find_files/usr/bin/env python
 
 from pathlib import Path
+import itertools as it
 import typing
 import re
 import subprocess
 from dataclasses import dataclass
+
+# FIXME: needs to get remote name & path from .btrsnap/config
 
 
 @dataclass(frozen=True)
@@ -12,10 +15,10 @@ from dataclasses import dataclass
 class Filerec:
     """
     left.cmp(right) yields:
-    'ne' if refpth or size not equal
-    'eq' if equal
-    'lt' if left < right by datestamp
-    'gt' if left > right by datestamp
+        'ne' if refpth or size not equal
+        'eq' if equal
+        'lt' if left < right by datestamp
+        'gt' if left > right by datestamp
     """
 
     refpth: str
@@ -27,14 +30,17 @@ class Filerec:
 
     def cmp(self, other):
         """ compare filerecs """
-        if isinstance(other, Filerec) and self.size == other.size and self.refpth == other.refpth:
-            if self.refpth == "None" or len(self.refpth) == 0:
+        if (isinstance(other, Filerec) and
+                self.size == other.size and
+                self.refpth == other.refpth):
+
+            if self.refpth == "None" or len(self.refpth) == 0:  # not a symlink
                 if self.datestamp == other.datestamp:
                     return "eq"
                 if self.datestamp < other.datestamp:
                     return "lt"
                 return "gt"
-            else:
+            else:                      # symlink
                 return "eq"
         return 'ne'
 
@@ -68,14 +74,24 @@ class RepoState(dict[str, Filerec]):
     def _relative(self, pth: str | Path) -> str:
         if pth == "None" or pth == "":
             return str(pth)
-        return str(Path(pth).relative_to(self.fullpth))
+        pth = Path(pth)
+        assert all([p == t for p, t in zip(pth.parts, self.fullpth.parts)])
+        return str(Path(*[
+            p for p, t
+            in it.zip_longest(pth.parts, self.fullpth.parts)
+            if t is None]))
 
     def _ingest(self, rec):
         """given a str rec from getstate, add to self"""
         pth, targ, size, mtime = rec.split("|")
-        pth = self._relative(pth)
-        targ = self._relative(targ)
-        self[pth] = Filerec(targ, int(size), mtime)
+        pth = self._relative(pth.strip())
+        targ = self._relative(targ.strip())
+        self[pth] = Filerec(targ, int(size), mtime.strip())
+
+    def ingest_report(self, report):
+        """ given a string from _find-repo-files, ingest them """
+        for rec in str(report).split("||"):
+            self._ingest(str(rec))
 
     def __str__(self):
         return (
@@ -86,83 +102,83 @@ class RepoState(dict[str, Filerec]):
         )
 
 
-def find_repo_root(repopath: Path | str) -> Path:
-    """walks up repopath to find .btrsnap.ini, returns its parent
-    note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
-    """
-    repopath = Path(repopath)
-    root = Path(repopath.root)
-    while True:
-        if repopath == Path.home():
-            raise FileNotFoundError(".btrsnap not found (~) ")
-        if repopath == root:
-            raise FileNotFoundError(".btrsnap not found (/) ")
-        if any(".btrsnap" in str(f) for f in repopath.iterdir()):
-            if any(".git" in str(f) for f in repopath.iterdir()):
-                pass  # ok!
-            else:
-                raise OSError(f"wait, where are we?? {repopath}")
-            return repopath
-        repopath = repopath.parent
+def runner(cmd: str | list) -> subprocess.CompletedProcess:
+    """ wrapper on subprocess.run to assure proper args """
+    ran = subprocess.run(cmd, shell=True, capture_output=True,
+                         text=True, encoding='utf-8')
+    assert ran.returncode == 0, f"subprocess failed: {ran}"
+    return ran.stdout.strip()
 
 
 # NOTE: btrsnap has to be installed on the local and the remote machine.
-# FIXME: needs to get remote name & path from .btrsnap/config
-def get_repo_state(pth: str | Path, server: typing.Optional[str] = None) -> list[str]:
+def get_repo_state(pth: str | Path, server: typing.Optional[str] = None) -> str:
     cmd = f'_find-repo-files -p "{pth}"'
-    if server in {"scott", "snowball"}:
+    if server is not None:  # in {"scott", "snowball"}:
         cmd = f"ssh {server} {cmd}"
-    # TODO: not sure this is needed? It might just fail, ok?
-    elif server is not None:
-        raise NotImplementedError(f"{server} is not known to btrsnap")
-    ran = subprocess.run(cmd, shell=True, capture_output=True)
-    assert ran.returncode == 0, f"find failed: {ran}"
-
-    splitter = re.compile(r"\|\|")
-    recs = [s.strip() for s in splitter.split(ran.stdout.decode("utf-8"))]
-    return recs
+    return runner(cmd)
 
 
-def get_last_state(localrepo):
-    snap_meta_path = Path(localrepo.working_tree_dir) / ".snap"
-    with open(snap_meta_path / "last-sync-state", "rt") as f:
-        laststate = [r.strip() for r in f.readlines()]
-    return laststate
+# TODO: reimplement
+# def get_last_state(localrepo):
+#     snap_meta_path = Path(localrepo.working_tree_dir) / ".snap"
+#     with open(snap_meta_path / "last-sync-state", "rt") as f:
+#         laststate = [r.strip() for r in f.readlines()]
+#     return laststate
 
 
-def state_to_dict(xstate: list[str], reponame: str) -> dict[str, Filerec]:
-    p, targ, size, mtime = xstate[0].split("|")
-    parts = Path(p).parts
-    assert reponame in parts
+# def state_to_dict(xstate: list[str], reponame: str) -> dict[str, Filerec]:
+#     p, targ, size, mtime = xstate[0].split("|")
+#     parts = Path(p).parts
+#     assert reponame in parts
 
-    def _make_getrelative(reponame: str, parts: tuple[str, ...]):
-        """closure to keep splt contained"""
-        if "HEAD" in parts:
-            splt = parts.index("HEAD")
-        elif "s1" in parts:
-            splt = parts.index("s1")
-        else:  # we asserted reponame in parts
-            splt = parts.index(reponame)
-        splt += 1
+    # def _make_getrelative(reponame: str, parts: tuple[str, ...]):
+    #     """closure to keep splt contained"""
+    #     if "HEAD" in parts:
+    #         splt = parts.index("HEAD")
+    #     elif "s1" in parts:
+    #         splt = parts.index("s1")
+    #     else:  # we asserted reponame in parts
+    #         splt = parts.index(reponame)
+    #     splt += 1
+    #
+    #     def __getrelative(p: str) -> str:
+    #         """returns the right part of the path relative to reponame"""
+    #         return p if p == "None" else str(Path(*Path(p).parts[splt:]))
+    #
+    #     return __getrelative
+    #
+    # _getrelative = _make_getrelative(reponame, parts)
+    #
+    # statedict = dict()
+    # for rec in (r for r in xstate if r.strip()):
+    #     try:
+    #         pth, targ, size, mtime = rec.split("|")
+    #     except ValueError:
+    #         raise AssertionError(f"rec.split failed with {rec}")
+    #     pth = _getrelative(pth)
+    #     targ = _getrelative(targ)
+    #     statedict[pth] = Filerec(targ, int(size), mtime)
+    # return statedict
 
-        def __getrelative(p: str) -> str:
-            """returns the right part of the path relative to reponame"""
-            return p if p == "None" else str(Path(*Path(p).parts[splt:]))
 
-        return __getrelative
-
-    _getrelative = _make_getrelative(reponame, parts)
-
-    statedict = dict()
-    for rec in (r for r in xstate if r.strip()):
-        try:
-            pth, targ, size, mtime = rec.split("|")
-        except ValueError:
-            raise AssertionError(f"rec.split failed with {rec}")
-        pth = _getrelative(pth)
-        targ = _getrelative(targ)
-        statedict[pth] = Filerec(targ, int(size), mtime)
-    return statedict
+# def find_repo_root(repopath: Path | str) -> Path:
+#     """walks up repopath to find .btrsnap.ini, returns its parent
+#     note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
+#     """
+#     repopath = Path(repopath)
+#     root = Path(repopath.root)
+#     while True:
+#         if repopath == Path.home():
+#             raise FileNotFoundError(".btrsnap not found (~) ")
+#         if repopath == root:
+#             raise FileNotFoundError(".btrsnap not found (/) ")
+#         if any(".btrsnap" in str(f) for f in repopath.iterdir()):
+#             if any(".git" in str(f) for f in repopath.iterdir()):
+#                 pass  # ok!
+#             else:
+#                 raise OSError(f"wait, where are we?? {repopath}")
+#             return repopath
+#         repopath = repopath.parent
 
 
 def states_cmp(local: Filerec, last: Filerec, remote: Filerec) -> str:
