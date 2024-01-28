@@ -63,13 +63,18 @@ def test_repostate_relative():
 
 def test_repostate_ingest():
     r1 = btrsnap.RepoState("localhost", "/usr/local/share/btrsnap/", "test")
-    # TODO: add recs here, after nice surround.
+
+    rec1 = '/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23'
+    _ = '/usr/local/share/btrsnap/test/task1/input/dt2.csv|None|39|2024-01-18T03:56:23'
+    _ = '/usr/local/share/btrsnap/test/task1/output/dt2.csv|/usr/local/share/btrsnap/test/task1/input/dt2.csv|0|2024-01-18T03:23:31'
+    _ = '/usr/local/share/btrsnap/test/task1/output/result1.csv|None|23|2024-01-18T03:56:23'
+    rec5 = '/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49'
 
     r1._ingest(rec1)
     pth = "task1/input/dt1.csv"
     assert (pth in r1 and r1[pth].refpth == "None" and r1[pth].size == 50
-        and r1[pth].datestamp == "2024-01-18T03:56:23"
-    )
+            and r1[pth].datestamp == "2024-01-18T03:56:23"
+            )
 
     r1._ingest(rec5)
     pth = "task2/input/result1.csv"

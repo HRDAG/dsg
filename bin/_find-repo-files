@@ -7,7 +7,7 @@
 # otherwise.
 #
 # It must be on the PATH. It must be in python bc `find` and `stat`
-# are totally different on MacOS-BSD and gnu. Even python's `stat` returns 
+# are totally different on MacOS-BSD and gnu. Even python's `stat` returns
 # fractional seconds in MacOS but integer seconds on gnu/linux. sheesh.
 # ============================================
 from pathlib import Path
@@ -18,7 +18,7 @@ import argparse
 
 ig = re.compile(r'\..*ignore')
 dts = re.compile(r'([.]\d+)$')   # the seconds part of a date string, if it exists
-# TODO: move the definition of datadirs to .btrsnap/config 
+# TODO: move the definition of datadirs to .btrsnap/config
 datadirs = {'input', 'output', 'frozen', 'note'}
 
 
@@ -35,18 +35,18 @@ if __name__ == "__main__":
 
     for root, dirs, files in os.walk(start):
         rightparts = set(Path(root).parts[left:])
-        if not rightparts & datadirs: 
+        if not rightparts & datadirs:
             continue
         for f in [f for f in files if not ig.search(f)]:
             fullpath = Path(root) / f
             stat = os.lstat(fullpath)
             if fullpath.is_symlink():
                 sz = 0
-                targ_full = fullpath.resolve()
-                targ = targ_full.relative_to(start.absolute())
+                targ = fullpath.resolve()
+                # targ = targ_full.parent.relative_to(start.absolute())
             else:
                 sz = stat.st_size
-                targ = None 
+                targ = None
             fullpath = fullpath.absolute()
             dt = datetime.utcfromtimestamp(stat.st_mtime).isoformat()
             dt = dts.sub('', dt)
