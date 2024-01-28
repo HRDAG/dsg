@@ -8,6 +8,12 @@ import subprocess
 from dataclasses import dataclass
 
 # FIXME: needs to get remote name & path from .btrsnap/config
+def runner(cmd: str | list) -> subprocess.CompletedProcess:
+    """ wrapper on subprocess.run to assure proper args """
+    ran = subprocess.run(cmd, shell=True, capture_output=True,
+                         text=True, encoding='utf-8')
+    assert ran.returncode == 0, f"subprocess failed: {ran}"
+    return ran.stdout.strip()
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,7 @@ class Filerec:
 
 
 class RepoState(dict[str, Filerec]):
+    # FIXME: refactor in to RepoStateLocal, RepoStateRemote
     """
     a dict of relpth:Filerec
         where relpth is a (file's fullpath).relative_to(repopath)
@@ -56,20 +63,40 @@ class RepoState(dict[str, Filerec]):
 
     for an element of repostt[myrelpth], fullpath = Path(repostt.root) / myrelpth
     methods:
-        _getrelpth(self, fullpth) returns relpth by removing self.root
-        _getstate(self) reaches to server:root/reponame to get state, initializes itself
-        _ingestrec(self, rec) with a rec from _getstate, parse
         _get_config(self) if exists
         _get_laststate if exists; laststate is a RepoState
+        state_equal(self, other)
     """
 
     def __init__(self, server: str, repoparent: str, name: str):
-        assert not repoparent.endswith(name)
+        assert not repoparent.endswith(name), f"don't repeat the reponame in repopath"
         self.server = server
         self.repoparent = Path(repoparent)
         self.fullpth = self.repoparent / name
         self.name = name
-        self._has_config = None  # check at root/reponame
+        self._has_config = None  # for RepoStateLocal
+        self._set_snap_hist()   # for RepoStateRemote
+
+    def _set_snap_hist(self):
+        # FIXME: refactor to RepoStateRemote
+        """ check remote:fullpth:
+            descend one more to HEAD or s1 if remote
+            set self.next_snap from max snap #
+        """
+        if self.server in {None, "localhost"}:
+            return
+        cmd = f"ssh {self.server} 'ls {self.fullpth}'"
+        self._snap_hist = runner(cmd)
+        if "HEAD" in self._snap_hist:
+            self.fullpth = self.fullpth / "HEAD"
+        elif "s1" in self._snap_hist:
+            self.fullpth = self.fullpth / "s1"
+        else:
+            raise AssertionError(f"can't find HEAD in remote, failing {self._snap_hist}")
+        self._next_snap_no = max([
+            int(s[1:])
+            for s in re.split(r'\s+', self._snap_hist)
+            if s.startswith('s')]) + 1
 
     def _relative(self, pth: str | Path) -> str:
         if pth == "None" or pth == "":
@@ -81,19 +108,32 @@ class RepoState(dict[str, Filerec]):
             in it.zip_longest(pth.parts, self.fullpth.parts)
             if t is None]))
 
-    def _ingest(self, rec):
+    def _ingest(self, rec: str) -> Filerec:
         """given a str rec from getstate, add to self"""
-        pth, targ, size, mtime = rec.split("|")
-        pth = self._relative(pth.strip())
-        targ = self._relative(targ.strip())
-        self[pth] = Filerec(targ, int(size), mtime.strip())
+        pth, targ, size, mtime = tuple([e.strip() for e in rec.split("|")])
+        pth = self._relative(pth)
+        targ = self._relative(targ)
+        self[pth] = Filerec(targ, int(size), mtime)
 
-    def ingest_report(self, report):
+    def ingest_report(self, report: str):
         """ given a string from _find-repo-files, ingest them """
-        for rec in str(report).split("||"):
-            self._ingest(str(rec))
+        for rec in report.split("||"):
+            self._ingest(rec)
 
-    def __str__(self):
+    # NOTE: btrsnap has to be installed on the local and the remote machine.
+    def get_state(self) -> str:
+        cmd = f'_find-repo-files -p "{self.fullpth}"'
+        if self.server not in {None, 'localhost'}:  # in {"scott", "snowball"}:
+            cmd = f"ssh {self.server} '{cmd}'"
+        self._state = runner(cmd)
+        self.ingest_report(self._state)
+
+    def state_equal(self, other) -> bool:
+        if isinstance(other, RepoState) and self.keys() == other.keys():
+            return all(self[k] == other[k] for k in self.keys())
+        return False
+
+    def __str__(self) -> str:
         return (
             f"RepoState(server={self.server}, "
             f"repoparent={self.repoparent}, "
@@ -102,20 +142,6 @@ class RepoState(dict[str, Filerec]):
         )
 
 
-def runner(cmd: str | list) -> subprocess.CompletedProcess:
-    """ wrapper on subprocess.run to assure proper args """
-    ran = subprocess.run(cmd, shell=True, capture_output=True,
-                         text=True, encoding='utf-8')
-    assert ran.returncode == 0, f"subprocess failed: {ran}"
-    return ran.stdout.strip()
-
-
-# NOTE: btrsnap has to be installed on the local and the remote machine.
-def get_repo_state(pth: str | Path, server: typing.Optional[str] = None) -> str:
-    cmd = f'_find-repo-files -p "{pth}"'
-    if server is not None:  # in {"scott", "snowball"}:
-        cmd = f"ssh {server} {cmd}"
-    return runner(cmd)
 
 
 # TODO: reimplement
