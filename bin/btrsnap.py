@@ -91,6 +91,9 @@ class RepoState(dict[str, Filerec]):
         self.fullpth = self.repoparent / name
         self.name = name
 
+    def get_filepth(self, pth):
+        return self.fullpth / pth
+
     def _relative(self, pth: str | Path) -> str:
         if pth == "None" or pth == "":
             return str(pth)
@@ -292,15 +295,6 @@ class StateComparator:
         self.actions = {k: None for k in local.keys()}
         self.actions.update({k: None for k in last.keys()})
         self.actions.update({k: None for k in remote.keys()})
-        self._dispatch = {
-            "111": self._c111,
-            "110": self._c110,
-            "101": self._c101,
-            "011": self._c011,
-            "100": self._c100,
-            "010": self._c010,
-            "001": self._c001,
-        }
 
     def _indicator(self, pth):
         return (
@@ -323,8 +317,17 @@ class StateComparator:
                     self._c101(pth)
                 case "110":
                     self._c110(pth)
+                case "011":
+                    self._c011(pth)
+                case "001":
+                    self._c001(pth)
+                case "010":
+                    self._c010(pth)
+                case "100":
+                    self._c100(pth)
                 case _:
                     raise KeyError(f"weird _indicator {indicator}")
+        return self
 
     def _c111(self, pth):
         local, last, remote = self.local[pth], self.last[pth], self.remote[pth]

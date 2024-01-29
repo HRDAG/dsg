@@ -2,6 +2,14 @@
 
 from pathlib import Path
 import bin.btrsnap as btrsnap
+from copy import deepcopy as cd
+import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def auto_resource():
+    # TODO: move install.sh to tests/
+    btrsnap.runner("sudo ./install.sh")
 
 
 def test_filerec():
@@ -109,6 +117,71 @@ def test_state_equal(helpers):
 # def test_remote_pong(helpers):
 #     ran = helpers._sr("ssh snowball sudo _backend-test-fixture ping")
 #     assert "pong." in str(ran.stdout), f"clone failed: {ran}"
+
+def test_state_change_repos(helpers):
+    """
+    TODO:
+    change the actual repos, get states, then check. this is a little fiddly.
+    """
+
+    # TODO: create temp dirs!
+    # local > last and local > remote
+    btrsnap.runner("./install.sh")
+    local = helpers.get_local()
+    pth1 = local.get_filepth(helpers.pth1)
+    pth1.touch(exist_ok=True)
+    local, last, remote = helpers.get_3_states()
+    comparator = btrsnap.StateComparator(local, last, remote).compare()
+    assert comparator.actions[helpers.pth1] == 'PUSH', f"{comparator.actions=}"
+    btrsnap.runner("./install.sh")
+
+
+def test_state_compare_1_only(helpers):
+    m_local, m_last, m_remote = helpers.get_3_states()
+
+    local, last, remote = cd(m_local), cd(m_last), cd(m_remote)
+    local.pop(helpers.pth1)
+    last.pop(helpers.pth1)  # now 001
+    comparator = btrsnap.StateComparator(local, last, remote)
+    comparator.compare()
+    assert comparator.actions[helpers.pth1] == 'PULL', f"{comparator.actions=}"
+
+    local, last, remote = cd(m_local), cd(m_last), cd(m_remote)
+    remote.pop(helpers.pth1)
+    last.pop(helpers.pth1)  # now 100
+    comparator = btrsnap.StateComparator(local, last, remote)
+    comparator.compare()
+    assert comparator.actions[helpers.pth1] == 'PUSH', f"{comparator.actions=}"
+
+    local, last, remote = cd(m_local), cd(m_last), cd(m_remote)
+    remote.pop(helpers.pth1)
+    local.pop(helpers.pth1)  # now 010
+    comparator = btrsnap.StateComparator(local, last, remote)
+    comparator.compare()
+    assert comparator.actions[helpers.pth1] in {'sync', 'NOP'}, f"{comparator.actions=}"
+
+
+def test_state_compare_011(helpers):
+    local, last, remote = helpers.get_3_states()
+
+    local.pop(helpers.pth1)  # now 011
+    comparator = btrsnap.StateComparator(local, last, remote)
+    comparator.compare()
+
+    # last == remote
+    assert comparator.actions[helpers.pth1] == 'push.delete', f"{comparator.actions=}"
+
+    # last > remote
+    tmp = last[helpers.pth1]
+    last[helpers.pth1] = btrsnap.Filerec("None", 50, "2024-01-22T11:55:22")
+    comparator.compare()
+    assert comparator.actions[helpers.pth1] == 'push.delete', f"{comparator.actions=}"
+
+    # remote > last
+    last[helpers.pth1] = tmp
+    remote[helpers.pth1] = btrsnap.Filerec("None", 50, "2024-01-22T11:55:22")
+    comparator.compare()
+    assert comparator.actions[helpers.pth1] == 'PULL'
 
 
 def test_state_compare_110(helpers):

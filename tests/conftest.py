@@ -16,7 +16,6 @@ import bin.btrsnap as btrsnap
 #     (remoterepo / ".git").touch(exist_ok=True)
 #     return localrepo, remoterepo
 
-# TODO: move setup_testdirs to conftest.py
 class Helpers:
     INSTALLED_TEST_DATA_PATH = "/usr/local/share/btrsnap/"
     REMOTE_TEST_REPO_PATH = "/var/repos/btrsnap/test"
