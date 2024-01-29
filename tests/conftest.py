@@ -1,5 +1,5 @@
 import pytest
-# import bin.btrsnap as btrsnap
+import bin.btrsnap as btrsnap
 
 
 # TODO: move setup_testdirs to conftest.py
@@ -24,6 +24,33 @@ class Helpers:
     test_state = "/usr/local/share/btrsnap/test/task1/input/dt1.csv|None|50|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/input/dt2.csv|None|39|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task1/output/dt2.csv|/usr/local/share/btrsnap/test/task1/input/dt2.csv|0|2024-01-18T03:23:31||/usr/local/share/btrsnap/test/task1/output/result1.csv|None|23|2024-01-18T03:56:23||/usr/local/share/btrsnap/test/task2/input/result1.csv|/usr/local/share/btrsnap/test/task1/output/result1.csv|0|2024-01-18T03:22:49"  # noqa E501
     pth1 = "task1/input/dt1.csv"
     pth2 = "task2/input/result1.csv"
+
+    @staticmethod
+    def get_local():
+        local = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
+        local.get_state()
+        return local
+
+    @staticmethod
+    def get_remote():
+        ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
+        assert "OK" in ran
+        remote = btrsnap.RepoStateRemote("snowball", "/var/repos/btrsnap", "test")
+        remote.get_state()
+        return remote
+
+    @staticmethod
+    def get_last(local, remote):
+        remote.save_last_state(to=local)
+        last = local.get_last_state()
+        return last
+
+    @staticmethod
+    def get_3_states():
+        remote = Helpers.get_remote()
+        local = Helpers.get_local()
+        last = Helpers.get_last(local, remote)
+        return local, last, remote
 
     @staticmethod
     def test2pths(r1):

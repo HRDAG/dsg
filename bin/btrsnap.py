@@ -319,6 +319,10 @@ class StateComparator:
             match indicator:
                 case "111":
                     self._c111(pth)
+                case "101":
+                    self._c101(pth)
+                case "110":
+                    self._c110(pth)
                 case _:
                     raise KeyError(f"weird _indicator {indicator}")
 
@@ -330,27 +334,16 @@ class StateComparator:
             raise AssertionError(
                 f"why is local<last? {self.local[pth]=}, {self.last[pth]=}"
             )
-        # if self.local[pth] == self.last[pth] and self.local[pth] == self.remote[pth]:
         if local == last and local == remote:
             self.actions[pth] = "NOP"
-        # elif (
-        #     self.local[pth].cmp(self.last[pth]) == "gt"
-        #     and self.remote[pth].cmp(self.last[pth]) == "gt"
-        # ):
         elif local.cmp(last) == 'gt' and remote.cmp(last) == 'gt':
             # NOTE: if local>last and remote>last, what if they're equal?
             # echo 'pyproject.toml README.md install.sh' | xargs md5sum -
             # maybe delimit list wtih \0 and use xargs -0
             self.actions[pth] = "CONFLICT"
-        elif (
-            self.local[pth] == self.last[pth]
-            and self.remote[pth].cmp(self.last[pth]) == "gt"
-        ):
+        elif local == last and remote.cmp(last) == 'gt':
             self.actions[pth] = "PULL"
-        elif (
-            self.local[pth].cmp(self.last[pth]) == "gt"
-            and self.remote[pth] == self.last[pth]
-        ):
+        elif local.cmp(last) == 'gt' and last == remote:
             self.actions[pth] = "PUSH"
         else:
             raise AssertionError("why are we here?? 111-else. "
@@ -360,7 +353,7 @@ class StateComparator:
     def _c101(self, pth):
         if self.local[pth] == self.remote[pth]:
             self.actions[pth] = "NOP"
-        else:  # we don't know which one is right, but if they sha'd equal...
+        else:  # we don't know which one is right, see note above
             self.actions[pth] = "CONFLICT"
 
     def _c110(self, pth):
