@@ -2,10 +2,12 @@
 
 from pathlib import Path
 import itertools as it
-import typing
 import re
+from datetime import datetime
+import tomllib
 import subprocess
 from dataclasses import dataclass
+import json
 
 # FIXME: needs to get remote name & path from .btrsnap/config
 def runner(cmd: str | list) -> subprocess.CompletedProcess:
@@ -50,6 +52,12 @@ class Filerec:
                 return "eq"
         return 'ne'
 
+    def as_tuple(self):
+        return tuple([self.refpth, self.size, self.datestamp])
+
+    # def __repr__(self) -> str:
+    #     return str(self.as_tuple())
+
 
 class RepoState(dict[str, Filerec]):
     """
@@ -66,6 +74,7 @@ class RepoState(dict[str, Filerec]):
         _get_laststate if exists; laststate is a RepoState
         state_equal(self, other)
     """
+    _last_sync_path = ".btrsnap/last-sync.json"
 
     def __init__(self, repoparent: str, name: str):
         assert not repoparent.endswith(name), f"don't repeat the reponame in repopath"
@@ -98,6 +107,7 @@ class RepoState(dict[str, Filerec]):
     # NOTE: btrsnap has to be installed on the local and the remote machine.
     def get_state(self) -> str:
         self._state = runner(self._get_state_cmd)
+        self.last_checked_time = datetime.utcnow().isoformat()
         self.ingest_report(self._state)
 
     def state_equal(self, other) -> bool:
@@ -105,19 +115,74 @@ class RepoState(dict[str, Filerec]):
             return all(self[k] == other[k] for k in self.keys())
         return False
 
+    def as_dict(self, recs_as_tuple=True):
+        if recs_as_tuple:
+            recs = {k: v.as_tuple() for k, v in self.items()}
+        else:
+            recs = {k: v for k, v in self.items()}
+        return {
+            'repoparent': str(self.repoparent),
+            'name': self.name,
+            'server': getattr(self, "server", "None"),
+            'last_checked_time': self.last_checked_time,
+            'filerecs': recs
+        }
+
     def __str__(self) -> str:
-        return (
-            f"repoparent={self.repoparent}, "
-            f"reponame={self.name}, "
-            f"filerecs={super().__repr__()})"
-        )
+        return (f"{self.as_dict(recs_as_tuple=False)}")
+
+
+class RepoStateLast(RepoState):
+    """
+        self._last_sync_path serializes a RepoStateRemote w timestamp
+        server = "snowball"
+        pth = "path/to/data"
+        sync_time = "timestamp"
+        state = "very long string"
+    """
+
+    def __init__(self, fullpth: Path | str):
+        self.fullpth = fullpth
+
+    def load(self):
+        """ load from .btrsnap/last_sync
+            what to do if last_sync doesn't exist?
+        """
+        with open(self.fullpth / self._last_sync_path, "rt") as f:
+            state_dict = json.load(f)
+        self.repoparent = Path(state_dict['repoparent'])
+        self.server = state_dict['server']
+        self.name = state_dict['name']
+        self.last_checked_time = state_dict['last_checked_time']
+
+        print(f"{state_dict=}")
+
+        self.update({pth: Filerec(*rec)
+                     for pth, rec in state_dict['filerecs'].items()})
+        return self
+
+    def __str__(self) -> str:
+        return f"RepoStateLast({super().__str__()})"
 
 
 class RepoStateLocal(RepoState):
     def __init__(self, repoparent: str, name: str):
         super().__init__(repoparent, name)
-        self._has_config = None  # for RepoStateLocal
+        self._get_config()
         self._get_state_cmd = f'_find-repo-files -p "{self.fullpth}"'
+
+    def _get_config(self):
+        """ find and read .btrsnap/config """
+        tomlfile = self.fullpth / ".btrsnap/config"
+        assert tomlfile.exists()
+        with open(tomlfile, "rb") as f:
+            try:
+                self._config = tomllib.load(f)
+            except tomllib.TOMLDecodeError:
+                raise tomllib.TOMLDecodeError(f"error in .btrsnap/config file")
+
+    def get_last_state(self):
+        return RepoStateLast(self.fullpth).load()
 
     def __str__(self) -> str:
         return f"RepoStateLocal({super().__str__()})"
@@ -150,73 +215,23 @@ class RepoStateRemote(RepoState):
             for s in re.split(r'\s+', self._snap_hist)
             if s.startswith('s')]) + 1
 
+    def save_last_state(self, repopth):
+        """ repopth must contain .btrsnap/ dir
+            you want to save_last_state on Remote so you have server info in json
+
+            semantics: remote.save_last_state(local.fullpth)
+        """
+        statefile = Path(repopth) / self._last_sync_path
+        with open(statefile, "wt") as f:
+            f.write(json.dumps(self.as_dict()))
+
     def __str__(self) -> str:
         return (
             f"RepoStateRemote(server={self.server}, "
             f"{super().__str__()})"
         )
 
-# TODO: reimplement
-# def get_last_state(localrepo):
-#     snap_meta_path = Path(localrepo.working_tree_dir) / ".snap"
-#     with open(snap_meta_path / "last-sync-state", "rt") as f:
-#         laststate = [r.strip() for r in f.readlines()]
-#     return laststate
 
-
-# def state_to_dict(xstate: list[str], reponame: str) -> dict[str, Filerec]:
-#     p, targ, size, mtime = xstate[0].split("|")
-#     parts = Path(p).parts
-#     assert reponame in parts
-
-    # def _make_getrelative(reponame: str, parts: tuple[str, ...]):
-    #     """closure to keep splt contained"""
-    #     if "HEAD" in parts:
-    #         splt = parts.index("HEAD")
-    #     elif "s1" in parts:
-    #         splt = parts.index("s1")
-    #     else:  # we asserted reponame in parts
-    #         splt = parts.index(reponame)
-    #     splt += 1
-    #
-    #     def __getrelative(p: str) -> str:
-    #         """returns the right part of the path relative to reponame"""
-    #         return p if p == "None" else str(Path(*Path(p).parts[splt:]))
-    #
-    #     return __getrelative
-    #
-    # _getrelative = _make_getrelative(reponame, parts)
-    #
-    # statedict = dict()
-    # for rec in (r for r in xstate if r.strip()):
-    #     try:
-    #         pth, targ, size, mtime = rec.split("|")
-    #     except ValueError:
-    #         raise AssertionError(f"rec.split failed with {rec}")
-    #     pth = _getrelative(pth)
-    #     targ = _getrelative(targ)
-    #     statedict[pth] = Filerec(targ, int(size), mtime)
-    # return statedict
-
-
-# def find_repo_root(repopath: Path | str) -> Path:
-#     """walks up repopath to find .btrsnap.ini, returns its parent
-#     note that it should fail at $USERNAME; we don't use $HOME/.btrsnap.ini
-#     """
-#     repopath = Path(repopath)
-#     root = Path(repopath.root)
-#     while True:
-#         if repopath == Path.home():
-#             raise FileNotFoundError(".btrsnap not found (~) ")
-#         if repopath == root:
-#             raise FileNotFoundError(".btrsnap not found (/) ")
-#         if any(".btrsnap" in str(f) for f in repopath.iterdir()):
-#             if any(".git" in str(f) for f in repopath.iterdir()):
-#                 pass  # ok!
-#             else:
-#                 raise OSError(f"wait, where are we?? {repopath}")
-#             return repopath
-#         repopath = repopath.parent
 
 
 def states_cmp(local: Filerec, last: Filerec, remote: Filerec) -> str:

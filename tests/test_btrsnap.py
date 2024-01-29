@@ -8,9 +8,11 @@ import bin.btrsnap as btrsnap
 
 def test_filerec():
     f1 = btrsnap.Filerec("None", 250, "2024-01-18T03:56:23")
+    # assert repr(f1) == str(tuple(["None", 250, "2024-01-18T03:56:23"]))
     assert f1.cmp("bobdog") == "ne"
 
     f2 = btrsnap.Filerec("None", 250, "2024-01-18T03:56:23")
+    # assert repr(f2) == str(("None", 250, "2024-01-18T03:56:23"))
     assert f1 == f2
     assert f1.cmp(f2) == "eq"
     assert f1.cmp('bobdog') == "ne"
@@ -37,6 +39,12 @@ def test_repostate_init():
         r1.repoparent == Path("/usr/local/share/btrsnap/")
         and r1.name == "test"
     )
+
+
+def test_localrepo_config():
+    r1 = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
+    assert r1._config['server']['sshname'] == 'snowball'
+    assert r1._config['repo']['datadirs'] == ['input', 'output', 'frozen', 'note']
 
 
 def test_repostate_relative():
@@ -96,6 +104,32 @@ def test_state_equal(helpers):
     assert not r1.state_equal(r3)
 
 
+# useful to debug connectivity issues
+# def test_remote_pong(helpers):
+#     ran = helpers._sr("ssh snowball sudo _backend-test-fixture ping")
+#     assert "pong." in str(ran.stdout), f"clone failed: {ran}"
+
+
+def test_last_state(helpers):
+    ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
+    assert "OK" in ran
+    remote = btrsnap.RepoStateRemote("snowball", "/var/repos/btrsnap", "test")
+    remote.get_state()
+
+    local = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
+    local.get_state()
+    jsonpth = local.fullpth / ".btrsnap/last-sync.json"
+    jsonpth.unlink(missing_ok=True)
+    assert not jsonpth.exists()
+
+    remote.save_last_state(local.fullpth)
+    assert jsonpth.exists()
+
+    last = local.get_last_state()
+    assert local.state_equal(last)
+    assert remote.state_equal(last)
+
+
 def test_remote_snap_hist(helpers):
     ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
     assert "OK" in ran
@@ -115,67 +149,5 @@ def test_get_repo_state_remote(helpers):
     r2.get_state()
     assert r1.state_equal(r2)
 
-
-# def test_find_repo_root(setup_testdirs):
-#     localrepo, _ = setup_testdirs
-#
-#     r = btrsnap.find_repo_root(localrepo)
-#     assert list(r.parts[-1:]) == ["local"], f"{r=}"
-#     dpath2 = localrepo / "task1"
-#     r = btrsnap.find_repo_root(dpath2)
-#     assert list(r.parts[-1:]) == ["local"], f"{r=}"
-#     with pytest.raises(FileNotFoundError) as _:
-#         r = btrsnap.find_repo_root(localrepo.parent)
-#     with pytest.raises(FileNotFoundError) as _:
-#         r = btrsnap.find_repo_root("/usr/local")
-#
-#
-#
-#
-# def test_remote_pong(helpers):
-#     ran = helpers._sr("ssh snowball sudo _backend-test-fixture ping")
-#     assert "pong." in str(ran.stdout), f"clone failed: {ran}"
-
-#
-# def test_state_to_dict(setup_testdirs):
-#     localrepo, _ = setup_testdirs
-#     # TODO: btrsnap.get_repo_dict which wraps both fns.
-#     state = btrsnap.get_repo_state(localrepo)
-#     state_dict = btrsnap.state_to_dict(state, "local")
-#     known_good = [
-#         ("task1/input/dt1.csv", "None", "50"),
-#         ("task2/input/result1.csv", "task1/output/result1.csv", "0"),
-#         ("task1/output/result1.csv", "None", "23"),
-#     ]
-#     for pth, refpth, sz in known_good:
-#         assert state_dict[pth][0] == refpth and state_dict[pth][1] == sz
-#
-#
-# def test_get_repo_state_remote(helpers):
-#     ran = helpers._sr("ssh snowball sudo _backend-test-fixture clone")
-#     assert ran.returncode == 0 and "OK" in str(ran.stdout), f"clone failed: {ran}"
-#
-#     # TODO: btrsnap.get_repo_dict which wraps both fns.
-#     remote_state = btrsnap.get_repo_state(REMOTE_TEST_REPO_PATH, server="snowball")
-#     remote_dict = btrsnap.state_to_dict(remote_state, "test")
-#     from pprint import pprint
-#     pprint(remote_dict)
-#
-#     test_data_path = Path(INSTALLED_TEST_DATA_PATH) / "data"
-#     local_state = btrsnap.get_repo_state(test_data_path)
-#     local_dict = btrsnap.state_to_dict(local_state, "data")
-#     pprint(local_dict)
-#
-#     # FIXME: assert that the two states are equal.
-#     # needs a states_equal fn that knows to ignore symlink timestamps
-#     for pth in set(remote_dict.keys()) | set(local_dict.keys()):
-#         assert pth in remote_dict and pth in local_dict, f"{pth} not in one dict"
-#         assert remote_dict[pth][0] == local_dict[pth][0], f"{pth} refpth mismatch"  # refpath
-#         assert remote_dict[pth][1] == local_dict[pth][1], f"{pth} size mismatch" # size
-#         if remote_dict[pth][0] != "None":
-#             assert remote_dict[pth][2] == local_dict[pth][2], f"{pth} datestamp mismatch"  # datestamp
-#         else:
-#             assert int(remote_dict[pth][1]) == 0  # if symlink, size==0
-#
 
 # done
