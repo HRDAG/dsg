@@ -323,17 +323,22 @@ class StateComparator:
                     raise KeyError(f"weird _indicator {indicator}")
 
     def _c111(self, pth):
+        local, last, remote = self.local[pth], self.last[pth], self.remote[pth]
+
+        # if p_local.cmp(p_last) == 'lt'
         if self.local[pth].cmp(self.last[pth]) == "lt":
             raise AssertionError(
                 f"why is local<last? {self.local[pth]=}, {self.last[pth]=}"
             )
-        if self.local[pth] == self.last[pth] and self.local[pth] == self.remote[pth]:
+        # if self.local[pth] == self.last[pth] and self.local[pth] == self.remote[pth]:
+        if local == last and local == remote:
             self.actions[pth] = "NOP"
-        elif (
-            self.local[pth].cmp(self.last[pth]) == "gt"
-            and self.remote[pth].cmp(self.last[pth]) == "gt"
-        ):
-            # NOTE: is it? or are they both updating to the same? a sha would help.
+        # elif (
+        #     self.local[pth].cmp(self.last[pth]) == "gt"
+        #     and self.remote[pth].cmp(self.last[pth]) == "gt"
+        # ):
+        elif local.cmp(last) == 'gt' and remote.cmp(last) == 'gt':
+            # NOTE: if local>last and remote>last, what if they're equal?
             # echo 'pyproject.toml README.md install.sh' | xargs md5sum -
             # maybe delimit list wtih \0 and use xargs -0
             self.actions[pth] = "CONFLICT"
