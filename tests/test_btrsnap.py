@@ -8,8 +8,7 @@ import pytest
 
 @pytest.fixture(scope="session", autouse=True)
 def auto_resource():
-    # TODO: move install.sh to tests/
-    btrsnap.runner("sudo ./install.sh")
+    btrsnap.runner("sudo tests/install.sh")
 
 
 def test_filerec():
@@ -126,14 +125,14 @@ def test_state_change_repos(helpers):
 
     # TODO: create temp dirs!
     # local > last and local > remote
-    btrsnap.runner("./install.sh")
+    btrsnap.runner("tests/install.sh")
     local = helpers.get_local()
     pth1 = local.get_filepth(helpers.pth1)
     pth1.touch(exist_ok=True)
     local, last, remote = helpers.get_3_states()
     comparator = btrsnap.StateComparator(local, last, remote).compare()
     assert comparator.actions[helpers.pth1] == 'PUSH', f"{comparator.actions=}"
-    btrsnap.runner("./install.sh")
+    btrsnap.runner("tests/install.sh")
 
 
 def test_state_compare_1_only(helpers):

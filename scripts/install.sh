@@ -4,8 +4,8 @@
 # at some point this could be wrapped into a setup.py
 
 # make sure we're running in our own cwd:
-if [[ ! -f install.sh ]] ; then
-	echo "can only run from same directory as install.sh"
+if [[ ! -f tests/install.sh ]] ; then
+	echo "can only run from directory above tests/install.sh"
 	exit 1
 fi
 # make sure user has root:
@@ -29,7 +29,7 @@ sudo ln -sf $HOME/projects/hrdag/btrsnap/bin/_init-btrsnap-repo /usr/local/bin/
 # probably should run btrsnap/bin/_stdize_timestamp on the data
 cd $PATH_TO_BTRSNAP_DEV/data && $PATH_TO_BTRSNAP_DEV/bin/_stdize_timestamp
 
-cd $INSTALLED_TEST_DATA_PATH && sudo rm -rf * 
-sudo cp -a $PATH_TO_BTRSNAP_DEV/data test
+cd $INSTALLED_TEST_DATA_PATH && sudo rm -rf * && \
+	sudo cp -a $PATH_TO_BTRSNAP_DEV/data test
 
 # done.
