@@ -110,6 +110,28 @@ def test_state_equal(helpers):
 #     assert "pong." in str(ran.stdout), f"clone failed: {ran}"
 
 
+def test_state_compare_3(helpers):
+    ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
+    assert "OK" in ran
+    remote = btrsnap.RepoStateRemote("snowball", "/var/repos/btrsnap", "test")
+    remote.get_state()
+
+    local = btrsnap.RepoStateLocal("/usr/local/share/btrsnap/", "test")
+    local.get_state()
+    remote.save_last_state(to=local)
+    last = local.get_last_state()
+
+    assert local.state_equal(last)
+    assert remote.state_equal(last)
+
+    comparator = btrsnap.StateComparator(local, last, remote)
+    comparator.compare()
+    assert all(action == "NOP" for action in comparator.actions.values())
+
+    # local[helpers.pth1] = btrsnap.Filerec("None", 50, "2024-01-18T11:55:22")
+    # assert not local.state_equal(last)
+
+
 def test_last_state(helpers):
     ran = btrsnap.runner("ssh snowball 'sudo _backend-test-fixture clone'")
     assert "OK" in ran
@@ -122,12 +144,14 @@ def test_last_state(helpers):
     jsonpth.unlink(missing_ok=True)
     assert not jsonpth.exists()
 
-    remote.save_last_state(local.fullpth)
+    remote.save_last_state(to=local)
     assert jsonpth.exists()
 
     last = local.get_last_state()
     assert local.state_equal(last)
     assert remote.state_equal(last)
+    local[helpers.pth1] = btrsnap.Filerec("None", 50, "2024-01-18T11:55:22")
+    assert not local.state_equal(last)
 
 
 def test_remote_snap_hist(helpers):

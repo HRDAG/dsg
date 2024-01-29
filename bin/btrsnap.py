@@ -52,11 +52,15 @@ class Filerec:
                 return "eq"
         return 'ne'
 
+    # WARN: the binary comparators might not make sense bc `ne` is not `not lt`
+    def __lt__(self, other):
+        return self.cmp(other) == 'lt'
+
+    def __gt__(self, other):
+        return self.cmp(other) == 'gt'
+
     def as_tuple(self):
         return tuple([self.refpth, self.size, self.datestamp])
-
-    # def __repr__(self) -> str:
-    #     return str(self.as_tuple())
 
 
 class RepoState(dict[str, Filerec]):
@@ -154,9 +158,6 @@ class RepoStateLast(RepoState):
         self.server = state_dict['server']
         self.name = state_dict['name']
         self.last_checked_time = state_dict['last_checked_time']
-
-        print(f"{state_dict=}")
-
         self.update({pth: Filerec(*rec)
                      for pth, rec in state_dict['filerecs'].items()})
         return self
@@ -215,13 +216,13 @@ class RepoStateRemote(RepoState):
             for s in re.split(r'\s+', self._snap_hist)
             if s.startswith('s')]) + 1
 
-    def save_last_state(self, repopth):
+    def save_last_state(self, to: RepoStateLocal):
         """ repopth must contain .btrsnap/ dir
             you want to save_last_state on Remote so you have server info in json
 
             semantics: remote.save_last_state(local.fullpth)
         """
-        statefile = Path(repopth) / self._last_sync_path
+        statefile = Path(to.fullpth) / self._last_sync_path
         with open(statefile, "wt") as f:
             f.write(json.dumps(self.as_dict()))
 
@@ -232,54 +233,129 @@ class RepoStateRemote(RepoState):
         )
 
 
-
-
-def states_cmp(local: Filerec, last: Filerec, remote: Filerec) -> str:
+class StateComparator():
     """
-    | work | last | remote | action   |
+    | local | last | remote | action   |
     | ---- | ---- | ------ | -------- |
-    There's more to this one...consider last:
 
-    what if work<last? this should never happen, throw exception
-    | T    | T    | T      | work==remote, NOP |
+    (1-111)
+    | T    | T    | T      | local<last, ERROR |
+    | T    | T    | T      | local==remote & last==remote, NOP |
+    | T    | T    | T      | local>last & remote>last, **conflict** |
+    | T    | T    | T      | local==last & local<remote: pull |
+    | T    | T    | T      | local>last & last==remote: push |
 
-    | T    | T    | T      | work<remote: pull |
-    | T    | T    | T      | work<remote: pull |
-    | T    | T    | T      | work>remote: push |
+    (2-101)
+    | T    | F    | T      | local==remote, NOP
+    | T    | F    | T      | local!=remote **conflict**
 
-    | T    | F    | T      | work==remote, NOP
-    | T    | F    | T      | work!=remote **conflict**
-
+    (3-100)
     | T    | F    | F      | push
 
-    | T    | T    | F      | work==last: pull delete |
-    | T    | T    | F      | work>last: push |
-    | T    | T    | F      | work<last: WTF? |
+    (4-110)
+    | T    | T    | F      | local==last: pull delete |
+    | T    | T    | F      | local>last: push |
+    | T    | T    | F      | local<last: ERROR |
 
+    (5-001)
     | F    | F    | T      | pull |
-    | F    | T    | F      | NOP |
 
-    | F    | T    | T      | last<remote: pull | last |
+    (6-011)
+    | F    | T    | T      | last<remote: pull |
     | F    | T    | T      | last==remote: push delete |
     | F    | T    | T      | last>remote: push delete |
+
+    (7-010)
+    | F    | T    | F      | NOP |
     """
-    # check existence, then cmp.
+
+    def __init__(self,
+                 local: RepoStateLocal,
+                 last: RepoStateLast,
+                 remote: RepoStateRemote):
+        self.local = local
+        self.last = last
+        self.remote = remote
+        self.actions = {k: None for k in local.keys()}
+        self.actions.update({k: None for k in last.keys()})
+        self.actions.update({k: None for k in remote.keys()})
+        self._dispatch = {'111': self._c111,
+                          '110': self._c110,
+                          '101': self._c101,
+                          '011': self._c011,
+                          '100': self._c100,
+                          '010': self._c010,
+                          '001': self._c001}
+
+    def _indicator(self, pth):
+        return (f"{int(pth in self.local)}"
+                f"{int(pth in self.last)}"
+                f"{int(pth in self.remote)}")
+
+    # def _dispatch(self, pth):
+    #     fn = getattr(self, f"_c{self._indicator}", None)
+    #     fn(pth)
+
+    def compare(self):
+        for pth in self.actions:
+            indicator = self._indicator(pth)
+            match indicator:
+                case '111':
+                    self._c111(pth)
+                case _:
+                    raise KeyError(f"weird _indicator {indicator}")
+
+    def _c111(self, pth):
+        if self.local[pth].cmp(self.last[pth]) == 'lt':
+            raise AssertionError(f"why is local<last? {self.local[pth]=}, {self.last[pth]=}")
+        if self.local[pth] == self.last[pth] and self.local[pth] == self.remote[pth]:
+            self.actions[pth] = "NOP"
+        elif self.local[pth].cmp(self.last[pth]) == 'gt' and self.remote[pth].cmp(self.last[pth]) == 'gt':
+            # NOTE: is it? or are they both updating to the same? a sha would help.
+            self.actions[pth] = "CONFLICT"
+        elif self.local[pth] == self.last[pth] and self.remote[pth].cmp(self.last[pth]) == 'gt':
+            self.actions[pth] = "PULL"
+        elif self.local[pth].cmp(self.last[pth]) == 'gt' and self.remote[pth] == self.last[pth]:
+            self.actions[pth] = "PUSH"
+        else:
+            raise AssertionError(f"why are we here?? 111-else. {self.local[pth]=}, {self.last[pth]=}, {self.remote[pth]=}")
+
+    def _c101(self, pth):
+        if self.local[pth] == self.remote[pth]:
+            self.actions[pth] = "NOP"
+        else:   # we don't know which one is right, but if they sha'd equal...
+            self.actions[pth] = "CONFLICT"
+
+    def _c110(self, pth):
+        if self.local[pth] == self.last[pth]:
+            self.actions[pth] = "pull.delete"
+        elif self.local[pth] > self.last[pth]:
+            self.actions[pth] = "PUSH"
+        else:   # we don't know which one is right, but if they sha'd equal...
+            raise AssertionError(f"why are we here?? 110-else. {self.local[pth]=}, {self.last[pth]=}")
+
+    def _c011(self, pth):
+        if self.last[pth] == self.remote[pth]:
+            self.actions[pth] = "push.delete"
+        elif self.last[pth] > self.remote[pth]:
+            self.actions[pth] = "push.delete"
+        elif self.last[pth] < self.remote[pth]:
+            self.actions[pth] = "PULL"
+        else:   # we don't know which one is right, but if they sha'd equal...
+            raise AssertionError(f"why are we here?? 011-else. {self.remote[pth]=}, {self.last[pth]=}")
+
+    def _c100(self, pth):
+        self.actions[pth] = "PUSH"
+
+    def _c010(self, pth):
+        self.actions[pth] = "sync"
+
+    def _c001(self, pth):
+        self.actions[pth] = "PULL"
 
 
 if __name__ == "__main__":
     pass
-    # localrepo = git.Repo("/Users/pball/projects/hrdag/KO")
-    # reponame = Path(str(localrepo.working_tree_dir)).name
-    # snaprepopath = Path(f"/var/repos/snap/{reponame}/HEAD")
-    # dd_re = re.compile(r"\/input\b|\/output\b|\/frozen\b|\/note\b")
-    #
-    # localstate = get_repo_state(str(localrepo.working_tree_dir))
-    # remotestate = get_repo_state(snaprepopath, server="scott")
-    # laststate = get_last_state(localrepo)
-    #
-    # local_state_d = state_to_dict(localstate, reponame)
-    # remote_state_d = state_to_dict(remotestate, reponame)
-    # last_state_d = state_to_dict(laststate, reponame)
 
 
 # done.
