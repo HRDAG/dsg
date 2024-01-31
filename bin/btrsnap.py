@@ -10,7 +10,6 @@ from dataclasses import dataclass
 import json
 
 
-# FIXME: needs to get remote name & path from .btrsnap/config
 def runner(cmd: str | list) -> subprocess.CompletedProcess:
     """wrapper on subprocess.run to assure proper args"""
     ran = subprocess.run(
@@ -389,6 +388,11 @@ class StateComparator:
 
     def _c001(self, pth):
         self.actions[pth] = "PULL"
+
+
+# -----
+# TODO: now there's an actions list. Act on the list, i.e., copy stuff, using rsync
+# -----
 
 
 if __name__ == "__main__":
