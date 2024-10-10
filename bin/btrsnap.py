@@ -1,4 +1,8 @@
-#!find_files/usr/bin/env python
+#!/usr/bin/env python3
+# -*- coding: utf-8
+# vim: set ts=4 sw=4 tw=79 et :
+
+# btrsnap.py - a backup utility for btrfs
 
 from pathlib import Path
 import itertools as it
@@ -39,13 +43,12 @@ class Filerec:
 
     def cmp(self, other):
         """compare filerecs"""
-        if (
-            isinstance(other, Filerec)
-            and self.size == other.size
-            and self.refpth == other.refpth
-        ):
+        if (isinstance(other, Filerec)
+                and self.size == other.size
+                and self.refpth == other.refpth):
 
             if self.refpth == "None" or len(self.refpth) == 0:  # not a symlink
+
                 if self.datestamp == other.datestamp:
                     return "eq"
                 if self.datestamp < other.datestamp:
