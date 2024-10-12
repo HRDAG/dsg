@@ -62,8 +62,10 @@ function onesnap() {
   # migrating what's there. so we don't check symlink references. 
   # We _could_ add a check on all symlinks with a complicated find, probably. 
   # Symlinks are important and worth checking.
-  # We don't care at all about the contents of the .svn or .snap dirs though.
-  # They could be pruned after the test.
+  #
+  # We don't care much about the contents of the .svn or .snap dirs. The
+  # .snap/push.log is important tho bc it has all the commit and tag messages. 
+  #
   opts="--brief --recursive --exclude '.svn' --exclude '.snap' --no-dereference"
   run "diff $opts ${snappath}/${s_i} ${btrpath}/${s_i}" 
   # TODO: prune .snap and .svn dirs
