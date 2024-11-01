@@ -43,12 +43,12 @@ class Filerec:
 
     def cmp(self, other):
         """compare filerecs"""
-        if (isinstance(other, Filerec)
-                and self.size == other.size
-                and self.refpth == other.refpth):
-
+        if (
+            isinstance(other, Filerec)
+            and self.size == other.size
+            and self.refpth == other.refpth
+        ):
             if self.refpth == "None" or len(self.refpth) == 0:  # not a symlink
-
                 if self.datestamp == other.datestamp:
                     return "eq"
                 if self.datestamp < other.datestamp:
@@ -88,7 +88,9 @@ class RepoState(dict[str, Filerec]):
     _last_sync_path = ".btrsnap/last-sync.json"
 
     def __init__(self, repoparent: str, name: str):
-        assert not repoparent.endswith(name), f"don't repeat the reponame in repopath"
+        assert not repoparent.endswith(
+            name
+        ), f"don't repeat the reponame in repopath"
         self.repoparent = Path(repoparent)
         self.fullpth = self.repoparent / name
         self.name = name
@@ -173,7 +175,9 @@ class RepoStateLast(RepoState):
         self.server = state_dict["server"]
         self.name = state_dict["name"]
         self.last_checked_time = state_dict["last_checked_time"]
-        self.update({pth: Filerec(*rec) for pth, rec in state_dict["filerecs"].items()})
+        self.update(
+            {pth: Filerec(*rec) for pth, rec in state_dict["filerecs"].items()}
+        )
         return self
 
     def __str__(self) -> str:
@@ -208,7 +212,8 @@ class RepoStateRemote(RepoState):
         super().__init__(repoparent, name)
         self.server = server
         self._set_snap_hist()  # for RepoStateRemote
-        self._get_state_cmd = f"ssh {self.server} '_find-repo-files -p {self.fullpth}'"
+        self._get_state_cmd = f"ssh {
+            self.server} '_find-repo-files -p {self.fullpth}'"
 
     def _set_snap_hist(self):
         """check remote:fullpth:
@@ -289,7 +294,10 @@ class StateComparator:
     """
 
     def __init__(
-        self, local: RepoStateLocal, last: RepoStateLast, remote: RepoStateRemote
+        self,
+        local: RepoStateLocal,
+        last: RepoStateLast,
+        remote: RepoStateRemote,
     ):
         self.local = local
         self.last = last
@@ -341,19 +349,21 @@ class StateComparator:
             )
         if local == last and local == remote:
             self.actions[pth] = "NOP"
-        elif local.cmp(last) == 'gt' and remote.cmp(last) == 'gt':
+        elif local.cmp(last) == "gt" and remote.cmp(last) == "gt":
             # NOTE: if local>last and remote>last, what if they're equal?
             # echo 'pyproject.toml README.md install.sh' | xargs md5sum -
             # maybe delimit list wtih \0 and use xargs -0
             self.actions[pth] = "CONFLICT"
-        elif local == last and remote.cmp(last) == 'gt':
+        elif local == last and remote.cmp(last) == "gt":
             self.actions[pth] = "PULL"
-        elif local.cmp(last) == 'gt' and last == remote:
+        elif local.cmp(last) == "gt" and last == remote:
             self.actions[pth] = "PUSH"
         else:
-            raise AssertionError("why are we here?? 111-else. "
-                                 f"{self.local[pth]=}, "
-                                 f"{self.last[pth]=}, {self.remote[pth]=}")
+            raise AssertionError(
+                "why are we here?? 111-else. "
+                f"{self.local[pth]=}, "
+                f"{self.last[pth]=}, {self.remote[pth]=}"
+            )
 
     def _c101(self, pth):
         if self.local[pth] == self.remote[pth]:
@@ -368,7 +378,8 @@ class StateComparator:
             self.actions[pth] = "PUSH"
         else:  # we don't know which one is right, but if they sha'd equal...
             raise AssertionError(
-                f"why are we here?? 110-else. {self.local[pth]=}, {self.last[pth]=}"
+                f"why are we here?? 110-else. {
+                    self.local[pth]=}, {self.last[pth]=}"
             )
 
     def _c011(self, pth):
@@ -380,7 +391,8 @@ class StateComparator:
             self.actions[pth] = "PULL"
         else:  # we don't know which one is right, but if they sha'd equal...
             raise AssertionError(
-                f"why are we here?? 011-else. {self.remote[pth]=}, {self.last[pth]=}"
+                f"why are we here?? 011-else. {
+                    self.remote[pth]=}, {self.last[pth]=}"
             )
 
     def _c100(self, pth):
