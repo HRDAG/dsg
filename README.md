@@ -25,4 +25,9 @@ mkdir -p /usr/local/share/btrsnap && cd $_ \
     && ln -sf $BTRSNAP_ROOT/data .
 ```
 
+## TODO
+
+* `btrsnap {sync, resolve, clone, status, info, blame, tag, tags, version, help}`
+
+
 <!-- done -->
