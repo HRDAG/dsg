@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+# vim: set ts=4 sts=0 sw=4 si fenc=utf-8 et:
+# vim: set fdm=marker fmr={{{,}}} fdl=0 foldcolumn=4:
+# Authors:     BP
+# Maintainers: BP
+# Copyright:   2025, HRDAG, GPL v2 or later
+# =========================================
+
+# ---- dependencies {{{
+from pathlib import Path
+from sys import stdout
+import subprocess
+import logging
+import pandas as pd
+#}}}
+
+# --- support methods --- {{{
+def getlogger(sname, file_name=None):
+    logger = logging.getLogger(sname)
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s " +
+                                  "- %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
+    stream_handler = logging.StreamHandler(stdout)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+    if file_name:
+        file_handler = logging.FileHandler(file_name)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    return logger
+
+
+def check_dirname(testdir):
+    assert Path(testdir).exists(), f"\
+    Please provide an existing directory path; {testdir} could not be found."
+    return 1
+
+
+def check_path(expected_path, exists_ok, msg):
+    if exists_ok: assert expected_path.exists(), msg
+    else: assert not expected_path.exists(), msg
+    return 1
+
+
+def make_dummy(fname, dirname):
+    """checks that:
+    - {fname} does NOT already exist in {dirname}.
+    - {dirname} is a valid path BEFORE trying to create {fname}.
+    - {fname} was successfully created inside {dirname}."""
+    if dirname not in "..": assert check_dirname(testdir=dirname)
+    path = Path(f"{dirname}/{fname}")
+    assert check_path(
+        expected_path=path,
+        exists_ok=False,
+        msg=f"Expecting to *create* file {fname} in directory {dirname}, \
+                but file already exists.")
+    cmd = ["touch", path]
+    try: subprocess.call(cmd)
+    except: return f"There was an unhandled error creating file {fname} \
+            in directory {dirname}."
+    return path.exists()
+
+
+def make_dummy_change(fname, dirname):
+    """checks that:
+    - {fname} DOES already exist in {dirname}.
+    - {dirname} is a valid path BEFORE trying to modify {fname}.
+    - {fname} was successfully modified."""
+    if dirname not in "..": assert check_dirname(testdir=dirname)
+    path = Path(f"{dirname}/{fname}")
+    assert check_path(
+        expected_path=path,
+        exists_ok=True,
+        msg=f"Expecting to *modify* file {fname} in directory {dirname}, \
+                but file does not exist.")
+    cmd = ["touch", path]
+    try: subprocess.call(cmd)
+    except: return f"There was an unhandled error modifying file \
+            {fname} in directory {dirname}."
+    return path.exists()
+
+
+def make_dummy_data(fname, dirname):
+    """ASSUMES that the data should be exported as a parquet file.
+    checks that:
+    - {fname} does NOT already exist in {dirname}.
+    - {dirname} is a valid path BEFORE trying to create {fname}.
+    - {fname} was successfully created inside {dirname}."""
+    if dirname not in "..": assert check_dirname(testdir=dirname)
+    if "." in fname: assert ".parquet" == fname[-8:], f"\
+    Expecting to create a parquet data file, but {fname} refers to another type."
+    path = Path(f"{dirname}/{fname}")
+    assert check_path(
+        expected_path=path,
+        exists_ok=False,
+        msg=f"Expecting to *create* file {fname} in directory {dirname},\
+                but file already exists.")
+    data = [{
+        "a": 1, "b": 2, "c": '3jh4bv5'}, {
+        "a": 1145, "b": 2.345, "c": '23jb4k23j'}]
+    df = pd.DataFrame(data)
+    try: df.to_parquet(path)
+    except: return f"There was an unhandled error creating file {fname} \
+            in directory {dirname}."
+    return path.exists()
+
+
+def make_dummy_data_change(fname, dirname):
+    """ASSUMES that the data should be exported as a parquet file.
+    checks that:
+    - {fname} DOES already exist in {dirname}.
+    - {dirname} is a valid path BEFORE trying to modify {fname}.
+    - {fname} was successfully modified."""
+    if dirname not in "..": assert check_dirname(testdir=dirname)
+    if "." in fname: assert ".parquet" == fname[-8:], f"\
+            Expecting to work on a parquet data file, but {fname} refers to another type."
+    path = Path(f"{dirname}/{fname}")
+    assert check_path(
+        expected_path=path,
+        exists_ok=True,
+        msg=f"Expecting to *modify* file {fname} in directory {dirname}, \
+                but file does not exist.")
+    olddata = pd.read_parquet(path)
+    newdata = pd.DataFrame([{
+        "a": 8, "b": 5, "c": '1h2j34b5jh'}, {
+        "a": 7893, "b": 2.248937, "c": '1j4325b'}])
+    df = pd.concat([olddata, newdata])
+    try: df.to_parquet(path)
+    except: return f"There was an unhandled error modifying file {fname} \
+            in directory {dirname}."
+    return path.exists()
+# }}}
+
+# --- main --- {{{
+if __name__ == '__main__':
+    logger = getlogger(__name__, "build.log")
+
+    logger.info('begin setting up test directories and files.')
+    assert make_dummy(fname="dummy.txt", dirname=".")
+    assert make_dummy_change(fname="dummy.txt", dirname=".")
+    assert make_dummy_data(fname="dummy.parquet", dirname=".")
+    assert make_dummy_data_change(fname="dummy.parquet", dirname=".")
+
+    logger.info('all test directories have been created and/or modified.')
+# }}}
+
+# done.
