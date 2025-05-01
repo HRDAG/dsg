@@ -14,6 +14,8 @@ from loguru import logger
 import pandas as pd
 #}}}
 
+checked_paths = []
+
 # --- support methods --- {{{
 def setup_logging(logfile):
     logger.add(logfile,
@@ -25,7 +27,8 @@ def setup_logging(logfile):
 
 @logger.catch
 def check_writedir(dirname, makeifnot=True):
-    logger.info(f'checking path {dirname} exists')
+    if dirname in checked_paths: return 1
+    logger.info(f'checking path {dirname} exists.')
     if not Path(dirname).exists():
         if not makeifnot:
             logger.info(f'Path {dirname} not found and was not written.')
@@ -35,6 +38,7 @@ def check_writedir(dirname, makeifnot=True):
             logger.info(f'Path {dirname} not found and could not be written.')
             sys.exit(f'Please make sure {dirname} exists and then try building \
                     the test directories again.')
+    checked_paths.append(dirname)
     return 1
 
 
