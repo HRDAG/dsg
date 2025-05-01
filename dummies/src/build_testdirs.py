@@ -132,8 +132,7 @@ def make_dummy_data_change(fname, dirname):
 
 # --- main --- {{{
 if __name__ == '__main__':
-    logger = getlogger(__name__, "build.log")
-
+    setup_logging("output/build.log")
 
     logger.info('begin setting up test directories and files.')
     assert make_dummy(fname="dummy.txt", dirname=".")
