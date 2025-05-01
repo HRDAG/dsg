@@ -162,4 +162,4 @@ cython_debug/
 .log
 .txt
 .parquet
-
+output
