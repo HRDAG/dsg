@@ -14,6 +14,7 @@ clean:
 	rm -rf *.parquet
 
 build:
-	python build_testdirs.py
+	-mkdir output
+	python src/build_testdirs.py
 
 # done.
