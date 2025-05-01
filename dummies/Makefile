@@ -14,6 +14,6 @@ clean:
 
 build:
 	-mkdir output
-	python src/build_testdirs.py
+	python src/Dummy.py
 
 # done.
