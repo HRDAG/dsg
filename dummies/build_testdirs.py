@@ -10,38 +10,34 @@
 from pathlib import Path
 from sys import stdout
 import subprocess
-import logging
+from loguru import logger
 import pandas as pd
 #}}}
 
 # --- support methods --- {{{
-def getlogger(sname, file_name=None):
-    logger = logging.getLogger(sname)
-    logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s " +
-                                  "- %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
-    stream_handler = logging.StreamHandler(stdout)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    if file_name:
-        file_handler = logging.FileHandler(file_name)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    return logger
+def setup_logging(logfile):
+    logger.add(logfile,
+               colorize=True,
+               format="<green>{time:YYYY-MM-DD⋅at⋅HH:mm:ss}</green>⋅<level>{message}</level>",
+               level="INFO")
+    return 1
 
 
+@logger.catch
 def check_dirname(testdir):
     assert Path(testdir).exists(), f"\
     Please provide an existing directory path; {testdir} could not be found."
     return 1
 
 
+@logger.catch
 def check_path(expected_path, exists_ok, msg):
     if exists_ok: assert expected_path.exists(), msg
     else: assert not expected_path.exists(), msg
     return 1
 
 
+@logger.catch
 def make_dummy(fname, dirname):
     """checks that:
     - {fname} does NOT already exist in {dirname}.
@@ -61,6 +57,7 @@ def make_dummy(fname, dirname):
     return path.exists()
 
 
+@logger.catch
 def make_dummy_change(fname, dirname):
     """checks that:
     - {fname} DOES already exist in {dirname}.
@@ -80,6 +77,7 @@ def make_dummy_change(fname, dirname):
     return path.exists()
 
 
+@logger.catch
 def make_dummy_data(fname, dirname):
     """ASSUMES that the data should be exported as a parquet file.
     checks that:
@@ -105,6 +103,7 @@ def make_dummy_data(fname, dirname):
     return path.exists()
 
 
+@logger.catch
 def make_dummy_data_change(fname, dirname):
     """ASSUMES that the data should be exported as a parquet file.
     checks that:
@@ -134,6 +133,7 @@ def make_dummy_data_change(fname, dirname):
 # --- main --- {{{
 if __name__ == '__main__':
     logger = getlogger(__name__, "build.log")
+
 
     logger.info('begin setting up test directories and files.')
     assert make_dummy(fname="dummy.txt", dirname=".")
