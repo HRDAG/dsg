@@ -60,11 +60,11 @@ def make_dummy(fname, dirname):
     assert check_path(
         expected_path=path,
         exists_ok=False,
-        msg=f"Expecting to *create* file {fname} in directory {dirname}, \
+        msg=f"Expecting to *create* file {Path(fname).name} in directory {dirname}, \
                 but file already exists.")
     cmd = ["touch", path]
     try: subprocess.call(cmd)
-    except: return f"There was an unhandled error creating file {fname} \
+    except: return f"There was an unhandled error creating file {Path(fname).name} \
             in directory {dirname}."
     return path.exists()
 
@@ -80,12 +80,12 @@ def make_dummy_change(fname, dirname):
     assert check_path(
         expected_path=path,
         exists_ok=True,
-        msg=f"Expecting to *modify* file {fname} in directory {dirname}, \
+        msg=f"Expecting to *modify* file {Path(fname).name} in directory {dirname}, \
                 but file does not exist.")
     cmd = ["touch", path]
     try: subprocess.call(cmd)
     except: return f"There was an unhandled error modifying file \
-            {fname} in directory {dirname}."
+            {Path(fname).name} in directory {dirname}."
     return path.exists()
 
 
@@ -98,19 +98,19 @@ def make_dummy_data(fname, dirname):
     - {fname} was successfully created inside {dirname}."""
     assert check_writedir(dirname=dirname)
     if "." in fname: assert ".parquet" == fname[-8:], f"\
-    Expecting to create a parquet data file, but {fname} refers to another type."
+    Expecting to create a parquet data file, but {Path(fname).name} refers to another type."
     path = Path(f"{dirname}/{fname}")
     assert check_path(
         expected_path=path,
         exists_ok=False,
-        msg=f"Expecting to *create* file {fname} in directory {dirname},\
+        msg=f"Expecting to *create* file {Path(fname).name} in directory {dirname},\
                 but file already exists.")
     data = [{
         "a": 1, "b": 2, "c": '3jh4bv5'}, {
         "a": 1145, "b": 2.345, "c": '23jb4k23j'}]
     df = pd.DataFrame(data)
     try: df.to_parquet(path)
-    except: return f"There was an unhandled error creating file {fname} \
+    except: return f"There was an unhandled error creating file {Path(fname).name} \
             in directory {dirname}."
     return path.exists()
 
@@ -124,12 +124,12 @@ def make_dummy_data_change(fname, dirname):
     - {fname} was successfully modified."""
     assert check_writedir(dirname=dirname)
     if "." in fname: assert ".parquet" == fname[-8:], f"\
-            Expecting to work on a parquet data file, but {fname} refers to another type."
+            Expecting to work on a parquet data file, but {Path(fname).name} refers to another type."
     path = Path(f"{dirname}/{fname}")
     assert check_path(
         expected_path=path,
         exists_ok=True,
-        msg=f"Expecting to *modify* file {fname} in directory {dirname}, \
+        msg=f"Expecting to *modify* file {Path(fname).name} in directory {dirname}, \
                 but file does not exist.")
     olddata = pd.read_parquet(path)
     newdata = pd.DataFrame([{
@@ -137,7 +137,7 @@ def make_dummy_data_change(fname, dirname):
         "a": 7893, "b": 2.248937, "c": '1j4325b'}])
     df = pd.concat([olddata, newdata])
     try: df.to_parquet(path)
-    except: return f"There was an unhandled error modifying file {fname} \
+    except: return f"There was an unhandled error modifying file {Path(fname).name} \
             in directory {dirname}."
     return path.exists()
 # }}}
