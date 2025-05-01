@@ -64,9 +64,34 @@ def easy_change(writedir, nn='easy_change'):
 
 
 @logger.catch
-def make_state(statedir, files):
+def make_data_change(nn, writedir, from_existing=None):
+    """
+    Either writes a new CSV input or adds a row to an existing CSV input {from_existing}.
+    Assumes {from_existing} is either:
+    - None (ie. write new), OR
+    - a path to the existing CSV input (ie. to modify that file).
+    """
+    new_data = pd.DataFrame([{'dog|rating': 'clifford|8'},])
+    if from_existing:
+        if nn == 'data_fake_change':
+            subprocess.call(['touch', from_existing])
+            # this pre-built method from the Dummy package should be working
+            #assert make_dummy_change(fname=from_existing, dirname=writedir)
+        elif nn == 'data_real_change':
+            curr = pd.read_csv(from_existing)
+            updated = pd.concat([curr, new_data]).reset_index(drop=True)
+            updated.to_csv(from_existing)
+    elif nn == 'data_real_change':
+        new_data.to_csv(f"{writedir}/new.csv")
+    return 1
+
+
+@logger.catch
+def make_state(nn, statedir, files):
     """Exploring a generic-ish way to create/modify a project state
     with real or fake files."""
+    if nn == 'easy_start': assert easy_start(writedir=args.writedir)
+    elif nn == 'easy_change': assert easy_change(writedir=args.writedir)
     check_writedir(dirname=statedir)
     checked_paths.append(statedir)
     if type(files) is list:
@@ -75,7 +100,17 @@ def make_state(statedir, files):
             if f[-8:] == '.parquet': make_dummy_data(fname=f, dirname=statedir)
     else:
         assert Path(files).exists(), f"Path `{files}` could not be found"
-        subprocess.call(['cp', '-r', files, statedir])
+        subprocess.call(['cp', '-r', f"{files}/.", statedir])
+        if nn == 'data_new_file':
+            assert make_data_change(nn=nn, writedir=f"{statedir}/task1/input")
+        elif nn == 'data_fake_change':
+            assert make_data_change(
+                nn=nn, writedir=f"{statedir}/task1/input",
+                from_existing=f"{statedir}/task1/input/dt1.csv")
+        elif nn == 'data_real_change':
+            assert make_data_change(
+                nn=nn, writedir=f"{statedir}/task1/input",
+                from_existing=f"{statedir}/task1/input/dt1.csv")
     return 1
 # }}}
 
@@ -84,18 +119,18 @@ if __name__ == '__main__':
     args = getargs()
     setuplogging(f"{args.writedir}/Build.log")
 
-    logger.info(f'verifying basic state construction works for `{args.writedir}`')
+    logger.info(f'verifying write access for `{args.writedir}`')
     check_writedir(dirname=args.writedir)
     checked_paths.append(args.writedir)
-    assert easy_start(writedir=args.writedir)
-    assert easy_change(writedir=args.writedir)
 
     logger.info(f'begin test state construction using `{args.states}`')
     states = readyaml(yamlfile=args.states)
     for nn, info in states.items():
         logger.info(f'setting up test state `{nn}`')
-        assert make_state(statedir=f"{info['writedir']}/{nn}", files=info['files'])
+        assert make_state(nn, statedir=f"{info['writedir']}/{nn}", files=info['files'])
 
+    logger.info('paths checked and/or created')
+    for p in checked_paths: logger.info(f'-\t`{p}`')
     logger.info('done')
 # }}}
 

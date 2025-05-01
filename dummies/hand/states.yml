@@ -21,4 +21,21 @@ easy_change:
   writedir: output/test_states
   files: output/test_states/easy_start
 
+data_copy:
+  writedir: output/test_states
+  files: ../data
+
+data_new_file:
+  writedir: output/test_states
+  files: output/test_states/data_copy
+
+data_fake_change:
+  writedir: output/test_states
+  files: output/test_states/data_copy
+
+data_real_change:
+  writedir: output/test_states
+  files: output/test_states/data_copy
+
+
 # done.
