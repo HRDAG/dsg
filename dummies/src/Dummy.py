@@ -132,15 +132,16 @@ def make_dummy_data_change(fname, dirname):
 
 # --- main --- {{{
 if __name__ == '__main__':
-    setup_logging("output/build.log")
+    setup_logging("output/Dummy.log")
 
-    logger.info('begin setting up test directories and files.')
-    assert make_dummy(fname="dummy.txt", dirname=".")
-    assert make_dummy_change(fname="dummy.txt", dirname=".")
-    assert make_dummy_data(fname="dummy.parquet", dirname=".")
-    assert make_dummy_data_change(fname="dummy.parquet", dirname=".")
+    logger.info('test run of Dummy methods + check for write access.')
+    assert make_dummy(fname="dummy.txt", dirname="output")
+    assert make_dummy_change(fname="dummy.txt", dirname="output")
+    assert make_dummy_data(fname="dummy.parquet", dirname="output")
+    assert make_dummy_data_change(fname="dummy.parquet", dirname="output")
 
-    logger.info('all test directories have been created and/or modified.')
+    logger.info('all base test directories were created and/or modified.')
+    logger.info('done with baseline methods tests.')
 # }}}
 
 # done.
