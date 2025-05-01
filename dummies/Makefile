@@ -10,8 +10,7 @@
 all: build
 
 clean:
-	rm -rf *.txt
-	rm -rf *.parquet
+	rm -rf output/*
 
 build:
 	-mkdir output
