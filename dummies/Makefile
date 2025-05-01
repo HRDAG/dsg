@@ -5,6 +5,8 @@
 # Copyright:   2025, HRDAG, GPL v2 or later
 # =========================================
 
+sync_dir := output/test_states
+
 .PHONY: all clean build
 
 all: build
@@ -13,7 +15,8 @@ clean:
 	rm -rf output/*
 
 build:
-	-mkdir output
+	-mkdir output $(sync_dir)
 	python src/Dummy.py
+	python src/Build.py --writedir=$(sync_dir)
 
 # done.
