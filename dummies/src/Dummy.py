@@ -24,9 +24,17 @@ def setup_logging(logfile):
 
 
 @logger.catch
-def check_dirname(testdir):
-    assert Path(testdir).exists(), f"\
-    Please provide an existing directory path; {testdir} could not be found."
+def check_writedir(dirname, makeifnot=True):
+    logger.info(f'checking path {dirname} exists')
+    if not Path(dirname).exists():
+        if not makeifnot:
+            logger.info(f'Path {dirname} not found and was not written.')
+            sys.exit()
+        try: subprocess.call(['mkdir', dirname])
+        except:
+            logger.info(f'Path {dirname} not found and could not be written.')
+            sys.exit(f'Please make sure {dirname} exists and then try building \
+                    the test directories again.')
     return 1
 
 
@@ -43,7 +51,7 @@ def make_dummy(fname, dirname):
     - {fname} does NOT already exist in {dirname}.
     - {dirname} is a valid path BEFORE trying to create {fname}.
     - {fname} was successfully created inside {dirname}."""
-    if dirname not in "..": assert check_dirname(testdir=dirname)
+    assert check_writedir(dirname=dirname)
     path = Path(f"{dirname}/{fname}")
     assert check_path(
         expected_path=path,
@@ -63,7 +71,7 @@ def make_dummy_change(fname, dirname):
     - {fname} DOES already exist in {dirname}.
     - {dirname} is a valid path BEFORE trying to modify {fname}.
     - {fname} was successfully modified."""
-    if dirname not in "..": assert check_dirname(testdir=dirname)
+    assert check_writedir(dirname=dirname)
     path = Path(f"{dirname}/{fname}")
     assert check_path(
         expected_path=path,
@@ -84,7 +92,7 @@ def make_dummy_data(fname, dirname):
     - {fname} does NOT already exist in {dirname}.
     - {dirname} is a valid path BEFORE trying to create {fname}.
     - {fname} was successfully created inside {dirname}."""
-    if dirname not in "..": assert check_dirname(testdir=dirname)
+    assert check_writedir(dirname=dirname)
     if "." in fname: assert ".parquet" == fname[-8:], f"\
     Expecting to create a parquet data file, but {fname} refers to another type."
     path = Path(f"{dirname}/{fname}")
@@ -110,7 +118,7 @@ def make_dummy_data_change(fname, dirname):
     - {fname} DOES already exist in {dirname}.
     - {dirname} is a valid path BEFORE trying to modify {fname}.
     - {fname} was successfully modified."""
-    if dirname not in "..": assert check_dirname(testdir=dirname)
+    assert check_writedir(dirname=dirname)
     if "." in fname: assert ".parquet" == fname[-8:], f"\
             Expecting to work on a parquet data file, but {fname} refers to another type."
     path = Path(f"{dirname}/{fname}")
