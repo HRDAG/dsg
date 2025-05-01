@@ -6,6 +6,7 @@
 # =========================================
 
 sync_dir := output/test_states
+test_states := hand/states.yml
 
 .PHONY: all clean build
 
@@ -17,6 +18,8 @@ clean:
 build:
 	-mkdir output $(sync_dir)
 	python src/Dummy.py
-	python src/Build.py --writedir=$(sync_dir)
+	python src/Build.py \
+		--writedir=$(sync_dir) \
+		--states=$(test_states)
 
 # done.
