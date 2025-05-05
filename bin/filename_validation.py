@@ -231,7 +231,6 @@ def test():
         ("bad:name.txt", True),              # annoying but not illegal
     ]
 
-    # Calculate padding for aligned output
     max_path_len = max(len(repr(p)) for p, _ in test_cases)
 
     results = []
@@ -239,7 +238,6 @@ def test():
         actual, msg = validate_path(path_str)
         results.append((path_str, expected, actual, msg))
 
-    # Display results
     for path_str, expected, actual, msg in results:
         status = "PASS" if expected == actual else "FAIL"
         color = "green" if status == "PASS" else "red"
@@ -248,10 +246,7 @@ def test():
             f"{repr(path_str):<{max_path_len}} "
             f"Expected: {expected}, Got: {actual}"
         )
-        # if not actual and msg:
-        #     typer.echo(f"   Reason: {msg}")
 
-    # Summary
     passed = sum(1 for _, exp, act, _ in results if exp == act)
     total = len(results)
     typer.echo(f"\nTest results: {passed}/{total} passed")
