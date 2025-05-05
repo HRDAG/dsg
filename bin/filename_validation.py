@@ -3,260 +3,249 @@
 # Date: 2025.04.24
 # Copyright: HRDAG 2025 GPL-2 or newer
 
-from pathlib import Path, PurePosixPath
-from re import search
-import unicodedata
-import typer
+from collections import OrderedDict
+from datetime import datetime
+from pathlib import Path
+import os
+from typing import Annotated, Union, Literal, Final, BinaryIO
+from zoneinfo import ZoneInfo
+
+from pydantic import BaseModel, Field, RootModel, model_validator
+from loguru import logger
+import xxhash
+
+from filename_validation import validate_path
 
 
-app = typer.Typer(help="Path validation tool")
+SNAP_DIR: Final = ".xsnap"
+FIELD_DELIM: Final = "XX"
+LINE_DELIM: Final = "NN"
+IGNORED_SUFFIXES: Final = frozenset({".pyc", ".Rdata", ".rdata", ".RData"})
+IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rproj.user"})
 
 
-# Global constants
-_ILLEGAL_CHARS = {
-    '\x00', '\r', '\n', '\t',  # Control chars
-    '<', '>', '"', '|', '?', '*', '\\',  # Windows-illegal
-    *[chr(i) for i in range(32) if chr(i) not in {'\t', '\n', '\r'}] }  # Other controls
+# ---- Models ----
 
-_ILLEGAL_CODEPOINTS = {
-    0x2028,  # LINE SEPARATOR
-    0x2029,  # PARAGRAPH SEPARATOR
-    0x202A, 0x202B, 0x202C, 0x202D, 0x202E,  # Bidi control
-    0x200B, 0x200C, 0x200D,  # Zero-width characters
-    0x2060, 0x2066, 0x2067, 0x2068, 0x2069,  # Invisible control marks
-    0xFFF9, 0xFFFA, 0xFFFB,  # Interlinear annotation
-    0xFFFC,  # Object Replacement Character
-    0x1D159, 0x1D173, 0x1D17A,  # Musical/invisible symbols (used in attacks)
-    0x0378,  # Unassigned in all Unicode versions
-}
+class FileRef(BaseModel):
+    def __str__(self) -> str:
 
-_WINDOWS_RESERVED_NAMES = {
-    'con', 'prn', 'aux', 'nul',
-    'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
-    'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
-}
+        def _tz(t: float) -> str:
+            la_tz = ZoneInfo("America/Los_Angeles")
+            return datetime.fromtimestamp(t, tz=la_tz).isoformat(timespec="milliseconds")
+
+        data = [
+            "file",
+            self.path,
+            str(self.filesize),
+            _tz(self.mtime),
+            self.hash,
+        ]
+        return FIELD_DELIM.join(data)
+
+    type: Literal["file"]
+    path: str
+    filesize: int
+    mtime: float
+    hash: str
 
 
-def _has_unsafe_unicode(component: str) -> bool:
-    for ch in component:
-        cat = unicodedata.category(ch)
-        if cat.startswith('C'):  # Control, Format, Surrogate, Unassigned
-            return True
-        if ord(ch) in _ILLEGAL_CODEPOINTS:
+class LinkRef(BaseModel):
+    def __str__(self) -> str:
+        return FIELD_DELIM.join(["link", self.path, self.reference])
+    type: Literal["link"]
+    path: str
+    reference: str
+
+
+ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
+
+
+class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
+    @model_validator(mode="after")
+    def validate_keys_match_paths(self) -> "Manifest":
+        validated_entries = OrderedDict()
+
+        for key, entry in self.root.items():
+            # key != entry.path if the manifest dict is manually constructed with a
+            # mismatched key, or if the manifest file was tampered with. Normally,
+            # scan_directory ensures key == entry.path.
+            if key != entry.path:
+                raise ValueError(f"Manifest key '{key}' does not match entry.path '{entry.path}'")
+            valid, msg = validate_path(entry.path)
+            if not valid:
+                logger.warning(f"Invalid path '{entry.path}': {msg}")
+                continue
+            validated_entries[key] = entry
+
+        # Deferred validation of symlinks after collecting file refs
+        resolver = lambda p: Path(p).resolve().as_posix()
+        resolved_refs = {
+            resolver(entry.path)
+            for entry in validated_entries.values()
+            if isinstance(entry, FileRef)
+        }
+
+        for key, entry in list(validated_entries.items()):
+            if isinstance(entry, LinkRef):
+                if os.path.isabs(entry.reference):
+                    msg = (f"Skipping link '{entry.path}' with absolute reference "
+                           f"'{entry.reference}'")
+                    logger.warning(msg)
+                    validated_entries.pop(key)
+                    continue
+                symlink_location = Path(entry.path)
+                resolved = resolver(symlink_location.parent / entry.reference)
+                if resolved not in resolved_refs:
+                    msg = (f"Skipping link '{entry.path}' — "
+                           f"target '{entry.reference}' does not "
+                           f"resolve to a known file in manifest")
+                    logger.warning(msg)
+                    validated_entries.pop(key)
+
+        # Use object.__setattr__ to avoid triggering validation recursion or mutation restrictions
+        object.__setattr__(self, "root", validated_entries)
+        return self
+
+
+
+# ---- Scanner ----
+
+def _should_skip_path(path: Path, ignored_names: set[str], ignored_suffixes: set[str]) -> bool:
+    is_ignored_name = path.name in ignored_names
+    has_ignored_suffix = any(str(path).endswith(suffix) for suffix in ignored_suffixes)
+    return is_ignored_name or has_ignored_suffix
+
+
+def _is_hidden_but_not_xsnap(relative: Path) -> bool:
+    for part in relative.parts:
+        if part.startswith(".") and part != SNAP_DIR:
             return True
     return False
 
 
-def validate_path(path_str) -> tuple(bool, str):
-    """
-    Validate a path string with:
-    - Reserved name checks (Windows)
-    - Relative path component checks
-    - Hidden/temporary file checks
-    - Illegal character checks (optimized set operation)
-    - Unicode NFC validation
-
-    Args:
-        path_str: Input path string (treated as POSIX)
-
-    Returns:
-        tuple: (bool is_valid, str error_message)
-    """
-    if not path_str:
-        return (False, "Path cannot be empty")
-
-    try:
-        path_str.encode('utf-8')
-    except UnicodeEncodeError:
-        return (False, "Path must be UTF-8 encodable")
-
-    try:
-        path = PurePosixPath(path_str)
-    except Exception as e:
-        return (False, f"Invalid path syntax: {str(e)}")
-
-    if "/./" in path_str or path_str.startswith("./") or path_str.endswith("/."):
-        return (False, "Path contains invalid relative component './'")
-
-    if "/../" in path_str or path_str.startswith("../") or path_str.endswith("/.."):
-        return (False, "Path contains invalid relative component '..'")
-
-    if "\\.\\\\" in path_str or path_str.startswith(".\\") or path_str.endswith("\\."):
-        return (False, "Path contains invalid relative component '.\\'")
-
-    if "\\..\\" in path_str or path_str.startswith("..\\") or path_str.endswith("\\.."):
-            return (False, "Path contains invalid relative component '..\\'")
-
-    if not path.parts:
-        return (False, "Path must contain at least one component")
-
-    if len(path_str.encode('utf-8')) > 4096:
-        return (False, "Path exceeds maximum length of 4096 bytes")
-
-    if len(path.parts) == 1:
-        part = path.parts[0]
-        if part == '/' or (len(part) == 2 and part[1] == ':' and part[0].isalpha()):
-            return (False, f"Path '{part}' is not a valid file path (root or drive-only)")
-
-    for component in path.parts:
-        # Skip root parts ('/', 'C:')
-        if component in ('/', '') or (len(component) == 2 and component.endswith(':')):
-            continue
-
-        if len(component.encode('utf-8')) > 255:
-            return (False, f"Component '{component}' exceeds max length of 255 bytes")
-
-        # Check for trailing ~ (emacs backups)
-        if component.endswith('~'):
-            return (False, f"Temporary/backup file '{component}' not allowed")
-
-        # Reserved names (Windows)
-        base = component.split('.')[0].lower()
-        if base in _WINDOWS_RESERVED_NAMES:
-            return (False, f"Reserved name '{component}' (Windows)")
-
-        # Relative path components
-        if component in ('.', '..'):
-            return (False, f"Relative path component '{component}' not allowed")
-
-        # Hidden files/disallowed prefixes
-        if component.startswith(('~',)):
-            return (False, f"Component '{component}' has disallowed prefix")
-
-        # Leading/trailing whitespace
-        if component != component.strip():
-            return (False, f"Component '{component}' has leading/trailing whitespace")
-
-        # Fast illegal character check
-        if set(component) & _ILLEGAL_CHARS:
-            return (False, f"Component '{component}' contains illegal characters")
-
-        if _has_unsafe_unicode(component):
-            return (False, f"Component '{component}' contains non-printable or control characters")
-
-        # Enforce Unicode NFC normalization for filename components.
-        # This ensures consistent and predictable behavior across filesystems:
-        # - macOS stores filenames as decomposed (NFD) by default.
-        # - Linux and Windows store filenames as-is (usually NFC).
-        # Allowing non-NFC input can lead to invisible duplicates, mismatches,
-        # or failures in sync tools, archives, and version control systems.
-        # By requiring NFC, we ensure a canonical, portable representation.
-        nfc_normalized = unicodedata.normalize("NFC", component)
-        if component != nfc_normalized:
-            return (False, f"Component '{component}' is not NFC-normalized")
-
-    return (True, "Path is valid")
+def _check_git_and_xsnap(root_path: Path) -> None:
+    root_contents = {p.name for p in root_path.iterdir()}
+    if not (".git" in root_contents or SNAP_DIR in root_contents):
+        logger.warning("Root directory should contain at least one of: .git/ or .xsnap/")
+    if ".git" in root_contents:
+        xsnap_path = root_path / SNAP_DIR
+        if not xsnap_path.exists() or not xsnap_path.is_dir():
+            logger.warning(".git directory found but missing .xsnap directory alongside it")
 
 
-@app.command()
-def walk(root_path: str = typer.Argument(..., help="Root directory to scan recursively")):
-    """
-    Recursively validate all paths under root directory using Path.rglob()
-    """
-    try:
-        root = Path(root_path).resolve()
-        if not root.exists():
-            raise typer.BadParameter(f"Path '{root_path}' does not exist")
-
-        typer.echo(f"Scanning: {root} (using Path.rglob())")
-
-        invalid_count = 0
-        total_count = 0
-
-        for path in root.rglob('*'):
-            if not path.is_file():  # Only validate files, skip directories
-                continue
-            total_count += 1
-            is_valid, msg = validate_path(str(path))
-            if not is_valid:
-                invalid_count += 1
-                typer.echo(f"[INVALID] {path}: {msg}", err=True)
-
-        # Summary output
-        typer.echo(f"\nValidation complete:")
-        typer.echo(f"Scanned paths: {total_count}")
-        typer.echo(f"Invalid paths: {invalid_count}")
-
-        if invalid_count > 0:
-            raise typer.Exit(1)
-
-    except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
-
-
-@app.command()
-def test():
-    """
-    Run built-in test cases against the validator
-    """
-    test_cases = [
-        ("valid/path/file.txt", True),
-        ("nested/folder/file.txt", True),
-        ("a/.valid/path", True),
-        ("a2/valid/path", True),
-        ("CON/temp.txt", False),
-        (r'C:\\', False),
-        (r'/', False),
-        (r'..', False),
-        ("backup~", False),
-        ("folder/./file", False),
-        ("~hidden/file", False),
-        ("embedded\ttab/file", False),
-        ("  space/file  ", False),
-        ("bad/char\x00", False),
-        ("u\u0308ber/non_nfc.txt", False),
-        ("über.txt", True),       # Composed ü (U+00FC), NFC-valid → accepted
-        ("über.txt", False),     # 'u' + U+0308 (combining diaeresis), not NFC → rejected
-        ("", False),
-        ("normal_file.txt", True),
-        ("Intensidad nacional por víctimas UN 1998-2011.xls", False),  # decomposed accent
-        ("Intensidad nacional por víctimas UN 1998-2011.xls", True),  # one accented char
-        ("file\u0000name.txt", False),      # Null byte
-        ("alert\u0007file.txt", False),     # Bell character
-        ("oops\bfile.txt", False),          # Backspace
-        ("safe\u202Eevil.txt", False),  # U+202E
-        ("zero\u200Bwidth.txt", False),     # Zero-width space
-        ("safe\u202Eevil.txt", False),      # RTL override
-        ("object\uFFFCfile.txt", False),    # Object replacement character
-        ("multi\u2028line.txt", False),     # Line separator
-        ("unassigned\u0378char.txt", False),# Unassigned Unicode character
-        ("bad\ud800path.txt", False),       # High surrogate (illegal UTF-8)
-        ("", False),                         # Empty path
-        ("/", False),                        # Root directory
-        ("C:", False),                       # Windows drive only
-        ("folder/./file.txt", False),        # Relative path component `.`
-        ("../file.txt", False),              # Relative path component `..`
-        ("report~", False),                  # Temporary file
-        ("CON.txt", False),                  # Reserved Windows name
-        ("bad:name.txt", True),              # annoying but not illegal
-    ]
-
-    max_path_len = max(len(repr(p)) for p, _ in test_cases)
-
-    results = []
-    for path_str, expected in test_cases:
-        actual, msg = validate_path(path_str)
-        results.append((path_str, expected, actual, msg))
-
-    for path_str, expected, actual, msg in results:
-        status = "PASS" if expected == actual else "FAIL"
-        color = "green" if status == "PASS" else "red"
-        typer.echo(
-            f"{typer.style(status, fg=color)} "
-            f"{repr(path_str):<{max_path_len}} "
-            f"Expected: {expected}, Got: {actual}"
+def _create_entry(path: Path, rel_path: str) -> ManifestEntry:
+    if path.is_symlink():
+        reference = os.readlink(path)
+        return LinkRef(type="link", path=rel_path, reference=reference)
+    elif path.is_file():
+        stat_info = path.stat()
+        with path.open("rb") as f:
+            file_hash = _hash_file(f)
+        return FileRef(
+            type="file",
+            path=rel_path,
+            filesize=stat_info.st_size,
+            mtime=stat_info.st_mtime,
+            hash=file_hash,
         )
-
-    passed = sum(1 for _, exp, act, _ in results if exp == act)
-    total = len(results)
-    typer.echo(f"\nTest results: {passed}/{total} passed")
-
-    if passed < total:
-        raise typer.Exit(1)
+    raise ValueError(f"Unsupported path type: {path}")
 
 
-if __name__ == '__main__':
+def _hash_file(file_obj: BinaryIO) -> str:
+    hasher = xxhash.xxh3_64()
+    while chunk := file_obj.read(8192):
+        hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
+    _check_git_and_xsnap(root_path)
+    manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
+
+    for path in root_path.rglob("*"):
+        if _should_skip_path(path, IGNORED_NAMES, IGNORED_SUFFIXES):
+            logger.trace(f"Skipping ignored file or directory '{path}'")
+            continue
+        try:
+            if not (path.is_file() or path.is_symlink()):
+                continue
+
+            relative = path.relative_to(root_path)
+            if _is_hidden_but_not_xsnap(relative):
+                logger.debug(f"Skipping hidden path '{path}'")
+                continue
+
+            if not any(part in include_dirs for part in relative.parts):
+                logger.trace(f"Skipping '{path}' (no parent dir in include_dirs)")
+                continue
+
+            rel_path = relative.as_posix()
+            valid, msg = validate_path(rel_path)
+            if not valid:
+                logger.warning(f"Invalid path '{rel_path}': {msg}")
+                continue
+
+            entry = _create_entry(path, rel_path)
+            manifest_entries[rel_path] = entry
+
+        except Exception as e:
+            logger.error(f"Error processing '{path}': {e}")
+
+    return Manifest(root=manifest_entries)
+
+
+# ---- Serialization ----
+
+def write_manifest(manifest: Manifest, file_path: Path) -> None:
+    with file_path.open("w", encoding="utf-8") as f:
+        for entry in manifest.root.values():
+            f.write(str(entry) + LINE_DELIM)
+
+def read_manifest(file_path: Path) -> Manifest:
+    manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
+    with file_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            parts = line.strip().split(FIELD_DELIM)
+            if not parts:
+                continue
+            type_tag = parts[0]
+            if type_tag == "file" and len(parts) == 5:
+                mtime = datetime.fromisoformat(parts[3]).timestamp()
+                entry = FileRef(
+                    type="file",
+                    path=parts[1],
+                    filesize=int(parts[2]),
+                    mtime=mtime,
+                    hash=parts[4],
+                )
+            elif type_tag == "link" and len(parts) == 3:
+                entry = LinkRef(
+                    type="link",
+                    path=parts[1],
+                    reference=parts[2],
+                )
+            else:
+                logger.warning(f"Skipping malformed line: {line.strip()}")
+                continue
+            manifest_entries[entry.path] = entry
+    return Manifest(root=manifest_entries)
+
+
+# ---- CLI ----
+
+import typer
+
+app = typer.Typer()
+root_arg = typer.Argument(..., exists=True, file_okay=False, help="Root directory to scan")
+
+@app.command()
+def show(root_path: Path = root_arg) -> None:
+    """Print the manifest to the console in tab-delimited format."""
+    manifest = scan_directory(root_path, {"input", "output", "frozen"})
+    for entry in manifest.root.values():
+        print(entry)
+
+if __name__ == "__main__":
     app()
 
-# done
+# done.

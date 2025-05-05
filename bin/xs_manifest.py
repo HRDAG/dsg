@@ -1,5 +1,5 @@
 
-# Author: PB & DeepSeek
+# Author: PB & ChatGPT
 # Date: 2025.05.25
 # Copyright: HRDAG 2025 GPL-2 or newer
 
@@ -8,11 +8,12 @@ from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 import os
-from typing import Annotated, Union, Literal
+from typing import Annotated, Union, Literal, BinaryIO
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, RootModel, model_validator
 from loguru import logger
+import xxhash
 
 SNAP_DIR = ".xsnap"
 
@@ -141,9 +142,11 @@ def _create_entry(path: Path, rel_path: str) -> ManifestEntry:
     raise ValueError(f"Unsupported path type: {path}")
 
 
-def _hash_file(file_obj: bytes) -> str:
-    content = file_obj.read()
-    return f"mockedhash_{len(content)}"
+def _hash_file(file_obj: BinaryIO) -> str:
+    hasher = xxhash.xxh3_64()
+    while chunk := file_obj.read(8192):
+        hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
@@ -234,11 +237,7 @@ def show(root_path: Path = root_arg) -> None:
     """Print the manifest to the console in tab-delimited format."""
     manifest = scan_directory(root_path, {"input", "output", "frozen"})
     for entry in manifest.root.values():
-        if isinstance(entry, FileRef):
-            print(f"file	{entry.path}	{entry.filesize}	{entry.mtime}	{entry.hash}")
-        elif isinstance(entry, LinkRef):
-            print(f"link	{entry.path}	{entry.reference}")
-
+        print(entry)
 
 if __name__ == "__main__":
     app()
