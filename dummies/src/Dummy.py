@@ -2,7 +2,7 @@
 # vim: set ts=4 sts=0 sw=4 si fenc=utf-8 et:
 # vim: set fdm=marker fmr={{{,}}} fdl=0 foldcolumn=4:
 # Authors:     BP
-# Maintainers: BP
+# Maintainers: BP, PB
 # Copyright:   2025, HRDAG, GPL v2 or later
 # =========================================
 
@@ -44,8 +44,8 @@ def check_writedir(dirname, makeifnot=True):
 
 @logger.catch
 def check_path(expected_path, exists_ok, msg):
-    if exists_ok: assert expected_path.exists(), msg
-    else: assert not expected_path.exists(), msg
+    if not exists_ok:
+        assert not expected_path.exists(), msg
     return 1
 
 
@@ -115,7 +115,7 @@ def make_dummy_data(fname, dirname):
     return path.exists()
 
 
-@logger.catch
+# @logger.catch
 def make_dummy_data_change(fname, dirname):
     """ASSUMES that the data should be exported as a parquet file.
     checks that:

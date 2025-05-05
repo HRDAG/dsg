@@ -4,6 +4,7 @@
 # Copyright: HRDAG 2025 GPL-2 or newer
 
 from pathlib import Path, PurePosixPath
+from re import search
 import unicodedata
 import typer
 
@@ -46,7 +47,7 @@ def _has_unsafe_unicode(component: str) -> bool:
     return False
 
 
-def validate_path(path_str):
+def validate_path(path_str) -> tuple(bool, str):
     """
     Validate a path string with:
     - Reserved name checks (Windows)
