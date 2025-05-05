@@ -28,6 +28,12 @@ def validate_path(path: str) -> tuple[bool, str]:
 # ---- Models ----
 
 class FileRef(BaseModel):
+    type: Literal["file"]
+    path: str
+    filesize: int
+    mtime: float
+    hash: str
+
     def __str__(self) -> str:
         def _tm(t):
             la_tz = ZoneInfo("America/Los_Angeles")
@@ -35,15 +41,22 @@ class FileRef(BaseModel):
 
         return (f"file\t{self.path}\t{self.filesize}"
                 f"\t{_tm(self.mtime)}\t{self.hash}")
-    type: Literal["file"]
-    path: str
-    filesize: int
-    mtime: float
-    hash: str
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FileRef):
+            return NotImplemented
+         # Note: __eq__ uses millisecond precision for mtime and ignores hash,
+         # assuming hashes may be missing or delayed during comparison.
+        return (
+            self.type == other.type and
+            self.path == other.path and
+            self.filesize == other.filesize and
+            int(self.mtime * 1000) == int(other.mtime * 1000))
+
 
 class LinkRef(BaseModel):
     def __str__(self) -> str:
-        return f"link\t{self.path}\t{self.reference}"
+       return f"link\t{self.path}\t{self.reference}"
     type: Literal["link"]
     path: str
     reference: str
