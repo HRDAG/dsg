@@ -111,9 +111,9 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
 
 # ---- Scanner ----
 
-def _should_skip_path(path: Path, ignored_names: set[str], ignored_suffixes: set[str]) -> bool:
-    is_ignored_name = path.name in ignored_names
-    has_ignored_suffix = any(str(path).endswith(suffix) for suffix in ignored_suffixes)
+def _should_skip_path(path: Path) -> bool:
+    is_ignored_name = path.name in IGNORED_NAMES
+    has_ignored_suffix = any(str(path).endswith(suffix) for suffix in IGNORED_SUFFIXES)
     return is_ignored_name or has_ignored_suffix
 
 
@@ -164,7 +164,7 @@ def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
 
     for path in root_path.rglob("*"):
-        if _should_skip_path(path, IGNORED_NAMES, IGNORED_SUFFIXES):
+        if _should_skip_path(path):
             logger.trace(f"Skipping ignored file or directory '{path}'")
             continue
         try:

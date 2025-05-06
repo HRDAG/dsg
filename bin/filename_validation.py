@@ -48,7 +48,7 @@ def _has_unsafe_unicode(component: str) -> bool:
     return False
 
 
-def validate_path(path_str):
+def validate_path(path_str) -> tuple[bool, str]:
     """
     Validate a path string with:
     - Reserved name checks (Windows)
@@ -56,12 +56,6 @@ def validate_path(path_str):
     - Hidden/temporary file checks
     - Illegal character checks (optimized set operation)
     - Unicode NFC validation
-
-    Args:
-        path_str: Input path string (treated as POSIX)
-
-    Returns:
-        tuple: (bool is_valid, str error_message)
     """
     if not path_str:
         return (False, "Path cannot be empty")
@@ -149,11 +143,10 @@ def validate_path(path_str):
     return (True, "Path is valid")
 
 
+path_arg = typer.Argument(..., help="Root directory to scan recursively")
+
 @app.command()
-def walk(root_path: str = typer.Argument(..., help="Root directory to scan recursively")):
-    """
-    Recursively validate all paths under root directory using Path.rglob()
-    """
+def walk(root_path: str = path_arg):
     try:
         root = Path(root_path).resolve()
         if not root.exists():
@@ -188,12 +181,11 @@ def walk(root_path: str = typer.Argument(..., help="Root directory to scan recur
 
 @app.command()
 def test():
-    """
-    Run built-in test cases against the validator
-    """
     test_cases = [
+        ("normal_file.txt", True),
         ("valid/path/file.txt", True),
-        ("nested/folder/file.txt", True),
+        ("deeply/nested/folder/file.txt", True),
+        ("/absolutely/deeply/nested/folder/file.txt", True),
         ("a/.valid/path", True),
         ("a2/valid/path", True),
         ("CON/temp.txt", False),
@@ -202,15 +194,14 @@ def test():
         (r'..', False),
         ("backup~", False),
         ("folder/./file", False),
-        ("~hidden/file", False),
+        ("~could_be_username/file", False),
         ("embedded\ttab/file", False),
         ("  space/file  ", False),
         ("bad/char\x00", False),
         ("u\u0308ber/non_nfc.txt", False),
+        ("", False),
         ("über.txt", True),       # Composed ü (U+00FC), NFC-valid → accepted
         ("über.txt", False),     # 'u' + U+0308 (combining diaeresis), not NFC → rejected
-        ("", False),
-        ("normal_file.txt", True),
         ("Intensidad nacional por víctimas UN 1998-2011.xls", False),  # decomposed accent
         ("Intensidad nacional por víctimas UN 1998-2011.xls", True),  # one accented char
         ("file\u0000name.txt", False),      # Null byte
