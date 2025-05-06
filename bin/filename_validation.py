@@ -1,5 +1,5 @@
 
-# Author: PB & DeepSeek
+# Author: PB & ChatGPT
 # Date: 2025.04.24
 # Copyright: HRDAG 2025 GPL-2 or newer
 
@@ -12,6 +12,8 @@ app = typer.Typer(help="Path validation tool")
 
 
 # Global constants
+VERSION = '0.1.0'
+
 _ILLEGAL_CHARS = {
     '\x00', '\r', '\n', '\t',  # Control chars
     '<', '>', '"', '|', '?', '*', '\\',  # Windows-illegal
