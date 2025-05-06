@@ -16,8 +16,10 @@ clean:
 	rm -rf output/*
 
 build:
-	-mkdir output $(sync_dir)
+	-mkdir output
 	python src/Dummy.py
+	find output/* -maxdepth 0 ! -name "*.log" -print0 | xargs -0n1 rm -rf
+	-mkdir $(sync_dir)
 	python src/Build.py \
 		--writedir=$(sync_dir) \
 		--states=$(test_states)
