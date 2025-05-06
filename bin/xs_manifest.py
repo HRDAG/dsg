@@ -1,67 +1,65 @@
 
-# Author: PB & ChatGPT
-# Date: 2025.05.25
-# Copyright: HRDAG 2025 GPL-2 or newer
 
+# Author: PB & DeepSeek
+# Date: 2025.04.24
+# Copyright: HRDAG 2025 GPL-2 or newer
 
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 import os
-from typing import Annotated, Union, Literal, BinaryIO
+from typing import Annotated, Union, Literal, Final, BinaryIO
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, RootModel, model_validator
 from loguru import logger
 import xxhash
 
-SNAP_DIR = ".xsnap"
+from filename_validation import validate_path
 
 
-# ---- Validation ----
+SNAP_DIR: Final = ".xsnap"
+FIELD_DELIM: Final = "XX"
+LINE_DELIM: Final = "NN"
+IGNORED_SUFFIXES: Final = frozenset({".pyc", ".Rdata", ".rdata", ".RData"})
+IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rproj.user"})
 
-def validate_path(path: str) -> tuple[bool, str]:
-    if ".." in path or path.startswith("/"):
-        return False, "Path must be relative and must not contain '..'"
-    return True, ""
 
 # ---- Models ----
 
 class FileRef(BaseModel):
+    def __str__(self) -> str:
+
+        def _tz(t: float) -> str:
+            la_tz = ZoneInfo("America/Los_Angeles")
+            return datetime.fromtimestamp(t, tz=la_tz).isoformat(timespec="milliseconds")
+
+        data = [
+            "file",
+            self.path,
+            str(self.filesize),
+            _tz(self.mtime),
+            self.hash,
+        ]
+        return FIELD_DELIM.join(data)
+
     type: Literal["file"]
     path: str
     filesize: int
     mtime: float
     hash: str
 
-    def __str__(self) -> str:
-        def _tm(t):
-            la_tz = ZoneInfo("America/Los_Angeles")
-            return datetime.fromtimestamp(t, tz=la_tz).isoformat(timespec="milliseconds")
-
-        return (f"file\t{self.path}\t{self.filesize}"
-                f"\t{_tm(self.mtime)}\t{self.hash}")
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, FileRef):
-            return NotImplemented
-         # Note: __eq__ uses millisecond precision for mtime and ignores hash,
-         # assuming hashes may be missing or delayed during comparison.
-        return (
-            self.type == other.type and
-            self.path == other.path and
-            self.filesize == other.filesize and
-            int(self.mtime * 1000) == int(other.mtime * 1000))
-
 
 class LinkRef(BaseModel):
     def __str__(self) -> str:
-       return f"link\t{self.path}\t{self.reference}"
+        return FIELD_DELIM.join(["link", self.path, self.reference])
     type: Literal["link"]
     path: str
     reference: str
 
+
 ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
+
 
 class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
     @model_validator(mode="after")
@@ -105,16 +103,15 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
                     logger.warning(msg)
                     validated_entries.pop(key)
 
-        # object.__setattr__ avoids validation recursion or mutation restrictions
+        # Use object.__setattr__ to avoid triggering validation recursion or mutation restrictions
         object.__setattr__(self, "root", validated_entries)
+        return self
 
 
 
 # ---- Scanner ----
 
-def _should_skip_path(path: Path,
-                      ignored_names: set[str],
-                      ignored_suffixes: set[str]) -> bool:
+def _should_skip_path(path: Path, ignored_names: set[str], ignored_suffixes: set[str]) -> bool:
     is_ignored_name = path.name in ignored_names
     has_ignored_suffix = any(str(path).endswith(suffix) for suffix in ignored_suffixes)
     return is_ignored_name or has_ignored_suffix
@@ -163,14 +160,11 @@ def _hash_file(file_obj: BinaryIO) -> str:
 
 
 def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
-    ignored_suffixes = {".pyc", ".Rdata", ".rdata", ".RData"}
-    ignored_names = {"__pycache__", ".Rproj.user"}
-
     _check_git_and_xsnap(root_path)
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
 
     for path in root_path.rglob("*"):
-        if _should_skip_path(path, ignored_names, ignored_suffixes):
+        if _should_skip_path(path, IGNORED_NAMES, IGNORED_SUFFIXES):
             logger.trace(f"Skipping ignored file or directory '{path}'")
             continue
         try:
@@ -206,23 +200,23 @@ def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
 def write_manifest(manifest: Manifest, file_path: Path) -> None:
     with file_path.open("w", encoding="utf-8") as f:
         for entry in manifest.root.values():
-            f.write(str(entry) + "\n")
-
+            f.write(str(entry) + LINE_DELIM)
 
 def read_manifest(file_path: Path) -> Manifest:
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     with file_path.open("r", encoding="utf-8") as f:
         for line in f:
-            parts = line.strip().split("	")
+            parts = line.strip().split(FIELD_DELIM)
             if not parts:
                 continue
             type_tag = parts[0]
             if type_tag == "file" and len(parts) == 5:
+                mtime = datetime.fromisoformat(parts[3]).timestamp()
                 entry = FileRef(
                     type="file",
                     path=parts[1],
                     filesize=int(parts[2]),
-                    mtime=datetime.fromisoformat(parts[3]).timestamp(),
+                    mtime=mtime,
                     hash=parts[4],
                 )
             elif type_tag == "link" and len(parts) == 3:
@@ -254,3 +248,5 @@ def show(root_path: Path = root_arg) -> None:
 
 if __name__ == "__main__":
     app()
+
+# done.
