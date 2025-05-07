@@ -1,4 +1,4 @@
-
+# noqa: E221
 # Author: PB & ChatGPT
 # Date: 2025.05.05
 # Copyright: HRDAG 2025 GPL-2 or newer
@@ -16,14 +16,13 @@ synchronization decisions such as upload, delete, conflict resolution, or no-op.
 
 See issue #13 for a full description of each SyncState.
 """
-from typing import Optional
 from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
 from dataclasses import field
 
+from .xs_manifest import Manifest
 
-# --- Revised SyncState Enum ---
 
 class SyncState(Enum):
     sLCR__all_eq          = "111: local, cache, and remote all present and identical"
@@ -45,26 +44,6 @@ class SyncState(Enum):
     def __str__(self) -> str:
         return self.value
 
-
-# --- Mocked Manifest, FileRef, ManifestEntry ---
-
-@dataclass
-class FileRef:
-    type: str  # always "file"
-    path: str
-    hash: str
-
-    def __eq__(self, other):
-        return isinstance(other, FileRef) and self.hash == other.hash
-
-ManifestEntry = FileRef  # Ignoring LinkRef for now
-
-class Manifest:
-    def __init__(self, entries: dict[str, ManifestEntry]):
-        self.root = OrderedDict(entries)
-
-
-# --- Updated ManifestMerger ---
 
 @dataclass
 class ManifestMerger:
