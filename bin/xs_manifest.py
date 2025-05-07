@@ -28,9 +28,9 @@ IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rproj.user"})
 # ---- Models ----
 
 class FileRef(BaseModel):
-    user: str
     type: Literal["file"]
     path: str
+    user: str
     filesize: int
     mtime: float
     hash: str
@@ -58,9 +58,9 @@ def __eq__(self, other) -> bool:
 
 
 class LinkRef(BaseModel):
-    user: str
     type: Literal["link"]
     path: str
+    user: str
     reference: str
 
     def __str__(self) -> str:
@@ -72,11 +72,7 @@ class LinkRef(BaseModel):
         return self.path == other.path and self.reference == other.reference
 
 
-
-
-
 ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
-
 
 class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
     @model_validator(mode="after")
@@ -154,11 +150,13 @@ def _check_git_and_xsnap(root_path: Path) -> None:
 def _create_entry(path: Path, rel_path: str) -> ManifestEntry:
     if path.is_symlink():
         reference = os.readlink(path)
+        # FIXME: need to add user field
         return LinkRef(type="link", path=rel_path, reference=reference)
     elif path.is_file():
         stat_info = path.stat()
         with path.open("rb") as f:
             file_hash = _hash_file(f)
+        # FIXME: need to add user field
         return FileRef(
             type="file",
             path=rel_path,
@@ -229,6 +227,7 @@ def read_manifest(file_path: Path) -> Manifest:
             type_tag = parts[0]
             if type_tag == "file" and len(parts) == 5:
                 mtime = datetime.fromisoformat(parts[3]).timestamp()
+                # FIXME: need to add user field
                 entry = FileRef(
                     type="file",
                     path=parts[1],
@@ -237,6 +236,7 @@ def read_manifest(file_path: Path) -> Manifest:
                     hash=parts[4],
                 )
             elif type_tag == "link" and len(parts) == 3:
+                # FIXME: need to add user field
                 entry = LinkRef(
                     type="link",
                     path=parts[1],
