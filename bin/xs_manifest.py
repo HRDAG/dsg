@@ -1,8 +1,8 @@
 
-
-# Author: PB & DeepSeek
-# Date: 2025.04.24
+# Author: PB & ChatGPT
+# Date: 2025.05.05
 # Copyright: HRDAG 2025 GPL-2 or newer
+# btrsnap/bin/xs_manifest.py
 
 from collections import OrderedDict
 from datetime import datetime
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, RootModel, model_validator
 from loguru import logger
 import xxhash
 
-from filename_validation import validate_path
+from .filename_validation import validate_path
 
 
 SNAP_DIR: Final = ".xsnap"
@@ -28,6 +28,13 @@ IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rproj.user"})
 # ---- Models ----
 
 class FileRef(BaseModel):
+    user: str
+    type: Literal["file"]
+    path: str
+    filesize: int
+    mtime: float
+    hash: str
+
     def __str__(self) -> str:
 
         def _tz(t: float) -> str:
@@ -37,25 +44,35 @@ class FileRef(BaseModel):
         data = [
             "file",
             self.path,
+            self.user,
             str(self.filesize),
             _tz(self.mtime),
             self.hash,
         ]
         return FIELD_DELIM.join(data)
 
-    type: Literal["file"]
-    path: str
-    filesize: int
-    mtime: float
-    hash: str
+def __eq__(self, other) -> bool:
+    if not isinstance(other, FileRef):
+        return False
+    return self.path == other.path and self.hash == other.hash
 
 
 class LinkRef(BaseModel):
-    def __str__(self) -> str:
-        return FIELD_DELIM.join(["link", self.path, self.reference])
+    user: str
     type: Literal["link"]
     path: str
     reference: str
+
+    def __str__(self) -> str:
+        return FIELD_DELIM.join(["link", self.path, self.user, self.reference])
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, LinkRef):
+            return False
+        return self.path == other.path and self.reference == other.reference
+
+
+
 
 
 ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
