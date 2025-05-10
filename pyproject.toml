@@ -1,6 +1,33 @@
-[tool.ruff]
-line-length = 80
+[project]
+name = "dsg"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Sam Z",email = "shimian.zhang@gmail.com"},
+    {name = "Patrick Ball",email = "pball@hrdag.org"},
+]
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "typer (>=0.15.3,<0.16.0)",
+    "tomlkit (>=0.13.2,<0.14.0)",
+    "loguru (>=0.7.3,<0.8.0)",
+    "xxhash (>=3.5.0,<4.0.0)"
+]
 
-[tool.ruff.lint]
-extend-ignore = ["F841", "E272", "E901"]
+[tool.poetry]
+packages = [{include = "dsg", from = "src"}]
 
+[tool.poetry.scripts]
+# pdp = "dsg.main:app"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.5"
+expects = "^0.9.0"
+pyfakefs = "^5.8.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# done.
