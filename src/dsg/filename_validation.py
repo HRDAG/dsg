@@ -8,6 +8,7 @@
 # dsg/src/dsg/filename_validation.py
 
 from pathlib import Path, PurePosixPath
+import re
 import unicodedata
 import typer
 
@@ -20,7 +21,7 @@ VERSION = '0.1.0'
 
 _ILLEGAL_CHARS = {
     '\x00', '\r', '\n', '\t',  # Control chars
-    '<', '>', '"', '|', '?', '*', '\\',  # Windows-illegal
+    '<', '>', '"', '|', '?', '*', # Windows-illegal
     *[chr(i) for i in range(32) if chr(i) not in {'\t', '\n', '\r'}] }  # Other controls
 
 _ILLEGAL_CODEPOINTS = {
@@ -74,20 +75,27 @@ def validate_path(path_str) -> tuple[bool, str]:
     except Exception as e:
         return (False, f"Invalid path syntax: {str(e)}")
 
-    if "/./" in path_str or path_str.startswith("./") or path_str.endswith("/."):
-        return (False, "Path contains invalid relative component './'")
-
-    if "/../" in path_str or path_str.startswith("../") or path_str.endswith("/.."):
-        return (False, "Path contains invalid relative component '..'")
-
     if "\\.\\\\" in path_str or path_str.startswith(".\\") or path_str.endswith("\\."):
         return (False, "Path contains invalid relative component '.\\'")
 
     if "\\..\\" in path_str or path_str.startswith("..\\") or path_str.endswith("\\.."):
             return (False, "Path contains invalid relative component '..\\'")
 
+    # Normalize all remaining backslashes to slashes for uniform downstream processing
+    path_str = path_str.replace("\\", "/")
+    path = PurePosixPath(path_str)
+
+    if "/./" in path_str or path_str.startswith("./") or path_str.endswith("/."):
+        return (False, "Path contains invalid relative component './'")
+
+    if "/../" in path_str or path_str.startswith("../") or path_str.endswith("/.."):
+        return (False, "Path contains invalid relative component '..'")
+
     if not path.parts:
         return (False, "Path must contain at least one component")
+
+    if re.fullmatch(r"[a-zA-Z]:(/*)?", path_str):
+        return (False, "Path is a bare Windows drive root")
 
     if len(path_str.encode('utf-8')) > 4096:
         return (False, "Path exceeds maximum length of 4096 bytes")
@@ -151,6 +159,7 @@ path_arg = typer.Argument(..., help="Root directory to scan recursively")
 
 @app.command()
 def walk(root_path: str = path_arg):
+    """ diagnostic tool to see filenames that fail validation """
     # TODO: could be used to walk-and-fix-inplace invalid filenames.
     try:
         root = Path(root_path).resolve()
