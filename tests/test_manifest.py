@@ -14,10 +14,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import typer
+import xxhash
 
 from dsg.manifest import (FileRef, LinkRef, Manifest, FIELD_DELIM,
     scan_directory, _check_dsg_dir, SNAP_DIR, _is_hidden_but_not_dsg,
-    _create_entry, _should_skip_path, _parse_manifest_line
+    _create_entry, _should_skip_path, _parse_manifest_line, _hash_file
 )
 
 # ---- Fixtures ----
@@ -326,3 +327,17 @@ def test_manifest_round_trip_from_dsg_dir(example_directory_structure: Path):
 
     # All valid entries should be present
     assert set(result.root.keys()) == set(manifest.root.keys())
+
+def test_hash_file(tmp_path):
+    test_data = b"hello world"
+    test_file = tmp_path / "file.txt"
+    test_file.write_bytes(test_data)
+
+    with test_file.open("rb") as f:
+        result = _hash_file(f)
+
+    expected = xxhash.xxh3_64(test_data).hexdigest()
+    assert result == expected
+
+
+# done.

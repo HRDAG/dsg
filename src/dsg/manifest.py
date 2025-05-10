@@ -199,6 +199,8 @@ def _check_dsg_dir(root_path: Path) -> None:
         logger.error(f"Root directory should contain {SNAP_DIR}/")
         typer.Exit(1)
 
+
+# FIXME: _create_entry needs a cfg object with a username
 def _create_entry(path: Path, rel_path: str) -> ManifestEntry:
     if path.is_symlink():
         reference = os.readlink(path)
@@ -230,6 +232,8 @@ def _hash_file(file_obj: BinaryIO) -> str:
     return hasher.hexdigest()
 
 
+# FIXME: scan_directory() needs options cfg object with username
+# but it doesn't get a username in the show() context
 def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
     _check_dsg_dir(root_path)
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
