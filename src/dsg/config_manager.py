@@ -14,7 +14,7 @@ from typing import Any, Optional, Set, Literal, Final
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from typer import Exit
 
 
@@ -64,6 +64,13 @@ class ProjectConfig(BaseModel):
     host: str
     repo_path: Path
     repo_type: Literal["zfs", "xfs"]
+
+    @model_validator(mode="after")
+    def normalize_paths(self) -> "ProjectConfig":
+        # Remove trailing slashes from data_dirs and ignored_paths
+        self.data_dirs = {d.rstrip("/") for d in self.data_dirs}
+        self.ignored_paths = {p.rstrip("/") for p in self.ignored_paths}
+        return self
 
 
 class Config(BaseModel):

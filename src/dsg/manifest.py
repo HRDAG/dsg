@@ -1,12 +1,10 @@
-
 # Author: PB & ChatGPT
-# Date: 2025.05.05
+# Date: 2025.05.09
 # Copyright: HRDAG 2025 GPL-2 or newer
+#
+# ------
 # dsg/src/dsg/manifest.py
 
-# TODO: need manifest updater (from cache to local);
-# need to add ignored files (from cfg.ignored) to Manifest from scan_directory
-# for status listing;
 from __future__ import annotations
 from collections import OrderedDict
 from datetime import datetime
@@ -21,28 +19,28 @@ import typer
 import xxhash
 
 from dsg.filename_validation import validate_path
-
+from dsg.config_manager import Config
 
 SNAP_DIR: Final = ".dsg"
 FIELD_DELIM: Final = "\t"
 LINE_DELIM: Final = "\n"
-IGNORED_SUFFIXES: Final = frozenset({".pyc",})
-IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rdata",
-    ".rdata", ".RData", ".Rproj.user"})
+IGNORED_SUFFIXES: Final = frozenset({".pyc"})
+IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"})
 
 
 # ---- Models ----
+_replace_unknown = lambda s: "" if s == "__UNKNOWN__" else s
+
 
 class FileRef(BaseModel):
     type: Literal["file"]
     path: str
-    user: str
+    user: str = ""
     filesize: int
     mtime: float
-    hash: str
+    hash: str = ""
 
     def __str__(self) -> str:
-
         def _tz(t: float) -> str:
             la_tz = ZoneInfo("America/Los_Angeles")
             return datetime.fromtimestamp(t, tz=la_tz).isoformat(timespec="milliseconds")
@@ -50,10 +48,10 @@ class FileRef(BaseModel):
         data = [
             "file",
             self.path,
-            self.user,
+            self.user or "__UNKNOWN__",
             str(self.filesize),
             _tz(self.mtime),
-            self.hash,
+            self.hash or  "__UNKNOWN__",
         ]
         return FIELD_DELIM.join(data)
 
@@ -65,27 +63,26 @@ class FileRef(BaseModel):
     @classmethod
     def from_manifest_line(cls, parts: list[str]) -> "FileRef":
         if len(parts) != 6:
-            emsg = f"Expected 6 fields for FileRef, got {len(parts)}: {parts}"
-            raise ValueError(emsg)
+            raise ValueError(f"Expected 6 fields for FileRef, got {len(parts)}: {parts}")
         mtime = datetime.fromisoformat(parts[4]).timestamp()
         return cls(
             type="file",
             path=parts[1],
-            user=parts[2],
+            user=_replace_unknown(parts[2]),
             filesize=int(parts[3]),
             mtime=mtime,
-            hash=parts[5],
-        )
+            hash=_replace_unknown(parts[5]), )
 
 
 class LinkRef(BaseModel):
     type: Literal["link"]
     path: str
-    user: str
+    user: str = ""
     reference: str
 
     def __str__(self) -> str:
-        return FIELD_DELIM.join(["link", self.path, self.user, self.reference])
+        return FIELD_DELIM.join([
+            "link", self.path, self.user or "__UNKNOWN__", self.reference])
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, LinkRef):
@@ -99,7 +96,7 @@ class LinkRef(BaseModel):
         return cls(
             type="link",
             path=parts[1],
-            user=parts[2],
+            user=_replace_unknown(parts[2]),
             reference=parts[3],
         )
 
@@ -108,13 +105,25 @@ ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
 
 class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
     @model_validator(mode="after")
-    def validate_keys_match_paths(self) -> "Manifest":
+    def _validate_keys_match_paths(self) -> "Manifest":
+        """
+        Validate that each key in the manifest matches the entry.path value.
+
+        In a well-formed manifest (e.g., created by scan_directory), the key should always
+        equal entry.path. If they differ, it likely means the manifest was constructed
+        manually, tampered with, or loaded from a corrupted file.
+
+        Also filters out:
+        - Entries with invalid paths (based on validate_path)
+        - Symlinks that point to absolute paths
+        - Symlinks whose targets do not resolve to known file paths
+
+        This validator is automatically called after model instantiation and
+        should not be invoked directly.
+        """
         validated_entries = OrderedDict()
 
         for key, entry in self.root.items():
-            # key != entry.path if the manifest dict is manually constructed with a
-            # mismatched key, or if the manifest file was tampered with. Normally,
-            # scan_directory ensures key == entry.path.
             if key != entry.path:
                 raise ValueError(f"Manifest key '{key}' does not match entry.path '{entry.path}'")
             valid, msg = validate_path(entry.path)
@@ -123,7 +132,6 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
                 continue
             validated_entries[key] = entry
 
-        # Deferred validation of symlinks after collecting file refs
         resolver = lambda p: Path(p).resolve().as_posix()
         resolved_refs = {
             resolver(entry.path)
@@ -134,21 +142,14 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
         for key, entry in list(validated_entries.items()):
             if isinstance(entry, LinkRef):
                 if os.path.isabs(entry.reference):
-                    msg = (f"Skipping link '{entry.path}' with absolute reference "
-                           f"'{entry.reference}'")
-                    logger.warning(msg)
+                    logger.warning(f"Skipping link '{entry.path}' with absolute reference '{entry.reference}'")
                     validated_entries.pop(key)
                     continue
-                symlink_location = Path(entry.path)
-                resolved = resolver(symlink_location.parent / entry.reference)
+                resolved = resolver(Path(entry.path).parent / entry.reference)
                 if resolved not in resolved_refs:
-                    msg = (f"Skipping link '{entry.path}' — "
-                           f"target '{entry.reference}' does not "
-                           f"resolve to a known file in manifest")
-                    logger.warning(msg)
+                    logger.warning(f"Skipping link '{entry.path}' — target '{entry.reference}' not in manifest")
                     validated_entries.pop(key)
 
-        # Use object.__setattr__ to avoid triggering validation recursion or mutation restrictions
         object.__setattr__(self, "root", validated_entries)
         return self
 
@@ -170,10 +171,17 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
         return cls(root=entries)
 
 
+class ScanResult(BaseModel):
+    manifest: Manifest
+    ignored: list[str]
+
+
+# ---- Manifest Parsing ----
+
 def _parse_manifest_line(line: str) -> ManifestEntry:
-    parts = [p.strip() for p in line.strip().split(FIELD_DELIM) if p.strip()]
-    if not parts:
+    if not line.strip():
         raise ValueError("Empty line")
+    parts = line.strip().split(FIELD_DELIM, maxsplit=5)
     if parts[0] == "file":
         return FileRef.from_manifest_line(parts)
     elif parts[0] == "link":
@@ -188,62 +196,41 @@ def _should_skip_path(path: Path) -> bool:
     has_ignored_suffix = any(str(path).endswith(suffix) for suffix in IGNORED_SUFFIXES)
     return is_ignored_name or has_ignored_suffix
 
-
 def _is_hidden_but_not_dsg(relative: Path) -> bool:
-    for part in relative.parts:
-        if part.startswith(".") and part != SNAP_DIR:
-            return True
-    return False
-
+    return any(part.startswith(".") and part != SNAP_DIR for part in relative.parts)
 
 def _check_dsg_dir(root_path: Path) -> None:
-    root_contents = {p.name for p in root_path.iterdir()}
-    if not SNAP_DIR in root_contents:
+    if SNAP_DIR not in {p.name for p in root_path.iterdir()}:
         logger.error(f"Root directory should contain {SNAP_DIR}/")
         typer.Exit(1)
 
-
-# FIXME: _create_entry needs a cfg object with a username
-def _create_entry(path: Path, rel_path: str) -> ManifestEntry:
+def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
+    # user = cfg.user_name  # <- no bc we don't know the file's user yet
     if path.is_symlink():
         reference = os.readlink(path)
-        return LinkRef(
-            type="link",
-            path=rel_path,
-            user="bob@yoyodyne.net",
-            reference=reference)
-
+        return LinkRef(type="link", path=rel_path, user="", reference=reference)
     elif path.is_file():
         stat_info = path.stat()
-        with path.open("rb") as f:
-            file_hash = _hash_file(f)
         return FileRef(
             type="file",
             path=rel_path,
-            user="bob@yoyodyne.net",
+            user="",
             filesize=stat_info.st_size,
             mtime=stat_info.st_mtime,
-            hash=file_hash,
+            hash="",
         )
     raise ValueError(f"Unsupported path type: {path}")
 
-
-def _hash_file(file_obj: BinaryIO) -> str:
-    hasher = xxhash.xxh3_64()
-    while chunk := file_obj.read(8192):
-        hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-# FIXME: scan_directory() needs options cfg object with username
-# but it doesn't get a username in the show() context
-def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
+def scan_directory(cfg: Config, root_path: Path) -> ScanResult:
     _check_dsg_dir(root_path)
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
+    ignored_paths: list[str] = []
 
     for path in root_path.rglob("*"):
         if _should_skip_path(path):
-            logger.trace(f"Skipping ignored file or directory '{path}'")
+            relative = path.relative_to(root_path).as_posix()
+            ignored_paths.append(relative)
+            logger.trace(f"Ignored path: {relative}")
             continue
 
         try:
@@ -255,8 +242,12 @@ def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
                 logger.debug(f"Skipping hidden path '{path}'")
                 continue
 
-            if not any(part in include_dirs for part in relative.parts):
-                logger.trace(f"Skipping '{path}' (no parent dir in include_dirs)")
+            if not relative.parts:
+                logger.warning(f"Skipping unexpected root-level file: {path}")
+                continue
+
+            if relative.parts[0] not in cfg.project.data_dirs:
+                logger.trace(f"Skipping '{path}' (no parent dir in data_dirs)")
                 continue
 
             rel_path = relative.as_posix()
@@ -265,30 +256,32 @@ def scan_directory(root_path: Path, include_dirs: set[str]) -> Manifest:
                 logger.warning(f"Invalid path '{rel_path}': {msg}")
                 continue
 
-            entry = _create_entry(path, rel_path)
+            entry = _create_entry(path, rel_path, cfg)
             manifest_entries[rel_path] = entry
 
         except Exception as e:   # pragma: no cover
             logger.error(f"Error processing '{path}': {e}")
 
-    return Manifest(root=manifest_entries)
+    return ScanResult(manifest=Manifest(root=manifest_entries), ignored=ignored_paths)
 
 
 # ---- CLI ----
+
 app = typer.Typer()
 root_arg = typer.Argument(..., exists=True, file_okay=False, help="Root directory to scan")
 
 @app.command()
 def show(root_path: Path = root_arg) -> None:
-    """Print the manifest for a test directory to the console
-       in tab-delimited format."""
-    manifest = scan_directory(root_path, {"input", "output", "frozen"})  # pragma: no cover
-    for entry in manifest.root.values():                                 # pragma: no cover
-        print(entry)                                                     # pragma: no cover
-
+    cfg = Config.load()
+    result = scan_directory(cfg, root_path)  # pragma: no cover
+    for entry in result.manifest.root.values():
+        print(entry)
+    if result.ignored:
+        print("\n# Ignored paths:")
+        for p in result.ignored:
+            print(f"# {p}")
 
 if __name__ == "__main__":
     app()  # pragma: no cover
-
 
 # done.
