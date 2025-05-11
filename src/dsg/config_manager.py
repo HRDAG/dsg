@@ -91,7 +91,8 @@ class Config(BaseModel):
         return config
 
 
-def validate_config() -> list[str]:
+def validate_config(check_backend: bool = False) -> list[str]:
+
     """Return a list of validation errors. Empty list means config is valid."""
     errors = []
 
@@ -118,11 +119,16 @@ def validate_config() -> list[str]:
         combined["project"] = project_data
         combined["project_root"] = project_config_path.parent.parent
 
-        Config.model_validate(combined)
+        cfg = Config.model_validate(combined)
 
     except Exception as e:
         errors.append(str(e))
 
+    if check_backend:
+        from dsg.backends import can_access_backend
+        ok, msg = can_access_backend(cfg)
+        if not ok:
+            errors.append(msg)
     return errors
 
 
