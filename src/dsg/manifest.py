@@ -4,6 +4,9 @@
 # Copyright: HRDAG 2025 GPL-2 or newer
 # dsg/src/dsg/manifest.py
 
+# TODO: need manifest updater (from cache to local);
+# need to add ignored files (from cfg.ignored) to Manifest from scan_directory
+# for status listing;
 from __future__ import annotations
 from collections import OrderedDict
 from datetime import datetime
