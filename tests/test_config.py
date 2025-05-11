@@ -95,7 +95,7 @@ def test_missing_project_config_exits(tmp_path, monkeypatch):
     ("project", "host"),
     ("project", "repo_path"),
     ("project", "data_dirs"),
-    ("project", "ignored_paths"),
+    # ("project", "ignored_paths"),
 ])
 def test_missing_required_fields(config_files, section, field):
     user_cfg_path = config_files["user_cfg"]
@@ -148,7 +148,6 @@ def test_validate_config_missing_project_config(config_files, monkeypatch):
     ("project", "host", 99.9),
     ("project", "repo_path", False),
     ("project", "data_dirs", "not-a-list"),
-    ("project", "ignored_paths", {"unexpected": 1}),
 ])
 def test_validate_config_bad_types(config_files, monkeypatch, section, field, bad_value):
     from dsg.config_manager import validate_config
@@ -219,6 +218,18 @@ def test_validate_config_backend_check_remote_ssh_success(config_files, monkeypa
     errors = validate_config(check_backend=True)
     assert errors == []
 
+def test_project_config_defaults_ignored_paths(config_files, monkeypatch):
+    from dsg.config_manager import Config
+    project_cfg_path = config_files["project_cfg"]
+
+    # Remove the field
+    data = yaml.safe_load(project_cfg_path.read_text())
+    data.pop("ignored_paths", None)
+    project_cfg_path.write_text(yaml.dump(data))
+
+    monkeypatch.chdir(config_files["project_root"])
+    cfg = Config.load()
+    assert cfg.project.ignored_paths == set()
 
 def test_validate_config_backend_check_remote_ssh_failure(config_files, monkeypatch):
     from dsg.config_manager import validate_config

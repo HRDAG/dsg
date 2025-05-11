@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Optional, Set, Literal, Final
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import (BaseModel, EmailStr,
+    Field, model_validator, PrivateAttr)
 from typer import Exit
 
 
@@ -59,17 +60,34 @@ def find_project_config_path(start: Path | None = None) -> Path:
 
 class ProjectConfig(BaseModel):
     repo_name: str
-    ignored_paths: Set[str]
-    data_dirs: Set[str]
+    data_dirs: set[str]
     host: str
     repo_path: Path
     repo_type: Literal["zfs", "xfs"]
 
+    ignored_paths: set[str] = Field(default_factory=set)
+    ignored_names: set[str] = Field(default_factory=lambda: {
+        "__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"
+    })
+    ignored_suffixes: set[str] = Field(default_factory=lambda: {".pyc"})
+
+    # Derived fields (not part of YAML schema)
+    _ignored_exact: set[PurePosixPath] = PrivateAttr(default_factory=set)
+    _ignored_prefixes: set[PurePosixPath] = PrivateAttr(default_factory=set)
+
     @model_validator(mode="after")
     def normalize_paths(self) -> "ProjectConfig":
-        # Remove trailing slashes from data_dirs and ignored_paths
         self.data_dirs = {d.rstrip("/") for d in self.data_dirs}
-        self.ignored_paths = {p.rstrip("/") for p in self.ignored_paths}
+
+        self._ignored_exact = set()
+        self._ignored_prefixes = set()
+        for s in self.ignored_paths:
+            p = PurePosixPath(s.rstrip("/"))
+            if s.endswith("/"):
+                self._ignored_prefixes.add(p)
+            else:
+                self._ignored_exact.add(p)
+
         return self
 
 

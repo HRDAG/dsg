@@ -8,7 +8,7 @@
 from __future__ import annotations
 from collections import OrderedDict
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import os
 from typing import Annotated, Union, Literal, Final, BinaryIO
 from zoneinfo import ZoneInfo
@@ -173,7 +173,7 @@ class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
 
 class ScanResult(BaseModel):
     manifest: Manifest
-    ignored: list[str]
+    ignored: list[str] = list()
 
 
 # ---- Manifest Parsing ----
@@ -196,16 +196,20 @@ def _should_skip_path(path: Path) -> bool:
     has_ignored_suffix = any(str(path).endswith(suffix) for suffix in IGNORED_SUFFIXES)
     return is_ignored_name or has_ignored_suffix
 
+
 def _is_hidden_but_not_dsg(relative: Path) -> bool:
     return any(part.startswith(".") and part != SNAP_DIR for part in relative.parts)
+
 
 def _check_dsg_dir(root_path: Path) -> None:
     if SNAP_DIR not in {p.name for p in root_path.iterdir()}:
         logger.error(f"Root directory should contain {SNAP_DIR}/")
-        typer.Exit(1)
+        raise typer.Exit(1)
+
 
 def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
     # user = cfg.user_name  # <- no bc we don't know the file's user yet
+    logger.debug(f"Creating entry for {rel_path} (is_symlink={path.is_symlink()}, is_file={path.is_file()})")
     if path.is_symlink():
         reference = os.readlink(path)
         return LinkRef(type="link", path=rel_path, user="", reference=reference)
@@ -221,48 +225,58 @@ def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
         )
     raise ValueError(f"Unsupported path type: {path}")
 
+
 def scan_directory(cfg: Config, root_path: Path) -> ScanResult:
     _check_dsg_dir(root_path)
     manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
-    ignored_paths: list[str] = []
+    ignored: list[str] = []
 
     for path in root_path.rglob("*"):
-        if _should_skip_path(path):
-            relative = path.relative_to(root_path).as_posix()
-            ignored_paths.append(relative)
-            logger.trace(f"Ignored path: {relative}")
-            continue
-
         try:
-            if not (path.is_file() or path.is_symlink()):
-                continue
-
             relative = path.relative_to(root_path)
+
             if _is_hidden_but_not_dsg(relative):
                 logger.debug(f"Skipping hidden path '{path}'")
                 continue
 
-            if not relative.parts:
-                logger.warning(f"Skipping unexpected root-level file: {path}")
-                continue
-
-            if relative.parts[0] not in cfg.project.data_dirs:
+            if not any(part in cfg.project.data_dirs for part in relative.parts):
                 logger.trace(f"Skipping '{path}' (no parent dir in data_dirs)")
                 continue
 
-            rel_path = relative.as_posix()
-            valid, msg = validate_path(rel_path)
-            if not valid:
-                logger.warning(f"Invalid path '{rel_path}': {msg}")
+            posix_rel = relative.as_posix()
+            if PurePosixPath(posix_rel) in cfg.project._ignored_paths:
+                logger.debug(f"Explicitly ignored path: {posix_rel}")
+                ignored.append(posix_rel)
                 continue
 
-            entry = _create_entry(path, rel_path, cfg)
-            manifest_entries[rel_path] = entry
+            if path.name in cfg.project.ignored_names:
+                logger.debug(f"Ignored name: {path}")
+                ignored.append(posix_rel)
+                continue
 
-        except Exception as e:   # pragma: no cover
+            if any(path.name.endswith(suffix) for suffix in cfg.project.ignored_suffixes):
+                logger.debug(f"Ignored suffix: {path}")
+                ignored.append(posix_rel)
+                continue
+
+            if not (path.is_file() or path.is_symlink()):
+                continue
+
+            valid, msg = validate_path(posix_rel)
+            if not valid:
+                logger.warning(f"Invalid path '{posix_rel}': {msg}")
+                continue
+
+            entry = _create_entry(path, posix_rel, cfg)
+            logger.debug(f"scandir got this entry: {entry}")
+            manifest_entries[posix_rel] = entry
+
+        except Exception as e:
             logger.error(f"Error processing '{path}': {e}")
 
-    return ScanResult(manifest=Manifest(root=manifest_entries), ignored=ignored_paths)
+    manifest = Manifest(root=manifest_entries)
+    return ScanResult(manifest=manifest, ignored=ignored)
+
 
 
 # ---- CLI ----
@@ -271,9 +285,9 @@ app = typer.Typer()
 root_arg = typer.Argument(..., exists=True, file_okay=False, help="Root directory to scan")
 
 @app.command()
-def show(root_path: Path = root_arg) -> None:
+def show(root_path: Path = root_arg) -> None:  # pragma: no cover
     cfg = Config.load()
-    result = scan_directory(cfg, root_path)  # pragma: no cover
+    result = scan_directory(cfg, root_path)
     for entry in result.manifest.root.values():
         print(entry)
     if result.ignored:
