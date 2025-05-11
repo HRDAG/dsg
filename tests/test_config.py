@@ -6,14 +6,16 @@
 # ------
 # dsg/tests/test_config_manager.py
 
-import pytest
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from unittest.mock import patch
 import yaml
+
+import pytest
 import typer
 
 from dsg.config_manager import (
-    Config, find_user_config_path
+    Config, ProjectConfig, find_user_config_path
 )
 
 
@@ -218,6 +220,18 @@ def test_validate_config_backend_check_remote_ssh_success(config_files, monkeypa
     errors = validate_config(check_backend=True)
     assert errors == []
 
+def test_project_config_ignored_path_split():
+    cfg = ProjectConfig(
+        repo_name="demo",
+        repo_type="zfs",
+        host="scott",
+        repo_path=Path("/tmp/repo"),
+        data_dirs={"input"},
+        ignored_paths={"logs/", "tempfile.log"},
+    )
+    assert PurePosixPath("logs") in cfg._ignored_prefixes
+    assert PurePosixPath("tempfile.log") in cfg._ignored_exact
+
 def test_project_config_defaults_ignored_paths(config_files, monkeypatch):
     from dsg.config_manager import Config
     project_cfg_path = config_files["project_cfg"]
@@ -239,5 +253,34 @@ def test_validate_config_backend_check_remote_ssh_failure(config_files, monkeypa
     errors = validate_config(check_backend=True)
     assert errors
     assert "remote host" in errors[0].lower()
+
+def test_config_loads_all_ignored_types(tmp_path):
+    project_dir = tmp_path / "KO"
+    project_dir.mkdir()
+    dsg_dir = project_dir / ".dsg"
+    dsg_dir.mkdir()
+    (dsg_dir / "config.yml").write_text(yaml.dump({
+        "repo_name": "KO",
+        "repo_type": "zfs",
+        "host": "scott",
+        "repo_path": str(project_dir),
+        "data_dirs": ["input"],
+        "ignored_paths": ["ignoreme/", "specific_file.txt"],
+        "ignored_names": [".DS_Store", ".Thumbs.db"],
+        "ignored_suffixes": [".bak", ".log"],
+    }))
+    user_cfg = tmp_path / "user.yml"
+    user_cfg.write_text(yaml.dump({
+        "user_name": "Joe",
+        "user_id": "joe@example.org",
+    }))
+    with patch("dsg.config_manager.find_user_config_path", return_value=user_cfg), \
+         patch("dsg.config_manager.find_project_config_path", return_value=dsg_dir / "config.yml"):
+        cfg = Config.load()
+
+    assert PurePosixPath("ignoreme") in cfg.project._ignored_prefixes
+    assert PurePosixPath("specific_file.txt") in cfg.project._ignored_exact
+    assert ".DS_Store" in cfg.project.ignored_names
+    assert ".log" in cfg.project.ignored_suffixes
 
 # done.

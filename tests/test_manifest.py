@@ -6,12 +6,15 @@
 
 from collections import OrderedDict
 from datetime import datetime
+import logging
 import os
 from pathlib import Path
 import re
 import socket
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from loguru import logger
 import pytest
 import typer
 
@@ -82,6 +85,19 @@ def link_refs() -> dict[str, LinkRef]:
         "d": LinkRef(type="link", path="b.lnk", user="u", reference="target.txt"),
     }
 
+@pytest.fixture(autouse=True)
+def loguru_caplog(caplog):
+    """
+    Bridge loguru logs to pytest's caplog.
+    """
+    class PropagateHandler(logging.Handler):
+        def emit(self, record):
+            logging.getLogger(record.name).handle(record)
+
+    logger.remove()  # Remove default handlers
+    logger.add(PropagateHandler(), format="{message}", level="DEBUG")
+    yield
+    logger.remove()  # Clean up after the test
 # ---- Tests ----
 
 @pytest.mark.parametrize("key1, key2, expected_equal", [
@@ -256,6 +272,18 @@ def test_should_skip_path(name, expected):
     result = _should_skip_path(path)
     assert result == expected, f"Unexpected result for {name}: {result}"
 
+def test_scan_directory_handles_create_entry_failure(example_directory_structure, example_cfg, caplog):
+    # Patch _create_entry to raise an exception
+    with patch("dsg.manifest._create_entry", side_effect=RuntimeError("simulated failure")):
+        result = scan_directory(example_cfg, example_directory_structure)
+
+    # Nothing should be in the manifest
+    assert result.manifest.root == OrderedDict()
+
+    # We should see our error message in the logs
+    error_lines = [record.message for record in caplog.records if "simulated failure" in record.message]
+    assert any("Error processing" in line for line in error_lines)
+
 def test_scan_directory_from_fixture(example_directory_structure, example_cfg):
     result = scan_directory(example_cfg, example_directory_structure)
     manifest = result.manifest
@@ -264,6 +292,7 @@ def test_scan_directory_from_fixture(example_directory_structure, example_cfg):
 def test_scan_directory_respects_ignored_paths(example_directory_structure, example_cfg):
     # Add 'input/pdfs/' to ignored_paths
     example_cfg.project.ignored_paths.add("input/pdfs/")
+    example_cfg.project = ProjectConfig.model_validate(example_cfg.project.model_dump())
     result = scan_directory(example_cfg, example_directory_structure)
     keys = set(result.manifest.root.keys())
     assert not any(k.startswith("input/pdfs/") for k in keys)
@@ -314,5 +343,31 @@ def test_manifest_round_trip_from_dsg_dir(example_directory_structure: Path, exa
         f"Unexpected: {actual_keys - expected_keys}"
     )
 
+def test_ignored_path_skips_all(example_directory_structure: Path, example_cfg: Config):
+    # Add ignored path to config
+    example_cfg.project.ignored_paths.add("input/dir/")
+    example_cfg.project.normalize_paths()
+
+    dir_path = example_directory_structure / "input" / "dir"
+    dir_path.mkdir(parents=True)
+    (dir_path / "file1.txt").write_text("hello")
+    (dir_path / "subdir").mkdir()
+    (dir_path / "subdir" / "file2.txt").write_text("hello again")
+
+    result = scan_directory(example_cfg, example_directory_structure)
+    assert all(not k.startswith("input/dir/") for k in result.manifest.root)
+
+
+def test_name_and_suffix_rules(example_directory_structure: Path, example_cfg: Config):
+    input_dir = example_directory_structure / "input"
+    (input_dir / ".Rdata").write_text("should be ignored")
+    (input_dir / "file.Rdata").write_text("should be included")
+    (input_dir / "file.pyc").write_text("should be ignored")
+
+    result = scan_directory(example_cfg, example_directory_structure)
+    keys = set(result.manifest.root)
+    assert "input/file.Rdata" in keys
+    assert "input/.Rdata" not in keys
+    assert not any(k.endswith(".pyc") for k in keys)
 
 # done.

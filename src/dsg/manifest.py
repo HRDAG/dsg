@@ -228,54 +228,42 @@ def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
 
 def scan_directory(cfg: Config, root_path: Path) -> ScanResult:
     _check_dsg_dir(root_path)
-    manifest_entries: OrderedDict[str, ManifestEntry] = OrderedDict()
+
+    entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
 
-    for path in root_path.rglob("*"):
-        try:
-            relative = path.relative_to(root_path)
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        path = Path(dirpath)
 
-            if _is_hidden_but_not_dsg(relative):
-                logger.debug(f"Skipping hidden path '{path}'")
+        # Skip hidden paths and paths outside of data_dirs
+        if _is_hidden_but_not_dsg(path.relative_to(root_path)):
+            continue
+
+        relative_dir = path.relative_to(root_path)
+        for filename in filenames:
+            full_path = path / filename
+            relative_path = full_path.relative_to(root_path)
+            posix_path = PurePosixPath(relative_path)
+
+            # --- IGNORED CHECKS ---
+            if (
+                posix_path in cfg.project._ignored_exact or
+                any(posix_path.is_relative_to(prefix) for prefix in cfg.project._ignored_prefixes) or
+                filename in cfg.project.ignored_names or
+                full_path.suffix in cfg.project.ignored_suffixes
+            ):
+                ignored.append(str(posix_path))
                 continue
 
-            if not any(part in cfg.project.data_dirs for part in relative.parts):
-                logger.trace(f"Skipping '{path}' (no parent dir in data_dirs)")
-                continue
+            # --- TRY TO CREATE ENTRY ---
+            try:
+                entry = _create_entry(full_path, str(posix_path), cfg)
+                entries[str(posix_path)] = entry
+            except Exception as e:
+                logger.error(f"Error processing {full_path}: {e}")
 
-            posix_rel = relative.as_posix()
-            if PurePosixPath(posix_rel) in cfg.project._ignored_paths:
-                logger.debug(f"Explicitly ignored path: {posix_rel}")
-                ignored.append(posix_rel)
-                continue
+    return ScanResult(manifest=Manifest(root=entries), ignored=ignored)
 
-            if path.name in cfg.project.ignored_names:
-                logger.debug(f"Ignored name: {path}")
-                ignored.append(posix_rel)
-                continue
-
-            if any(path.name.endswith(suffix) for suffix in cfg.project.ignored_suffixes):
-                logger.debug(f"Ignored suffix: {path}")
-                ignored.append(posix_rel)
-                continue
-
-            if not (path.is_file() or path.is_symlink()):
-                continue
-
-            valid, msg = validate_path(posix_rel)
-            if not valid:
-                logger.warning(f"Invalid path '{posix_rel}': {msg}")
-                continue
-
-            entry = _create_entry(path, posix_rel, cfg)
-            logger.debug(f"scandir got this entry: {entry}")
-            manifest_entries[posix_rel] = entry
-
-        except Exception as e:
-            logger.error(f"Error processing '{path}': {e}")
-
-    manifest = Manifest(root=manifest_entries)
-    return ScanResult(manifest=manifest, ignored=ignored)
 
 
 
