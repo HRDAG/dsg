@@ -106,6 +106,11 @@ def test_parse_manifest_line_empty_line_raises():
     with pytest.raises(ValueError, match="Empty line"):
         _parse_manifest_line("")
 
+def test_parse_manifest_line_unknown_type_raises():
+    line = "banana\tpath/to/file.txt\tuser\t123\t2025-05-10T12:34:56.789-07:00\thash"
+    with pytest.raises(ValueError, match=r"Unknown type: banana"):
+        _parse_manifest_line(line)
+
 def test_file_ref_from_manifest_line():
     iso = "2024-05-01T12:34:56.789"
     mtime = datetime.fromisoformat(iso).timestamp()
