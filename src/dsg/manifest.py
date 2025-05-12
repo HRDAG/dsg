@@ -16,7 +16,6 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, RootModel, model_validator
 from loguru import logger
 import typer
-import xxhash
 
 from dsg.filename_validation import validate_path
 from dsg.config_manager import Config
@@ -60,13 +59,14 @@ class FileRef(BaseModel):
             return False
         return self.path == other.path and self.hash == other.hash
 
-    def eq_time_size(self, other: FileRef, tolerance: float = 1.0) -> bool:
+    def eq_shallow(self, other: FileRef, tolerance: float = 1.0) -> bool:
         """Return True if size and mtime match (within tolerance in seconds)."""
         if not isinstance(other, FileRef):
             return False
+        path_match = self.path == other.path
         size_match = self.filesize == other.filesize
         time_match = abs(self.mtime - other.mtime) <= tolerance
-        return size_match and time_match
+        return path_match and size_match and time_match
 
     @classmethod
     def from_manifest_line(cls, parts: list[str]) -> "FileRef":
@@ -96,6 +96,9 @@ class LinkRef(BaseModel):
         if not isinstance(other, LinkRef):
             return False
         return self.path == other.path and self.reference == other.reference
+
+    def eq_shallow(self, other: LinkRef) -> bool:
+        return self == other
 
     @classmethod
     def from_manifest_line(cls, parts: list[str]) -> "LinkRef":

@@ -120,17 +120,36 @@ def test_file_link_ne(file_refs, link_refs):
     assert link_refs['a'] != file_refs['a']
     assert file_refs['a'] != link_refs['a']
 
-def test_file_ref_eq_time_size():
-    ref1 = FileRef(type="file", path="x", user="u", filesize=100, mtime=1000.0, hash="aaa")
-    ref2 = FileRef(type="file", path="x", user="u", filesize=100, mtime=1000.8, hash="bbb")  # different hash
-    ref3 = FileRef(type="file", path="x", user="u", filesize=999, mtime=1000.8, hash="bbb")
-    # Same size, mtime within 1s → match
-    assert ref1.eq_time_size(ref2)
-    # Size differs → no match
-    assert not ref1.eq_time_size(ref3)
-    # mtime differs too much
-    far = FileRef(type="file", path="x", user="u", filesize=100, mtime=1005.0, hash="aaa")
-    assert not ref1.eq_time_size(far)
+def test_file_ref_eq_shallow():
+    # Same path, same size, mtime within 1 second
+    a = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
+    b = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.5, hash="xyz")
+    assert a.eq_shallow(b)
+    # Size mismatch
+    c = FileRef(type="file", path="a.txt", user="u", filesize=101, mtime=1000.0, hash="abc")
+    assert not a.eq_shallow(c)
+    # mtime > 1s diff
+    d = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1002.0, hash="abc")
+    assert not a.eq_shallow(d)
+    # Path mismatch
+    e = FileRef(type="file", path="b.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
+    assert not a.eq_shallow(e)
+
+def test_link_ref_eq_shallow():
+    a = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
+    b = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
+    c = LinkRef(type="link", path="a.lnk", user="u", reference="other.txt")
+    d = LinkRef(type="link", path="b.lnk", user="u", reference="target.txt")
+    assert a.eq_shallow(b)
+    assert not a.eq_shallow(c)
+    assert not a.eq_shallow(d)
+
+def test_ref_not_eq_shallow():
+    a = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
+    e = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
+    assert not a.eq_shallow(e)
+    assert not e.eq_shallow(a)
+
 
 def test_parse_manifest_line_empty_line_raises():
     with pytest.raises(ValueError, match="Empty line"):

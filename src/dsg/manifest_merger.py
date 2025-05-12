@@ -17,11 +17,14 @@ synchronization decisions such as upload, delete, conflict resolution, or no-op.
 See issue #13 for a full description of each SyncState.
 """
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from dataclasses import field
+from pathlib import Path
 
-from .xs_manifest import Manifest
+import xxhash
+
+from dsg.manifest import Manifest, FileRef, LinkRef
+from dsg.config_manager import Config
 
 
 class SyncState(Enum):
@@ -95,5 +98,73 @@ class ManifestMerger:
 
     def get_sync_states(self) -> OrderedDict[str, SyncState]:
         return self.path_states
+
+
+class ComparisonState(Enum):
+    IDENTICAL = "identical"
+    CHANGED = "changed"
+    NEW = "new"
+    GONE = "gone"
+
+
+@dataclass(frozen=True)
+class ComparisonResult:
+    state: ComparisonState
+
+
+class LocalVsLastComparator:
+    def __init__(self, cfg: Config, last_manifest_path: Path):
+        self.cfg = cfg
+        self.project_root = cfg.project_root
+        self.local_manifest = Manifest.scan_directory(cfg, self.project_root).manifest
+        self.last_manifest = Manifest.from_file(last_manifest_path)
+        self.results: dict[str, ComparisonResult] = {}
+
+    def compare(self) -> dict[str, ComparisonResult]:
+        last = self.last_manifest.root
+        local = self.local_manifest.root
+        all_keys = set(last.keys()) | set(local.keys())
+        results: dict[str, ComparisonResult] = {}
+
+        for path in sorted(all_keys):
+            local_entry = local.get(path)
+            last_entry = last.get(path)
+
+            if local_entry and not last_entry:
+                results[path] = ComparisonResult(ComparisonState.NEW)
+            elif not local_entry and last_entry:
+                results[path] = ComparisonResult(ComparisonState.GONE)
+            elif local_entry == last_entry:
+                results[path] = ComparisonResult(ComparisonState.IDENTICAL)
+            elif (
+                isinstance(local_entry, FileRef)
+                and isinstance(last_entry, FileRef)
+                and local_entry.eq_shallow(last_entry)
+            ):
+                results[path] = ComparisonResult(ComparisonState.IDENTICAL)
+            else:
+                results[path] = ComparisonResult(ComparisonState.CHANGED)
+
+        self.results = results
+        return results
+
+        def _hash_needed_entries(self, doit: bool = True) -> None:
+            for path, result in self.results.items():
+                if result.state not in {ComparisonState.CHANGED, ComparisonState.NEW}:
+                    continue
+                entry = self.local_manifest.root.get(path)
+                if not isinstance(entry, FileRef):
+                    continue
+                needs_hash = entry.hash in (None, "__UNKNOWN__")
+                if doit and needs_hash:
+                    entry.hash = self._hash(entry)
+
+        def _hash(self, entry: FileRef) -> str:
+            h = xxhash.xxh3_64()
+            full_path = self.project_root / entry.path
+            with full_path.open("rb") as f:
+                while chunk := f.read(8192):
+                    h.update(chunk)
+            return h.hexdigest()
 
 # done.
