@@ -60,6 +60,14 @@ class FileRef(BaseModel):
             return False
         return self.path == other.path and self.hash == other.hash
 
+    def eq_time_size(self, other: FileRef, tolerance: float = 1.0) -> bool:
+        """Return True if size and mtime match (within tolerance in seconds)."""
+        if not isinstance(other, FileRef):
+            return False
+        size_match = self.filesize == other.filesize
+        time_match = abs(self.mtime - other.mtime) <= tolerance
+        return size_match and time_match
+
     @classmethod
     def from_manifest_line(cls, parts: list[str]) -> "FileRef":
         if len(parts) != 6:
