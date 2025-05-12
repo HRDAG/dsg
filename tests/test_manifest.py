@@ -124,13 +124,10 @@ def test_file_ref_eq_time_size():
     ref1 = FileRef(type="file", path="x", user="u", filesize=100, mtime=1000.0, hash="aaa")
     ref2 = FileRef(type="file", path="x", user="u", filesize=100, mtime=1000.8, hash="bbb")  # different hash
     ref3 = FileRef(type="file", path="x", user="u", filesize=999, mtime=1000.8, hash="bbb")
-
     # Same size, mtime within 1s → match
     assert ref1.eq_time_size(ref2)
-
     # Size differs → no match
     assert not ref1.eq_time_size(ref3)
-
     # mtime differs too much
     far = FileRef(type="file", path="x", user="u", filesize=100, mtime=1005.0, hash="aaa")
     assert not ref1.eq_time_size(far)
