@@ -229,12 +229,20 @@ def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
         return FileRef(
             type="file",
             path=rel_path,
-            user="",
+            user="__UNKNOWN__",
             filesize=stat_info.st_size,
             mtime=stat_info.st_mtime,
-            hash="",
+            hash="__UNKNOWN__",
         )
     raise ValueError(f"Unsupported path type: {path}")
+
+
+def hash_file(path: Path) -> str:
+    h = xxhash.xxh3_64()
+    with path.open("rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def scan_directory(cfg: Config, root_path: Path) -> ScanResult:

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import xxhash
 
-from dsg.manifest import Manifest, FileRef, LinkRef
+from dsg.manifest import (Manifest, FileRef, LinkRef, scan_directory, hash_file)
 from dsg.config_manager import Config
 
 
@@ -113,10 +113,12 @@ class ComparisonResult:
 
 
 class LocalVsLastComparator:
-    def __init__(self, cfg: Config, last_manifest_path: Path):
+    def __init__(self, cfg: Config):
         self.cfg = cfg
         self.project_root = cfg.project_root
-        self.local_manifest = Manifest.scan_directory(cfg, self.project_root).manifest
+        # Derive last_manifest_path from config
+        last_manifest_path = self.project_root / ".dsg" / "last.manifest"
+        self.local_manifest = scan_directory(cfg, self.project_root).manifest
         self.last_manifest = Manifest.from_file(last_manifest_path)
         self.results: dict[str, ComparisonResult] = {}
 
@@ -149,6 +151,7 @@ class LocalVsLastComparator:
         return results
 
         def _hash_needed_entries(self, doit: bool = True) -> None:
+            """Hash entries that need it (those marked with __UNKNOWN__)."""
             for path, result in self.results.items():
                 if result.state not in {ComparisonState.CHANGED, ComparisonState.NEW}:
                     continue
@@ -157,14 +160,7 @@ class LocalVsLastComparator:
                     continue
                 needs_hash = entry.hash in (None, "__UNKNOWN__")
                 if doit and needs_hash:
-                    entry.hash = self._hash(entry)
-
-        def _hash(self, entry: FileRef) -> str:
-            h = xxhash.xxh3_64()
-            full_path = self.project_root / entry.path
-            with full_path.open("rb") as f:
-                while chunk := f.read(8192):
-                    h.update(chunk)
-            return h.hexdigest()
+                    full_path = self.project_root / entry.path
+                    entry.hash = hash_file(full_path)
 
 # done.

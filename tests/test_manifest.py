@@ -288,6 +288,53 @@ def test_create_entry_unsupported_socket(tmp_path: Path, example_cfg):
         s.close()
         socket_path.unlink(missing_ok=True)
 
+def test_create_entry(example_cfg, example_directory_structure):
+    """Test _create_entry returns entries with correct initial values."""
+    # Use files from the example directory structure
+    project_root = example_directory_structure
+
+    # Test a regular file
+    file_path = project_root / "input" / "keepme.txt"
+    file_rel_path = "input/keepme.txt"
+
+    # Create and test file entry
+    file_entry = _create_entry(file_path, file_rel_path, example_cfg)
+
+    assert isinstance(file_entry, FileRef)
+    assert file_entry.path == file_rel_path
+    assert file_entry.user == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
+    assert file_entry.filesize == file_path.stat().st_size
+    assert file_entry.hash == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
+
+    # Create a symlink for testing
+    link_path = project_root / "input" / "link_to_keepme.txt"
+    os.symlink("keepme.txt", link_path)
+    link_rel_path = "input/link_to_keepme.txt"
+
+    # Create and test symlink entry
+    link_entry = _create_entry(link_path, link_rel_path, example_cfg)
+
+    assert isinstance(link_entry, LinkRef)
+    assert link_entry.path == link_rel_path
+    assert link_entry.user == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
+    assert link_entry.reference == "keepme.txt"
+
+    # Test a nested file
+    nested_file_path = project_root / "input" / "pdfs" / "script.R"
+    nested_file_rel_path = "input/pdfs/script.R"
+
+        # Create and test nested file entry
+        nested_file_entry = _create_entry(nested_file_path, nested_file_rel_path, example_cfg)
+
+        assert isinstance(nested_file_entry, FileRef)
+        assert nested_file_entry.path == nested_file_rel_path
+        assert nested_file_entry.user == "__UNKNOWN__"
+        assert nested_file_entry.filesize == nested_file_path.stat().st_size
+        assert nested_file_entry.hash == "__UNKNOWN__"
+
+        # Clean up the symlink
+        os.unlink(link_path)
+
 @pytest.mark.parametrize("name, expected", [
     ("__pycache__", True),
     (".RData", True),
