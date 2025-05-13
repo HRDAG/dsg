@@ -24,7 +24,7 @@ from typer import Exit
 USER_CFG: Final = "dsg.yml"
 PROJECT_CFG: Final = "config.yml"
 PROJECT_CONFIG_FILENAME: Final = Path(".dsg") / PROJECT_CFG
-
+DEFAULT_DATA_DIRS: Final = {'input', 'output', 'frozen'}
 
 # ---- Config Finders ----
 
@@ -60,7 +60,7 @@ def find_project_config_path(start: Path | None = None) -> Path:
 
 class ProjectConfig(BaseModel):
     repo_name: str
-    data_dirs: set[str] = {'input', 'output', 'frozen'}
+    data_dirs: set[str] = DEFAULT_DATA_DIRS
     host: str
     repo_path: Path
     repo_type: Literal["zfs", "xfs"]
@@ -95,7 +95,7 @@ class ProjectConfig(BaseModel):
         # Start with default values
         params = {
             "repo_name": "temp",
-            "data_dirs": {'input', 'output', 'frozen'},
+            "data_dirs": DEFAULT_DATA_DIRS,
             "host": "localhost",
             "repo_path": root_path,
             "repo_type": "xfs"

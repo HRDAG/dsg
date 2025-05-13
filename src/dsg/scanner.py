@@ -34,10 +34,6 @@ def manifest_from_scan_result(scan_result: ScanResult) -> Manifest:
 
 
 def scan_directory(cfg: Config) -> ScanResult:
-    """Scan directory based on configuration"""
-    if not cfg.project:
-        raise ValueError("Project configuration is required for scanning")
-
     return _scan_directory_internal(
         root_path=cfg.project_root,
         ignored_exact=cfg.project._ignored_exact,

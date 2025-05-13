@@ -6,7 +6,7 @@
 #
 # ------
 
-import os
+from collections import OrderedDict
 import pytest
 from pathlib import Path, PurePosixPath
 
@@ -14,9 +14,12 @@ from dsg.scanner import (
     _is_hidden_path,
     _is_dsg_path,
     _should_ignore_path,
-    scan_directory
+    scan_directory,
+    scan_directory_no_cfg,
+    manifest_from_scan_result,
+    ScanResult
 )
-# from dsg.manifest import Manifest, FileRef, LinkRef
+from dsg.manifest import FileRef, Manifest
 from dsg.config_manager import Config, ProjectConfig
 
 
@@ -239,8 +242,9 @@ class TestHelperFunctions:
         )
 
 class TestScanDirectory:
+    """Tests for the scan_directory function"""
+
     def test_basic_scan(self, test_project_structure, project_config):
-        """Test scanning a basic project structure"""
         project_root = test_project_structure["root"]
 
         config = Config(
@@ -261,30 +265,68 @@ class TestScanDirectory:
             "individual/ABC/export/output/results/phase1/summary.txt",
             "standard/frozen/archive.zip",
             "standard/frozen/2023/q2/snapshot.csv",
-            ".dsg/config.yml"
+            ".dsg/config.yml"  # Ensure .dsg files are included
         ]
 
         expected_excluded_paths = [
-            # Hidden files and directories
             ".hidden/hidden.txt",
             "individual/ABC/import/input/.extra_hidden/hidden_config.json",
             "individual/ABC/import/input/.extra_hidden/notes.txt",
-            # Files with ignored suffixes
-            "individual/ABC/export/output/temp.pyc",
+            "individual/ABC/export/output/temp.pyc"
         ]
 
         result = scan_directory(config)
+
         actual_paths = set(result.manifest.entries.keys())
         actual_ignored = set(result.ignored)
 
-        # Verify expected files are included
         for path in expected_included_paths:
             assert path in actual_paths, f"Expected {path} to be included but wasn't"
 
-        # Verify expected files are excluded
         for path in expected_excluded_paths:
             assert path not in actual_paths, f"Expected {path} to be excluded but was included"
-            # For known ignored paths, check they're in the ignored list
-            if not path.startswith("."):  # Hidden files might be skipped before adding to ignored
-                if path.endswith(".pyc"):  # We know .pyc files should be in ignored list
-                    assert path in actual_ignored, f"Expected {path} to be in ignored list but wasn't"
+
+        assert "individual/ABC/export/output/temp.pyc" in actual_ignored
+        assert isinstance(result.manifest, Manifest)
+        assert len(result.manifest.entries) >= len(expected_included_paths)
+
+    def test_scan_directory_no_cfg(self, test_project_structure):
+        project_root = test_project_structure["root"]
+        result = scan_directory_no_cfg(project_root)
+
+        assert isinstance(result, ScanResult)
+        assert isinstance(result.manifest, Manifest)
+        assert len(result.manifest.entries) > 0
+
+        assert "individual/ABC/import/input/data.csv" in result.manifest.entries
+        assert ".dsg/config.yml" in result.manifest.entries  # .dsg files should be included
+        assert "individual/ABC/export/output/temp.pyc" not in result.manifest.entries
+        assert "individual/ABC/export/output/temp.pyc" in result.ignored
+
+    def test_manifest_from_scan_result(self, test_project_structure):
+        # Create a simple ScanResult with a manifest
+        entries = OrderedDict()
+        test_entry = FileRef(
+            type="file",
+            path="test/file.txt",
+            filesize=100,
+            mtime="2023-05-15T12:30:00-07:00"
+        )
+        entries["test/file.txt"] = test_entry
+
+        original_manifest = Manifest(entries=entries)
+        scan_result = ScanResult(
+            manifest=original_manifest,
+            ignored=["ignored/file.txt"]
+        )
+
+        # Call the function being tested
+        result_manifest = manifest_from_scan_result(scan_result)
+
+        # Verify it correctly copied the entries
+        assert isinstance(result_manifest, Manifest)
+        assert len(result_manifest.entries) == 1
+        assert "test/file.txt" in result_manifest.entries
+        assert result_manifest.entries["test/file.txt"] is original_manifest.entries["test/file.txt"]
+
+# done.
