@@ -18,7 +18,10 @@ dependencies = [
 [tool.poetry]
 packages = [{include = "dsg", from = "src"}]
 
-[tool.poetry.scripts]
+[project.scripts]
+dsg = "dsg.cli:main"
+
+# [tool.poetry.scripts]
 # pdp = "dsg.main:app"
 
 [tool.poetry.group.test.dependencies]
