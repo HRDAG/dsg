@@ -96,8 +96,7 @@ def test_missing_project_config_exits(tmp_path, monkeypatch):
     ("project", "repo_type"),
     ("project", "host"),
     ("project", "repo_path"),
-    ("project", "data_dirs"),
-    # ("project", "ignored_paths"),
+    # ("project", "data_dirs"),  # <-- never missing
 ])
 def test_missing_required_fields(config_files, section, field):
     user_cfg_path = config_files["user_cfg"]
@@ -282,5 +281,53 @@ def test_config_loads_all_ignored_types(tmp_path):
     assert PurePosixPath("specific_file.txt") in cfg.project._ignored_exact
     assert ".DS_Store" in cfg.project.ignored_names
     assert ".log" in cfg.project.ignored_suffixes
+
+def test_project_config_minimal():
+    """Test the minimal() factory method of ProjectConfig"""
+    # Test with default values
+    test_path = Path("/tmp/test_project")
+    minimal_config = ProjectConfig.minimal(test_path)
+
+    # Verify required fields are set
+    assert minimal_config.repo_name == "temp"
+    assert minimal_config.data_dirs == {'input', 'output', 'frozen'}
+    assert minimal_config.host == "localhost"
+    assert minimal_config.repo_path == test_path
+    assert minimal_config.repo_type == "xfs"
+
+    # Verify default ignore rules are set
+    assert "__pycache__" in minimal_config.ignored_names
+    assert ".pyc" in minimal_config.ignored_suffixes
+
+    # Verify private attributes are initialized by normalize_paths
+    assert isinstance(minimal_config._ignored_exact, set)
+    assert isinstance(minimal_config._ignored_prefixes, set)
+
+    # Test with overridden values
+    custom_config = ProjectConfig.minimal(
+        test_path,
+        repo_name="custom_repo",
+        ignored_names={"custom_ignore"},
+        ignored_suffixes={".custom"}
+    )
+
+    # Verify overridden values
+    assert custom_config.repo_name == "custom_repo"
+    assert "custom_ignore" in custom_config.ignored_names
+    assert "__pycache__" not in custom_config.ignored_names  # Completely replaced
+    assert ".custom" in custom_config.ignored_suffixes
+    assert ".pyc" not in custom_config.ignored_suffixes  # Completely replaced
+
+    # Test with ignored_paths
+    paths_config = ProjectConfig.minimal(
+        test_path,
+        ignored_paths={"ignore/this/path", "ignore/this/directory/"}
+    )
+
+    # Verify ignored paths are properly processed
+    assert len(paths_config._ignored_exact) == 1
+    assert len(paths_config._ignored_prefixes) == 1
+    assert PurePosixPath("ignore/this/path") in paths_config._ignored_exact
+    assert PurePosixPath("ignore/this/directory") in paths_config._ignored_prefixes
 
 # done.

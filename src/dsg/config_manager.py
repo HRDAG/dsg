@@ -60,7 +60,7 @@ def find_project_config_path(start: Path | None = None) -> Path:
 
 class ProjectConfig(BaseModel):
     repo_name: str
-    data_dirs: set[str]
+    data_dirs: set[str] = {'input', 'output', 'frozen'}
     host: str
     repo_path: Path
     repo_type: Literal["zfs", "xfs"]
@@ -87,8 +87,22 @@ class ProjectConfig(BaseModel):
                 self._ignored_prefixes.add(p)
             else:
                 self._ignored_exact.add(p)
-
         return self
+
+    @classmethod
+    def minimal(cls, root_path: Path, **overrides) -> "ProjectConfig":
+        """Create a minimal ProjectConfig with sensible defaults"""
+        # Start with default values
+        params = {
+            "repo_name": "temp",
+            "data_dirs": {'input', 'output', 'frozen'},
+            "host": "localhost",
+            "repo_path": root_path,
+            "repo_type": "xfs"
+        }
+        params.update(overrides)
+        config = cls(**params)
+        return config.normalize_paths()
 
 
 class Config(BaseModel):

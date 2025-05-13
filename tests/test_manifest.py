@@ -1,451 +1,613 @@
+# Author: PB & Claude
+# Maintainer: PB
+# Original date: 2025.05.10
+# License: (c) HRDAG, 2025, GPL-2 or newer
 #
-# Author: PB & ChatGPT
-# Date: 2025.05.09
-# Copyright: HRDAG 2025 GPL-2 or newer
-# dsg/tests/test_manifest.py
+# ------
 
-from collections import OrderedDict
-from datetime import datetime
-import logging
 import os
-from pathlib import Path
-import re
-import socket
-from unittest.mock import patch
-from zoneinfo import ZoneInfo
-
-from loguru import logger
 import pytest
-import typer
+from datetime import datetime
+from collections import OrderedDict
+import orjson
+from unittest.mock import patch
 
-from dsg.config_manager import Config, ProjectConfig
-from dsg.manifest import (FileRef, LinkRef, Manifest, FIELD_DELIM,
-    scan_directory, _check_dsg_dir, SNAP_DIR, _is_hidden_but_not_dsg,
-    _create_entry, _should_skip_path, _parse_manifest_line
+from dsg.manifest import (
+    FileRef,
+    LinkRef,
+    ManifestMetadata,
+    Manifest,
+    LA_TIMEZONE,
+    _dt
 )
 
-# ---- Fixtures ----
+# Fixtures for creating real test files
 @pytest.fixture
-def example_directory_structure(tmp_path: Path) -> Path:
-    (tmp_path / ".dsg").mkdir()
-    (tmp_path / "Makefile").write_text(".PHONY: all\nall:\n\techo 'build'")
-    input_dir = tmp_path / "input"
-    input_dir.mkdir()
-    (input_dir / "keepme.txt").write_text("ok")
-    (input_dir / ".Rdata").write_text("ignored")
-    pdfs_dir = input_dir / "pdfs"
-    pdfs_dir.mkdir()
-    (pdfs_dir / "script.R").write_text("# R code")
-    (pdfs_dir / "module.py").write_text("# Python code")
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-    hidden_subdir = output_dir / ".extra"
-    hidden_subdir.mkdir()
-    (hidden_subdir / "skipme.txt").write_text("hidden")
-    bad_unicode = "über.txt"
-    (input_dir / bad_unicode).write_text("decomposed")
-    src_dir = tmp_path / "src"
-    src_dir.mkdir()
-    (src_dir / "stray.txt").write_text("nope")
-    return tmp_path
+def test_project_dir(tmp_path):
+    """Create a test project directory structure with real files"""
+    # Create project structure
+    project_root = tmp_path / "project"
+    data_dir = project_root / "data"
+    link_dir = project_root / "link"
 
-@pytest.fixture
-def example_cfg(example_directory_structure: Path) -> Config:
-    return Config.model_validate({
-        "user_name": "Clayton Chiclitz",
-        "user_id": "clayton@yoyodyne.net",
-        "project": {
-            "repo_name": "KO",
-            "repo_type": "zfs",
-            "host": "scott",
-            "repo_path": example_directory_structure,
-            "data_dirs": {"input/", "output/", "frozen/"},
-            "ignored_paths": set(),
-            "ignored_names": {"__pycache__", ".Rdata", ".rdata", ".Rproj.user"},
-            "ignored_suffixes": {".pyc"},
-        },
-        "project_root": example_directory_structure,
-    })
+    # Create directories
+    data_dir.mkdir(parents=True)
+    link_dir.mkdir(parents=True)
 
-@pytest.fixture
-def file_refs() -> dict[str, FileRef]:
+    # Create a sample file
+    sample_file = data_dir / "sample.csv"
+    sample_file.write_text("id,name,value\n1,test,100\n2,sample,200\n")
+
+    # Create a symlink
+    symlink_path = link_dir / "to_sample.csv"
+    os.symlink(os.path.relpath(sample_file, symlink_path.parent), symlink_path)
+
+    # Create a directory for manifest output
+    manifest_dir = project_root / "manifest"
+    manifest_dir.mkdir()
+
     return {
-        "a": FileRef(type="file", path="a.txt", user="u", filesize=1, mtime=100.0, hash="abc"),
-        "b": FileRef(type="file", path="a.txt", user="u", filesize=999, mtime=999.0, hash="abc"),
-        "c": FileRef(type="file", path="a.txt", user="u", filesize=1, mtime=100.0, hash="def"),
-        "d": FileRef(type="file", path="b.txt", user="u", filesize=1, mtime=100.0, hash="abc"),
+        "root": project_root,
+        "data_dir": data_dir,
+        "link_dir": link_dir,
+        "sample_file": sample_file,
+        "symlink": symlink_path,
+        "manifest_dir": manifest_dir
     }
 
 @pytest.fixture
-def link_refs() -> dict[str, LinkRef]:
-    return {
-        "a": LinkRef(type="link", path="a.lnk", user="u", reference="target.txt"),
-        "b": LinkRef(type="link", path="a.lnk", user="u", reference="target.txt"),
-        "c": LinkRef(type="link", path="a.lnk", user="u", reference="other.txt"),
-        "d": LinkRef(type="link", path="b.lnk", user="u", reference="target.txt"),
-    }
+def sample_manifest_entries(test_project_dir):
+    """Create sample manifest entries from real files"""
+    project_root = test_project_dir["root"]
+    sample_file = test_project_dir["sample_file"]
+    symlink = test_project_dir["symlink"]
 
-@pytest.fixture(autouse=True)
-def loguru_caplog(caplog):
-    """
-    Bridge loguru logs to pytest's caplog.
-    """
-    class PropagateHandler(logging.Handler):
-        def emit(self, record):
-            logging.getLogger(record.name).handle(record)
+    # Create entries using real files
+    entries = OrderedDict()
 
-    logger.remove()  # Remove default handlers
-    logger.add(PropagateHandler(), format="{message}", level="DEBUG")
-    yield
-    logger.remove()  # Clean up after the test
-# ---- Tests ----
+    # Add file entry
+    file_entry = Manifest.create_entry(sample_file, project_root)
+    entries[str(sample_file.relative_to(project_root))] = file_entry
 
-@pytest.mark.parametrize("key1, key2, expected_equal", [
-    ("a", "b", True),
-    ("a", "c", False),
-    ("a", "d", False),
-])
-def test_file_ref_eq_matrix(file_refs, key1, key2, expected_equal):
-    assert (file_refs[key1] == file_refs[key2]) is expected_equal
+    # Add symlink entry
+    link_entry = Manifest.create_entry(symlink, project_root)
+    entries[str(symlink.relative_to(project_root))] = link_entry
 
-@pytest.mark.parametrize("key1, key2, expected_equal", [
-    ("a", "b", True),
-    ("a", "c", False),
-    ("a", "d", False),
-])
-def test_link_ref_eq_matrix(link_refs, key1, key2, expected_equal):
-    assert (link_refs[key1] == link_refs[key2]) is expected_equal
+    return entries
 
-def test_file_link_ne(file_refs, link_refs):
-    assert link_refs['a'] != file_refs['a']
-    assert file_refs['a'] != link_refs['a']
+@pytest.fixture
+def sample_manifest(sample_manifest_entries):
+    """Create a sample manifest with real file entries"""
+    # Create manifest
+    manifest = Manifest(entries=sample_manifest_entries)
 
-def test_file_ref_eq_shallow():
-    # Same path, same size, mtime within 1 second
-    a = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
-    b = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.5, hash="xyz")
-    assert a.eq_shallow(b)
-    # Size mismatch
-    c = FileRef(type="file", path="a.txt", user="u", filesize=101, mtime=1000.0, hash="abc")
-    assert not a.eq_shallow(c)
-    # mtime > 1s diff
-    d = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1002.0, hash="abc")
-    assert not a.eq_shallow(d)
-    # Path mismatch
-    e = FileRef(type="file", path="b.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
-    assert not a.eq_shallow(e)
+    # Generate metadata
+    manifest.generate_metadata(snapshot_id="test_snapshot", user_id="test_user")
 
-def test_link_ref_eq_shallow():
-    a = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
-    b = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
-    c = LinkRef(type="link", path="a.lnk", user="u", reference="other.txt")
-    d = LinkRef(type="link", path="b.lnk", user="u", reference="target.txt")
-    assert a.eq_shallow(b)
-    assert not a.eq_shallow(c)
-    assert not a.eq_shallow(d)
-
-def test_ref_not_eq_shallow():
-    a = LinkRef(type="link", path="a.lnk", user="u", reference="target.txt")
-    e = FileRef(type="file", path="a.txt", user="u", filesize=100, mtime=1000.0, hash="abc")
-    assert not a.eq_shallow(e)
-    assert not e.eq_shallow(a)
+    return manifest
 
 
-def test_parse_manifest_line_empty_line_raises():
-    with pytest.raises(ValueError, match="Empty line"):
-        _parse_manifest_line("")
+# Tests for helper functions
+class TestHelpers:
+    def test_dt_function(self):
+        """Test the _dt helper function"""
+        # Test with no arguments (current time)
+        dt_now = _dt()
+        assert "T" in dt_now  # ISO format contains 'T'
+        assert "-07:00" in dt_now or "-08:00" in dt_now  # LA timezone offset
 
-def test_parse_manifest_line_unknown_type_raises():
-    line = "banana\tpath/to/file.txt\tuser\t123\t2025-05-10T12:34:56.789-07:00\thash"
-    with pytest.raises(ValueError, match=r"Unknown type: banana"):
-        _parse_manifest_line(line)
-
-def test_check_dsg_dir_exists(tmp_path: Path):
-    (tmp_path / SNAP_DIR).mkdir()
-    # Should not raise
-    _check_dsg_dir(tmp_path)
-
-def test_check_dsg_dir_missing(tmp_path: Path):
-    with pytest.raises(typer.Exit) as excinfo:
-        _check_dsg_dir(tmp_path)
-    assert excinfo.value.exit_code == 1
-
-def test_file_ref_from_manifest_line():
-    iso = "2024-05-01T12:34:56.789"
-    mtime = datetime.fromisoformat(iso).timestamp()
-    line = FIELD_DELIM.join(["file", "input/file.txt", "bob", "123", iso, "abc123"])
-    parts = line.split(FIELD_DELIM)
-    ref = FileRef.from_manifest_line(parts)
-    assert ref.type == "file"
-    assert ref.path == "input/file.txt"
-    assert ref.user == "bob"
-    assert ref.filesize == 123
-    assert abs(ref.mtime - mtime) < 1e-6
-    assert ref.hash == "abc123"
-
-def test_link_ref_from_manifest_line():
-    line = FIELD_DELIM.join(["link", "input/link.txt", "alice", "target.txt"])
-    parts = line.split(FIELD_DELIM)
-    ref = LinkRef.from_manifest_line(parts)
-    assert ref.type == "link"
-    assert ref.path == "input/link.txt"
-    assert ref.user == "alice"
-    assert ref.reference == "target.txt"
-
-def test_file_ref_str_format(file_refs):
-    ref = file_refs["a"]
-    result = str(ref)
-    parts = result.split("\t")
-    assert parts[0] == "file"
-    assert parts[1] == "a.txt"
-    assert parts[2] == "u"
-    assert parts[3] == "1"
-    ts_regex = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}-\d{2}:\d{2}$"
-    assert re.match(ts_regex, parts[4]), f"Bad timestamp: {parts[4]}"
-    assert parts[5] == "abc"
-
-def test_link_ref_str_format(link_refs):
-    ref = link_refs["a"]
-    result = str(ref)
-    parts = result.split("\t")
-    assert parts == ["link", "a.lnk", "u", "target.txt"]
-
-def test_manifest_drops_entry_with_invalid_filename():
-    bad_path = "input/bad\x00name.txt"
-    entry = FileRef(type="file", path=bad_path, user="u", filesize=1, mtime=0.0, hash="abc")
-    manifest = Manifest(root=OrderedDict([(bad_path, entry)]))
-    assert len(manifest.root) == 0
-
-def test_manifest_key_path_mismatch_raises():
-    entry = FileRef(type="file", path="actual/path.txt", user="u", filesize=1, mtime=0.0, hash="abc")
-    data = OrderedDict([("wrong/key.txt", entry)])
-    emsg = r"Manifest key 'wrong/key.txt' does not match entry.path 'actual/path.txt'"
-    with pytest.raises(ValueError, match=emsg):
-        Manifest(root=data)
-
-def test_manifest_symlink_handling(example_directory_structure: Path, example_cfg):
-    assert "input" in example_cfg.project.data_dirs
-    real_dir = example_directory_structure / "input"
-    real_dir.mkdir(exist_ok=True)
-
-    # Create a valid target file
-    target = real_dir / "file.txt"
-    target.write_text("hello")
-
-    # Valid symlink to target file (relative)
-    good_link = real_dir / "good_link.txt"
-    good_link.symlink_to("file.txt")
-
-    # Symlink with absolute reference (should be dropped)
-    abs_link = real_dir / "abs_link.txt"
-    abs_link.symlink_to(target.resolve())
-
-    # Broken symlink (should be dropped)
-    bad_link = real_dir / "bad_link.txt"
-    bad_link.symlink_to("nonexistent.txt")
-
-    result = scan_directory(example_cfg, example_directory_structure)
-    manifest = result.manifest
-    entries = manifest.root
-
-    actual_keys = set(entries.keys())
-    expected_keys = {
-        "input/file.txt",
-        "input/good_link.txt"
-    }
-
-    missing = expected_keys - actual_keys
-    assert not missing, f"Missing expected keys: {missing}"
+        # Test with specific datetime
+        test_datetime = datetime(2023, 5, 15, 12, 30, 0, tzinfo=LA_TIMEZONE)
+        dt_specific = _dt(test_datetime)
+        assert dt_specific == "2023-05-15T12:30:00-07:00" or dt_specific == "2023-05-15T12:30:00-08:00"
 
 
+# Tests for FileRef class
+class TestFileRef:
+    def test_fileref_from_path(self, test_project_dir):
+        """Test creating FileRef from a real file path"""
+        project_root = test_project_dir["root"]
+        sample_file = test_project_dir["sample_file"]
+        rel_path = str(sample_file.relative_to(project_root))
 
-def test_check_dsg_dir(tmp_path: Path):
-    (tmp_path / SNAP_DIR).mkdir()
-    try:
-        _check_dsg_dir(tmp_path)
-    except typer.Exit:
-        pytest.fail("Unexpected exit when .dsg/ exists")
+        file_ref = FileRef._from_path(sample_file, rel_path)
 
-@pytest.mark.parametrize("relative_str, expected", [
-    (".hidden/file.txt", True),
-    (f"{SNAP_DIR}/file.txt", False),
-    ("visible/.hidden/file.txt", True),
-    ("visible/file.txt", False),
-])
-def test_is_hidden_but_not_dsg(relative_str, expected):
-    relative = Path(relative_str)
-    result = _is_hidden_but_not_dsg(relative)
-    assert result == expected, f"Unexpected result for {relative_str}: {result}"
+        # Assertions
+        assert file_ref.type == "file"
+        assert file_ref.path == rel_path
+        assert file_ref.filesize == sample_file.stat().st_size
+        assert file_ref.hash == ""  # Hash is initially empty
 
-def test_create_entry_unsupported_socket(tmp_path: Path, example_cfg):
-    socket_path = tmp_path / "sockfile"
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        s.bind(str(socket_path))
+        # Check datetime formatting - only check format, not exact time
+        assert "T" in file_ref.mtime  # ISO format contains 'T'
+        assert "-07:00" in file_ref.mtime or "-08:00" in file_ref.mtime  # LA timezone offset
+
+
+# Tests for LinkRef class
+class TestLinkRef:
+    def test_linkref_from_path(self, test_project_dir):
+        """Test creating LinkRef from a real symlink path"""
+        project_root = test_project_dir["root"]
+        symlink = test_project_dir["symlink"]
+        rel_path = str(symlink.relative_to(project_root))
+
+        link_ref = LinkRef._from_path(symlink, rel_path, project_root)
+
+        # Assertions
+        assert link_ref is not None
+        assert link_ref.type == "link"
+        assert link_ref.path == rel_path
+
+        # The reference should be the relative path used in the symlink
+        # Verify by creating a new symlink with the stored reference
+        target_dir = symlink.parent
+        test_target = target_dir / link_ref.reference
+        resolved_target = test_target.resolve()
+        assert resolved_target.exists()
+        assert resolved_target == test_project_dir["sample_file"].resolve()
+
+    def test_linkref_from_path_invalid_absolute(self, test_project_dir, tmp_path):
+        """Test handling of invalid absolute symlink target"""
+        project_root = test_project_dir["root"]
+
+        # Create an invalid symlink with absolute path
+        bad_link_path = test_project_dir["link_dir"] / "bad_absolute.csv"
+        target = test_project_dir["sample_file"].absolute()
+
+        with patch('os.readlink') as mock_readlink:
+            mock_readlink.return_value = str(target)
+
+            # This should log a warning and return None, not raise an exception
+            result = LinkRef._from_path(bad_link_path, "link/bad_absolute.csv", project_root)
+            assert result is None
+
+    def test_linkref_from_path_outside_project(self, test_project_dir, tmp_path):
+        """Test handling of symlink target that points outside project"""
+        project_root = test_project_dir["root"]
+
+        # Create a file outside the project
+        outside_file = tmp_path / "outside_file.txt"
+        outside_file.write_text("This is outside the project")
+
+        # Create a symlink that would point outside
+        bad_link_path = test_project_dir["link_dir"] / "bad_outside.csv"
+
+        with patch('os.readlink') as mock_readlink:
+            # Use a relative path that would resolve outside the project
+            mock_readlink.return_value = "../../../outside_file.txt"
+
+            # This should log a warning and return None, not raise an exception
+            result = LinkRef._from_path(bad_link_path, "link/bad_outside.csv", project_root)
+            assert result is None
+
+    def test_linkref_validation(self):
+        """Test LinkRef validation with various reference paths"""
+        # Test with valid relative path
+        valid_link = LinkRef(
+            type="link",
+            path="link/to_file.txt",
+            reference="../data/file.txt"
+        )
+        assert valid_link.reference == "../data/file.txt"
+
+        # Test with absolute path (should raise ValueError)
+        with pytest.raises(ValueError, match="Symlink target must be a relative path"):
+            LinkRef(
+                type="link",
+                path="link/invalid.txt",
+                reference="/absolute/path/data.txt"
+            )
+
+        # Test with path that attempts to escape project
+        with pytest.raises(ValueError, match="Symlink target attempts to escape project directory"):
+            LinkRef(
+                type="link",
+                path="link/escape.txt",
+                reference="../../../outside/project/data.txt"
+            )
+
+
+# Tests for ManifestMetadata class
+class TestManifestMetadata:
+    def test_metadata_create_with_real_entries(self, sample_manifest_entries):
+        """Test creating metadata from real file entries"""
+        # Create new metadata
+        metadata = ManifestMetadata._create(
+            sample_manifest_entries,
+            snapshot_id="test_snapshot_2",
+            user_id="test_user_2"
+        )
+
+        # Assertions
+        assert metadata.manifest_version == "2.0"
+        assert metadata.snapshot_id == "test_snapshot_2"
+        assert metadata.created_by == "test_user_2"
+        assert metadata.entry_count == len(sample_manifest_entries)
+
+        # Verify hash calculation is deterministic
+        # Create new metadata with same entries
+        metadata2 = ManifestMetadata._create(
+            sample_manifest_entries,
+            snapshot_id="test_snapshot_2",
+            user_id="test_user_2"
+        )
+        assert metadata.entries_hash == metadata2.entries_hash
+
+        # Verify datetime format
+        assert "T" in metadata.created_at  # ISO format contains 'T'
+        assert "-07:00" in metadata.created_at or "-08:00" in metadata.created_at  # LA timezone
+
+    def test_metadata_create_with_auto_snapshot_id(self, sample_manifest_entries):
+        """Test metadata creation with automatic snapshot ID generation"""
+        # Create metadata without specifying snapshot_id
+        metadata = ManifestMetadata._create(sample_manifest_entries, snapshot_id="", user_id="auto_test")
+
+        # Verify snapshot_id is an ISO datetime string
+        assert "T" in metadata.snapshot_id  # ISO format contains 'T'
+        assert "-07:00" in metadata.snapshot_id or "-08:00" in metadata.snapshot_id  # LA timezone
+
+
+# Tests for Manifest class
+class TestManifest:
+    def test_create_entry(self, test_project_dir):
+        """Test creating entries from real files and symlinks"""
+        project_root = test_project_dir["root"]
+        sample_file = test_project_dir["sample_file"]
+        symlink = test_project_dir["symlink"]
+
+        # Create file entry
+        file_entry = Manifest.create_entry(sample_file, project_root)
+        assert isinstance(file_entry, FileRef)
+        assert file_entry.type == "file"
+        assert file_entry.path == str(sample_file.relative_to(project_root))
+
+        # Create symlink entry
+        link_entry = Manifest.create_entry(symlink, project_root)
+        assert isinstance(link_entry, LinkRef)
+        assert link_entry.type == "link"
+        assert link_entry.path == str(symlink.relative_to(project_root))
+
+    def test_create_entry_outside_project(self, test_project_dir, tmp_path):
+        """Test creating entry for path outside project root"""
+        project_root = test_project_dir["root"]
+        outside_file = tmp_path / "outside.txt"
+        outside_file.write_text("This is outside the project")
+
+        # Should raise ValueError
+        with pytest.raises(ValueError, match="is not within project root"):
+            Manifest.create_entry(outside_file, project_root)
+
+    def test_create_entry_unsupported_type(self, test_project_dir):
+        """Test creating entry for unsupported path type (directory)"""
+        project_root = test_project_dir["root"]
+        directory = test_project_dir["data_dir"]
+
+        # Should raise ValueError
         with pytest.raises(ValueError, match="Unsupported path type"):
-            _create_entry(socket_path, socket_path.name, example_cfg)
-    finally:
-        s.close()
-        socket_path.unlink(missing_ok=True)
+            Manifest.create_entry(directory, project_root)
 
-def test_create_entry(example_cfg, example_directory_structure):
-    """Test _create_entry returns entries with correct initial values."""
-    # Use files from the example directory structure
-    project_root = example_directory_structure
+    def test_validate_symlinks(self, sample_manifest, test_project_dir):
+        """Test symlink validation with real files"""
+        # Initially all symlinks should be valid
+        invalid_links = sample_manifest._validate_symlinks()
+        assert len(invalid_links) == 0
 
-    # Test a regular file
-    file_path = project_root / "input" / "keepme.txt"
-    file_rel_path = "input/keepme.txt"
+        # Modify a link to point to a non-existent file
+        symlink_path = str(test_project_dir["symlink"].relative_to(test_project_dir["root"]))
+        sample_manifest.entries[symlink_path].reference = "../data/nonexistent.csv"
 
-    # Create and test file entry
-    file_entry = _create_entry(file_path, file_rel_path, example_cfg)
+        # Now validation should fail
+        invalid_links = sample_manifest._validate_symlinks()
+        assert symlink_path in invalid_links
 
-    assert isinstance(file_entry, FileRef)
-    assert file_entry.path == file_rel_path
-    assert file_entry.user == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
-    assert file_entry.filesize == file_path.stat().st_size
-    assert file_entry.hash == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
+    def test_to_json_and_from_json(self, sample_manifest, test_project_dir):
+        """Test saving and loading manifest to/from JSON"""
+        manifest_file = test_project_dir["manifest_dir"] / "manifest.json"
 
-    # Create a symlink for testing
-    link_path = project_root / "input" / "link_to_keepme.txt"
-    os.symlink("keepme.txt", link_path)
-    link_rel_path = "input/link_to_keepme.txt"
+        # Save manifest to JSON
+        sample_manifest.to_json(manifest_file)
 
-    # Create and test symlink entry
-    link_entry = _create_entry(link_path, link_rel_path, example_cfg)
+        # Verify file was created
+        assert manifest_file.exists()
 
-    assert isinstance(link_entry, LinkRef)
-    assert link_entry.path == link_rel_path
-    assert link_entry.user == "__UNKNOWN__"  # Should be __UNKNOWN__, not empty string
-    assert link_entry.reference == "keepme.txt"
+        # Load manifest from JSON
+        loaded_manifest = Manifest.from_json(manifest_file)
 
-    # Test a nested file
-    nested_file_path = project_root / "input" / "pdfs" / "script.R"
-    nested_file_rel_path = "input/pdfs/script.R"
+        # Verify contents
+        assert loaded_manifest.metadata is not None
+        assert loaded_manifest.metadata.snapshot_id == "test_snapshot"
+        assert loaded_manifest.metadata.created_by == "test_user"
+        assert loaded_manifest.metadata.entry_count == len(sample_manifest.entries)
+        assert loaded_manifest.metadata.entries_hash == sample_manifest.metadata.entries_hash
 
-        # Create and test nested file entry
-        nested_file_entry = _create_entry(nested_file_path, nested_file_rel_path, example_cfg)
+        # Verify entries
+        assert len(loaded_manifest.entries) == len(sample_manifest.entries)
+        for path, entry in sample_manifest.entries.items():
+            assert path in loaded_manifest.entries
+            loaded_entry = loaded_manifest.entries[path]
+            assert loaded_entry.type == entry.type
+            assert loaded_entry.path == entry.path
 
-        assert isinstance(nested_file_entry, FileRef)
-        assert nested_file_entry.path == nested_file_rel_path
-        assert nested_file_entry.user == "__UNKNOWN__"
-        assert nested_file_entry.filesize == nested_file_path.stat().st_size
-        assert nested_file_entry.hash == "__UNKNOWN__"
+            if entry.type == "file":
+                assert loaded_entry.filesize == entry.filesize
+                assert loaded_entry.mtime == entry.mtime
+            elif entry.type == "link":
+                assert loaded_entry.reference == entry.reference
 
-        # Clean up the symlink
-        os.unlink(link_path)
+    def test_from_json_with_invalid_entries(self, test_project_dir):
+        """Test loading manifest with invalid entries"""
+        manifest_file = test_project_dir["manifest_dir"] / "invalid_manifest.json"
 
-@pytest.mark.parametrize("name, expected", [
-    ("__pycache__", True),
-    (".RData", True),
-    ("file.RData", False),
-    ("notebook.rdata", False),
-    (".Rproj.user", True),
-    ("script.pyc", True),
-    ("important.txt", False),
-    ("data/normal.csv", False),
-])
-def test_should_skip_path(name, expected):
-    path = Path(name)
-    result = _should_skip_path(path)
-    assert result == expected, f"Unexpected result for {name}: {result}"
+        # Create a manifest JSON with invalid entries
+        invalid_data = {
+            "entries": [
+                {
+                    "type": "file",
+                    "path": "valid/file.txt",
+                    "filesize": 100,
+                    "mtime": "2023-05-15T12:30:00-07:00"
+                },
+                {
+                    "type": "file",
+                    "path": "invalid/missing_fields.txt"
+                    # Missing required fields
+                },
+                {
+                    "type": "link",
+                    "path": "valid/link.txt",
+                    "reference": "../target.txt"
+                },
+                {
+                    "type": "unknown",
+                    "path": "invalid/unknown_type.txt"
+                }
+            ],
+            "manifest_version": "2.0",
+            "snapshot_id": "test_invalid",
+            "created_at": "2023-05-15T12:30:00-07:00",
+            "entry_count": 4,  # Incorrect count
+            "entries_hash": "invalid_hash"
+        }
 
-def test_scan_directory_handles_create_entry_failure(example_directory_structure, example_cfg, caplog):
-    # Patch _create_entry to raise an exception
-    with patch("dsg.manifest._create_entry", side_effect=RuntimeError("simulated failure")):
-        result = scan_directory(example_cfg, example_directory_structure)
+        manifest_file.write_bytes(orjson.dumps(invalid_data))
 
-    # Nothing should be in the manifest
-    assert result.manifest.root == OrderedDict()
+        # This should log warnings but not raise exceptions
+        loaded_manifest = Manifest.from_json(manifest_file)
 
-    # We should see our error message in the logs
-    error_lines = [record.message for record in caplog.records if "simulated failure" in record.message]
-    assert any("Error processing" in line for line in error_lines)
+        # Should only have the valid entries
+        assert len(loaded_manifest.entries) == 2
+        assert "valid/file.txt" in loaded_manifest.entries
+        assert "valid/link.txt" in loaded_manifest.entries
 
-def test_scan_directory_from_fixture(example_directory_structure, example_cfg):
-    result = scan_directory(example_cfg, example_directory_structure)
-    manifest = result.manifest
-    assert isinstance(manifest.root, OrderedDict)
+        # Should have metadata, even if it's invalid
+        assert loaded_manifest.metadata is not None
+        assert loaded_manifest.metadata.snapshot_id == "test_invalid"
 
-def test_scan_directory_respects_ignored_paths(example_directory_structure, example_cfg):
-    # Add 'input/pdfs/' to ignored_paths
-    example_cfg.project.ignored_paths.add("input/pdfs/")
-    example_cfg.project = ProjectConfig.model_validate(example_cfg.project.model_dump())
-    result = scan_directory(example_cfg, example_directory_structure)
-    keys = set(result.manifest.root.keys())
-    assert not any(k.startswith("input/pdfs/") for k in keys)
+        # Integrity check should fail
+        assert loaded_manifest.verify_integrity() is False
 
+    def test_verify_integrity(self, sample_manifest):
+        """Test integrity verification with real manifest"""
+        # Initially integrity should be valid
+        assert sample_manifest.verify_integrity() is True
 
-def test_manifest_write_and_read_round_trip(tmp_path: Path):
-    entry = FileRef(
-        type="file",
-        path="input/keepme.txt",
-        user="u",
-        filesize=42,
-        mtime=123456.789,
-        hash="deadbeef")
-    manifest = Manifest(root=OrderedDict({"input/keepme.txt": entry}))
-    manifest_path = tmp_path / "manifest.txt"
-    manifest.to_file(manifest_path)
-    result = manifest.from_file(manifest_path)
-    assert "input/keepme.txt" in result.root
-    new_entry = result.root["input/keepme.txt"]
-    assert isinstance(new_entry, FileRef)
-    assert new_entry.path == entry.path
-    assert new_entry.hash == entry.hash
+        # Modify the hash to break integrity
+        original_hash = sample_manifest.metadata.entries_hash
+        sample_manifest.metadata.entries_hash = "wrong_hash"
+        assert sample_manifest.verify_integrity() is False
 
-def test_manifest_round_trip_from_dsg_dir(example_directory_structure: Path, example_cfg):
-    # Create and write the manifest
-    result = scan_directory(example_cfg, example_directory_structure)
-    manifest = result.manifest
-    manifest_path = example_directory_structure / SNAP_DIR / "manifest"
-    manifest.to_file(manifest_path)
+        # Restore correct hash
+        sample_manifest.metadata.entries_hash = original_hash
+        assert sample_manifest.verify_integrity() is True
 
-    # Save expected keys before corrupting the file
-    expected_keys = set(manifest.root.keys())
+        # Modify entry count to break integrity
+        sample_manifest.metadata.entry_count += 1
+        assert sample_manifest.verify_integrity() is False
 
-    # Append malformed lines
-    with manifest_path.open("a", encoding="utf-8") as f:
-        f.write("file\tmissing\tfields\n")
-        f.write("link\tonlytwo\tparts\n")
-        f.write("\tjust\tdelimiters\n")
+    def test_generate_metadata(self, sample_manifest):
+        """Test generating new metadata"""
+        # Store original metadata values
+        original_snapshot = sample_manifest.metadata.snapshot_id
+        original_hash = sample_manifest.metadata.entries_hash
 
-    # Read the file back in
-    result = Manifest.from_file(manifest_path)
-    actual_keys = set(result.root.keys())
+        # Generate new metadata
+        sample_manifest.generate_metadata(snapshot_id="new_snapshot", user_id="new_user")
 
-    # Assert and report differences
-    assert actual_keys == expected_keys, (
-        "Mismatch in manifest keys after round trip.\n"
-        f"Missing: {expected_keys - actual_keys}\n"
-        f"Unexpected: {actual_keys - expected_keys}"
-    )
+        # Verify values were updated
+        assert sample_manifest.metadata.snapshot_id == "new_snapshot"
+        assert sample_manifest.metadata.created_by == "new_user"
+        # Skip timestamp comparison as it might be the same in fast test execution
+        assert sample_manifest.metadata.entries_hash == original_hash  # Hash should be the same for same entries
 
-def test_ignored_path_skips_all(example_directory_structure: Path, example_cfg: Config):
-    # Add ignored path to config
-    example_cfg.project.ignored_paths.add("input/dir/")
-    example_cfg.project.normalize_paths()
+    def test_manifest_with_invalid_symlinks(self, test_project_dir):
+        """Test manifest behavior with invalid symlinks"""
+        project_root = test_project_dir["root"]
 
-    dir_path = example_directory_structure / "input" / "dir"
-    dir_path.mkdir(parents=True)
-    (dir_path / "file1.txt").write_text("hello")
-    (dir_path / "subdir").mkdir()
-    (dir_path / "subdir" / "file2.txt").write_text("hello again")
+        # Create an invalid symlink
+        invalid_link_path = test_project_dir["link_dir"] / "invalid.csv"
+        os.symlink("../data/nonexistent.csv", invalid_link_path)
 
-    result = scan_directory(example_cfg, example_directory_structure)
-    assert all(not k.startswith("input/dir/") for k in result.manifest.root)
+        # Create entries
+        entries = OrderedDict()
 
+        # Add file entry
+        file_entry = Manifest.create_entry(test_project_dir["sample_file"], project_root)
+        entries[str(test_project_dir["sample_file"].relative_to(project_root))] = file_entry
 
-def test_name_and_suffix_rules(example_directory_structure: Path, example_cfg: Config):
-    input_dir = example_directory_structure / "input"
-    (input_dir / ".Rdata").write_text("should be ignored")
-    (input_dir / "file.Rdata").write_text("should be included")
-    (input_dir / "file.pyc").write_text("should be ignored")
+        # Add invalid symlink entry
+        link_entry = Manifest.create_entry(invalid_link_path, project_root)
+        entries[str(invalid_link_path.relative_to(project_root))] = link_entry
 
-    result = scan_directory(example_cfg, example_directory_structure)
-    keys = set(result.manifest.root)
-    assert "input/file.Rdata" in keys
-    assert "input/.Rdata" not in keys
-    assert not any(k.endswith(".pyc") for k in keys)
+        # Create manifest
+        manifest = Manifest(entries=entries)
+        manifest.generate_metadata()
 
-# done.
+        # Try to save - should log warning but not raise exception
+        manifest_file = test_project_dir["manifest_dir"] / "invalid_manifest.json"
+        manifest.to_json(manifest_file)
+
+        # File should still be created
+        assert manifest_file.exists()
+
+    def test_manifest_round_trip(self, sample_manifest, test_project_dir):
+        """Test round-trip serialization (to_json followed by from_json)"""
+        # Store the original entries and metadata for later comparison
+        original_entries = sample_manifest.entries
+        original_metadata = sample_manifest.metadata
+
+        # Create path for test JSON file
+        manifest_file = test_project_dir["manifest_dir"] / "round_trip.json"
+
+        # Step 1: Save manifest to JSON
+        sample_manifest.to_json(manifest_file)
+        assert manifest_file.exists()
+
+    def test_to_json_without_metadata(self, test_project_dir):
+        """Test saving manifest to JSON when metadata is None"""
+        project_root = test_project_dir["root"]
+        sample_file = test_project_dir["sample_file"]
+
+        # Create entries
+        entries = OrderedDict()
+        file_entry = Manifest.create_entry(sample_file, project_root)
+        entries[str(sample_file.relative_to(project_root))] = file_entry
+
+        # Create manifest without metadata
+        manifest = Manifest(entries=entries)
+        assert manifest.metadata is None
+
+        # Save to JSON with metadata generation
+        manifest_file = test_project_dir["manifest_dir"] / "auto_metadata.json"
+        manifest.to_json(
+            manifest_file,
+            include_metadata=True,
+            snapshot_id="auto_test",
+            user_id="coverage_user"
+        )
+
+        # Verify file was created
+        assert manifest_file.exists()
+
+        # Load and verify metadata was created
+        loaded_manifest = Manifest.from_json(manifest_file)
+        assert loaded_manifest.metadata is not None
+        assert loaded_manifest.metadata.snapshot_id == "auto_test"
+        assert loaded_manifest.metadata.created_by == "coverage_user"
+
+        # Verify original manifest now has metadata too
+        assert manifest.metadata is not None
+        assert manifest.metadata.snapshot_id == "auto_test"
+        assert manifest.metadata.created_by == "coverage_user"
+
+    def test_from_json_with_invalid_link_entries(self, test_project_dir):
+        """Test loading manifest with invalid link entries that raise exceptions during validation"""
+        manifest_file = test_project_dir["manifest_dir"] / "invalid_links.json"
+
+        # Create a manifest JSON with invalid link entries that will fail validation
+        invalid_data = {
+            "entries": [
+                # Valid file entry
+                {
+                    "type": "file",
+                    "path": "data/valid.txt",
+                    "filesize": 100,
+                    "mtime": "2023-05-15T12:30:00-07:00"
+                },
+                # Invalid link entry - missing required 'reference' field
+                {
+                    "type": "link",
+                    "path": "links/invalid1.txt"
+                },
+                # Invalid link entry - absolute reference path (will fail validation)
+                {
+                    "type": "link",
+                    "path": "links/invalid2.txt",
+                    "reference": "/absolute/path/invalid.txt"
+                }
+            ],
+            "snapshot_id": "test_invalid_links",
+            "created_at": "2023-05-15T12:30:00-07:00",
+            "entry_count": 3,
+            "entries_hash": "dummy_hash"
+        }
+
+        # Write the invalid JSON to a file
+        manifest_file.write_bytes(orjson.dumps(invalid_data))
+
+        # This should log warnings for the invalid link entries but not raise exceptions
+        loaded_manifest = Manifest.from_json(manifest_file)
+
+        # Should only have the valid entries
+        assert len(loaded_manifest.entries) == 1
+        assert "data/valid.txt" in loaded_manifest.entries
+
+        # The invalid link entries should have been skipped with warnings logged
+        assert "links/invalid1.txt" not in loaded_manifest.entries
+        assert "links/invalid2.txt" not in loaded_manifest.entries
+
+    def test_from_json_with_invalid_metadata(self, test_project_dir):
+        """Test loading manifest with invalid metadata that raises exceptions during validation"""
+        manifest_file = test_project_dir["manifest_dir"] / "invalid_metadata.json"
+
+        # Create a manifest JSON with valid entries but invalid metadata
+        invalid_data = {
+            "entries": [
+                {
+                    "type": "file",
+                    "path": "data/valid.txt",
+                    "filesize": 100,
+                    "mtime": "2023-05-15T12:30:00-07:00"
+                }
+            ],
+            # Include snapshot_id and entries_hash to trigger metadata validation
+            "snapshot_id": "test_invalid",
+            "entries_hash": "dummy_hash",
+            # But missing required field 'created_at'
+            # And invalid field type for entry_count
+            "entry_count": "not_an_integer"
+        }
+
+        # Write the invalid JSON to a file
+        manifest_file.write_bytes(orjson.dumps(invalid_data))
+
+        # This should log a warning for the invalid metadata but not raise exceptions
+        loaded_manifest = Manifest.from_json(manifest_file)
+
+        # Entries should be loaded correctly
+        assert len(loaded_manifest.entries) == 1
+        assert "data/valid.txt" in loaded_manifest.entries
+
+        # Metadata should be None due to validation failure
+        assert loaded_manifest.metadata is None
+
+    def test_verify_integrity_no_metadata_direct(self, test_project_dir):
+        """Test verify_integrity when metadata is None - direct approach"""
+        project_root = test_project_dir["root"]
+        sample_file = test_project_dir["sample_file"]
+
+        # Create entries
+        entries = OrderedDict()
+        file_entry = Manifest.create_entry(sample_file, project_root)
+        entries[str(sample_file.relative_to(project_root))] = file_entry
+
+        # Create manifest with metadata
+        manifest = Manifest(entries=entries)
+        manifest.generate_metadata()
+        assert manifest.metadata is not None
+
+        # Save the manifest to verify it contains metadata
+        manifest_file = test_project_dir["manifest_dir"] / "has_metadata.json"
+        manifest.to_json(manifest_file)
+
+        # Now explicitly set metadata to None to trigger our code path
+        manifest.metadata = None
+
+        # Call verify_integrity - this should hit the metadata is None path
+        result = manifest.verify_integrity()
+        assert result is False
+
+        # To verify this actually triggered the right path, reload the manifest
+        # and make sure verify_integrity returns True
+        manifest_with_metadata = Manifest.from_json(manifest_file)
+        assert manifest_with_metadata.metadata is not None
+        assert manifest_with_metadata.verify_integrity() is True

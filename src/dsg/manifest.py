@@ -1,308 +1,281 @@
-# Author: PB & ChatGPT
-# Date: 2025.05.09
-# Copyright: HRDAG 2025 GPL-2 or newer
+# Author: PB & Claude
+# Maintainer: PB
+# Original date: 2025.05.10
+# License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
-# dsg/src/dsg/manifest.py
 
 from __future__ import annotations
 from collections import OrderedDict
 from datetime import datetime
-from pathlib import Path, PurePosixPath
-import os
-from typing import Annotated, Union, Literal, Final, BinaryIO
 from zoneinfo import ZoneInfo
+import os
+from pathlib import Path
 
-from pydantic import BaseModel, Field, RootModel, model_validator
-from loguru import logger
-import typer
+import orjson
+import loguru
+from pydantic import BaseModel, Field, field_validator
+from typing import Annotated, Union, Literal, Optional
+import xxhash
 
-from dsg.filename_validation import validate_path
-from dsg.config_manager import Config
-
-SNAP_DIR: Final = ".dsg"
-FIELD_DELIM: Final = "\t"
-LINE_DELIM: Final = "\n"
-IGNORED_SUFFIXES: Final = frozenset({".pyc"})
-IGNORED_NAMES: Final = frozenset({"__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"})
+# Los Angeles timezone
+LA_TIMEZONE = ZoneInfo("America/Los_Angeles")
+logger = loguru.logger
 
 
-# ---- Models ----
-_replace_unknown = lambda s: "" if s == "__UNKNOWN__" else s
+def _dt(tm: datetime = None) -> str:
+    """Return the current time in LA timezone as an ISO format string."""
+    if tm:
+        return tm.isoformat(timespec="seconds")
+    return datetime.now(LA_TIMEZONE).isoformat(timespec="seconds")
 
 
 class FileRef(BaseModel):
+    """File reference representing a regular file in the manifest"""
+
     type: Literal["file"]
     path: str
     user: str = ""
     filesize: int
-    mtime: float
+    mtime: str  # ISO format datetime string
     hash: str = ""
 
-    def __str__(self) -> str:
-        def _tz(t: float) -> str:
-            la_tz = ZoneInfo("America/Los_Angeles")
-            return datetime.fromtimestamp(t, tz=la_tz).isoformat(timespec="milliseconds")
-
-        data = [
-            "file",
-            self.path,
-            self.user or "__UNKNOWN__",
-            str(self.filesize),
-            _tz(self.mtime),
-            self.hash or  "__UNKNOWN__",
-        ]
-        return FIELD_DELIM.join(data)
-
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, FileRef):
-            return False
-        return self.path == other.path and self.hash == other.hash
-
-    def eq_shallow(self, other: FileRef, tolerance: float = 1.0) -> bool:
-        """Return True if size and mtime match (within tolerance in seconds)."""
-        if not isinstance(other, FileRef):
-            return False
-        path_match = self.path == other.path
-        size_match = self.filesize == other.filesize
-        time_match = abs(self.mtime - other.mtime) <= tolerance
-        return path_match and size_match and time_match
-
     @classmethod
-    def from_manifest_line(cls, parts: list[str]) -> "FileRef":
-        if len(parts) != 6:
-            raise ValueError(f"Expected 6 fields for FileRef, got {len(parts)}: {parts}")
-        mtime = datetime.fromisoformat(parts[4]).timestamp()
+    def _from_path(cls, full_path: Path, path: str) -> FileRef:
+        """Create a FileRef from a filesystem path"""
+        stat_info = full_path.stat()
+        mtime_iso = _dt(datetime.fromtimestamp(stat_info.st_mtime, LA_TIMEZONE))
         return cls(
-            type="file",
-            path=parts[1],
-            user=_replace_unknown(parts[2]),
-            filesize=int(parts[3]),
-            mtime=mtime,
-            hash=_replace_unknown(parts[5]), )
+            type="file", path=path, filesize=stat_info.st_size, mtime=mtime_iso, hash=""
+        )
 
 
 class LinkRef(BaseModel):
+    """Symlink reference representing a symbolic link in the manifest"""
+
     type: Literal["link"]
     path: str
     user: str = ""
-    reference: str
+    reference: str  # The target of the symlink (MUST be relative within project)
 
-    def __str__(self) -> str:
-        return FIELD_DELIM.join([
-            "link", self.path, self.user or "__UNKNOWN__", self.reference])
+    @field_validator("reference")
+    def validate_reference(cls, v: str, info):
+        """Ensure reference is a relative path and doesn't escape project."""
+        if os.path.isabs(v):
+            raise ValueError("Symlink target must be a relative path")
 
-    def __eq__(self, other) -> bool:
-        if not isinstance(other, LinkRef):
-            return False
-        return self.path == other.path and self.reference == other.reference
-
-    def eq_shallow(self, other: LinkRef) -> bool:
-        return self == other
+        path = info.data.get("path", "")
+        path_parts = path.split("/")
+        ref_parts = v.split("/")
+        max_up_levels = len([p for p in path_parts if p and p != "."])
+        actual_up_levels = len([p for p in ref_parts if p == ".."])
+        if actual_up_levels > max_up_levels:
+            raise ValueError("Symlink target attempts to escape project directory")
+        return v
 
     @classmethod
-    def from_manifest_line(cls, parts: list[str]) -> "LinkRef":
-        if len(parts) != 4:
-            raise ValueError(f"Expected 4 fields for LinkRef, got {len(parts)}: {parts}")
-        return cls(
-            type="link",
-            path=parts[1],
-            user=_replace_unknown(parts[2]),
-            reference=parts[3],
-        )
+    def _from_path(cls, full_path: Path, path: str, project_root: Path) -> LinkRef:
+        """Create a LinkRef from a symlink path with validation"""
+        # Get the symlink target exactly as stored (not resolved)
+        raw_target = os.readlink(full_path)
+        if os.path.isabs(raw_target):
+            emsg = (f"Symlink at {path} has absolute target: {raw_target}. "
+                    "Only relative paths within project are allowed.")
+            logger.warning(emsg)
+            return None
+
+        source_dir = os.path.dirname(os.path.join(project_root, path))
+        target_path = os.path.normpath(os.path.join(source_dir, raw_target))
+
+        if not target_path.startswith(str(project_root)):
+            emsg = f"Symlink at {path} points outside project: {raw_target}"
+            logger.warning(emsg)
+            return None
+        # Use the raw target as the reference
+        return cls(type="link", path=path, reference=raw_target)
 
 
+# Use discriminated union
 ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
 
-class Manifest(RootModel[OrderedDict[str, ManifestEntry]]):
-    @model_validator(mode="after")
-    def _validate_keys_match_paths(self) -> "Manifest":
-        """
-        Validate that each key in the manifest matches the entry.path value.
 
-        In a well-formed manifest (e.g., created by scan_directory), the key should always
-        equal entry.path. If they differ, it likely means the manifest was constructed
-        manually, tampered with, or loaded from a corrupted file.
+class ManifestMetadata(BaseModel):
+    """Metadata about a manifest snapshot"""
 
-        Also filters out:
-        - Entries with invalid paths (based on validate_path)
-        - Symlinks that point to absolute paths
-        - Symlinks whose targets do not resolve to known file paths
-
-        This validator is automatically called after model instantiation and
-        should not be invoked directly.
-        """
-        validated_entries = OrderedDict()
-
-        for key, entry in self.root.items():
-            if key != entry.path:
-                raise ValueError(f"Manifest key '{key}' does not match entry.path '{entry.path}'")
-            valid, msg = validate_path(entry.path)
-            if not valid:
-                logger.warning(f"Invalid path '{entry.path}': {msg}")
-                continue
-            validated_entries[key] = entry
-
-        resolver = lambda p: Path(p).resolve().as_posix()
-        resolved_refs = {
-            resolver(entry.path)
-            for entry in validated_entries.values()
-            if isinstance(entry, FileRef)
-        }
-
-        for key, entry in list(validated_entries.items()):
-            if isinstance(entry, LinkRef):
-                if os.path.isabs(entry.reference):
-                    logger.warning(f"Skipping link '{entry.path}' with absolute reference '{entry.reference}'")
-                    validated_entries.pop(key)
-                    continue
-                resolved = resolver(Path(entry.path).parent / entry.reference)
-                if resolved not in resolved_refs:
-                    logger.warning(f"Skipping link '{entry.path}' — target '{entry.reference}' not in manifest")
-                    validated_entries.pop(key)
-
-        object.__setattr__(self, "root", validated_entries)
-        return self
-
-    def to_file(self, file_path: Path) -> None:
-        with file_path.open("w", encoding="utf-8") as f:
-            for entry in self.root.values():
-                f.write(str(entry) + LINE_DELIM)
+    manifest_version: str = "2.0"
+    snapshot_id: str
+    created_at: str  # ISO format datetime string for consistency
+    entry_count: int
+    entries_hash: str
+    created_by: Optional[str] = None
 
     @classmethod
-    def from_file(cls, file_path: Path) -> Manifest:
-        entries: OrderedDict[str, ManifestEntry] = OrderedDict()
-        with file_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    entry = _parse_manifest_line(line)
-                    entries[entry.path] = entry
-                except Exception as e:
-                    logger.warning(f"Skipping line: {line.strip()} — {e}")
-        return cls(root=entries)
+    def _create(
+        cls,
+        entries: OrderedDict[str, ManifestEntry],
+        snapshot_id: str = "",
+        user_id: Optional[str] = None,
+    ) -> ManifestMetadata:
+        """Create metadata for a set of entries"""
+        # Generate entries hash using xxhash3_64
+        h = xxhash.xxh3_64()
 
+        # Use entries in their original order from the OrderedDict
+        for entry in entries.values():
+            h.update(orjson.dumps(entry.model_dump()))
+        entries_hash = h.hexdigest()
 
-class ScanResult(BaseModel):
-    manifest: Manifest
-    ignored: list[str] = list()
-
-
-# ---- Manifest Parsing ----
-
-def _parse_manifest_line(line: str) -> ManifestEntry:
-    if not line.strip():
-        raise ValueError("Empty line")
-    parts = line.strip().split(FIELD_DELIM, maxsplit=5)
-    if parts[0] == "file":
-        return FileRef.from_manifest_line(parts)
-    elif parts[0] == "link":
-        return LinkRef.from_manifest_line(parts)
-    raise ValueError(f"Unknown type: {parts[0]}")
-
-
-# ---- Scanner ----
-
-def _should_skip_path(path: Path) -> bool:
-    is_ignored_name = path.name in IGNORED_NAMES
-    has_ignored_suffix = any(str(path).endswith(suffix) for suffix in IGNORED_SUFFIXES)
-    return is_ignored_name or has_ignored_suffix
-
-
-def _is_hidden_but_not_dsg(relative: Path) -> bool:
-    return any(part.startswith(".") and part != SNAP_DIR for part in relative.parts)
-
-
-def _check_dsg_dir(root_path: Path) -> None:
-    if SNAP_DIR not in {p.name for p in root_path.iterdir()}:
-        logger.error(f"Root directory should contain {SNAP_DIR}/")
-        raise typer.Exit(1)
-
-
-def _create_entry(path: Path, rel_path: str, cfg: Config) -> ManifestEntry:
-    # user = cfg.user_name  # <- no bc we don't know the file's user yet
-    logger.debug(f"Creating entry for {rel_path} (is_symlink={path.is_symlink()}, is_file={path.is_file()})")
-    if path.is_symlink():
-        reference = os.readlink(path)
-        return LinkRef(type="link", path=rel_path, user="", reference=reference)
-    elif path.is_file():
-        stat_info = path.stat()
-        return FileRef(
-            type="file",
-            path=rel_path,
-            user="__UNKNOWN__",
-            filesize=stat_info.st_size,
-            mtime=stat_info.st_mtime,
-            hash="__UNKNOWN__",
+        return cls(
+            snapshot_id=snapshot_id if snapshot_id else _dt(),
+            created_at=_dt(),
+            entry_count=len(entries),
+            entries_hash=entries_hash,
+            created_by=user_id,
         )
-    raise ValueError(f"Unsupported path type: {path}")
 
 
-def hash_file(path: Path) -> str:
-    h = xxhash.xxh3_64()
-    with path.open("rb") as f:
-        while chunk := f.read(8192):
-            h.update(chunk)
-    return h.hexdigest()
+class Manifest(BaseModel):
+    """Core container for manifest entries and metadata"""
+    model_config = {"arbitrary_types_allowed": True}
+    entries: OrderedDict[str, ManifestEntry]
+    metadata: Optional[ManifestMetadata] = None
 
+    @staticmethod
+    def create_entry(full_path: Path, project_root: Path) -> ManifestEntry:
+        """Create a manifest entry for a path"""
+        # Calculate relative path
+        try:
+            rel_path = str(full_path.relative_to(project_root))
+        except ValueError:
+            emsg = f"Path {full_path} is not within project root {project_root}"
+            logger.error(emsg)
+            raise ValueError(emsg)
+        if full_path.is_symlink():
+            return LinkRef._from_path(full_path, rel_path, project_root)
+        elif full_path.is_file():
+            return FileRef._from_path(full_path, rel_path)
+        raise ValueError(f"Unsupported path type: {full_path}")
 
-def scan_directory(cfg: Config, root_path: Path) -> ScanResult:
-    _check_dsg_dir(root_path)
+    def _validate_symlinks(self) -> list[str]:
+        """
+        Validate that all symlinks point to files that exist within the manifest.
 
-    entries: OrderedDict[str, ManifestEntry] = OrderedDict()
-    ignored: list[str] = []
+        Returns:
+            List of paths with invalid symlinks
+        """
+        invalid_links = []
+        for path, entry in self.entries.items():
+            if isinstance(entry, LinkRef):
+                source_dir = os.path.dirname(path)
+                target_path = os.path.normpath(
+                    os.path.join(source_dir, entry.reference)
+                )
+                if target_path not in self.entries:
+                    invalid_links.append(path)
+        return invalid_links
 
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        path = Path(dirpath)
+    def to_json(
+        self,
+        file_path: Path,
+        include_metadata: bool = True,
+        snapshot_id: str = "",
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Write manifest to disk as JSON"""
+        # Validate symlinks before saving
+        invalid_links = self._validate_symlinks()
+        if invalid_links:
+            logger.warning(
+                f"Manifest contains invalid symlinks: {', '.join(invalid_links)}"
+            )
 
-        # Skip hidden paths and paths outside of data_dirs
-        if _is_hidden_but_not_dsg(path.relative_to(root_path)):
-            continue
+        output = {"entries": [entry.model_dump() for entry in self.entries.values()]}
+        if include_metadata:
+            # Use existing metadata or create new
+            metadata = self.metadata
+            if metadata is None:
+                # Pass the actual OrderedDict, not a list
+                metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
+                self.metadata = metadata  # Store for future use
 
-        relative_dir = path.relative_to(root_path)
-        for filename in filenames:
-            full_path = path / filename
-            relative_path = full_path.relative_to(root_path)
-            posix_path = PurePosixPath(relative_path)
+            # Add metadata to output
+            output.update(metadata.model_dump())
+        json_bytes = orjson.dumps(output, option=orjson.OPT_INDENT_2)
+        file_path.write_bytes(json_bytes)
 
-            # --- IGNORED CHECKS ---
-            if (
-                posix_path in cfg.project._ignored_exact or
-                any(posix_path.is_relative_to(prefix) for prefix in cfg.project._ignored_prefixes) or
-                filename in cfg.project.ignored_names or
-                full_path.suffix in cfg.project.ignored_suffixes
-            ):
-                ignored.append(str(posix_path))
-                continue
+    @classmethod
+    def from_json(cls, file_path: Path) -> Manifest:
+        """Load manifest from a JSON file, with metadata if present"""
+        # Read with orjson
+        json_bytes = file_path.read_bytes()
+        data = orjson.loads(json_bytes)
 
-            # --- TRY TO CREATE ENTRY ---
+        # Extract entries
+        entries_data = data.pop("entries", [])
+        entries = OrderedDict()
+
+        # Add entries in the order they appear in the JSON
+        for entry_data in entries_data:
+            entry_type = entry_data.get("type")
+            path = entry_data.get("path")
+
+            if entry_type == "file":
+                try:
+                    entry = FileRef.model_validate(entry_data)
+                    entries[path] = entry
+                except Exception as e:
+                    logger.warning(f"Failed to validate file entry for {path}: {e}")
+            elif entry_type == "link":
+                try:
+                    entry = LinkRef.model_validate(entry_data)
+                    entries[path] = entry
+                except Exception as e:
+                    logger.warning(f"Failed to validate link entry for {path}: {e}")
+            else:
+                logger.warning(f"Unknown entry type '{entry_type}' for path {path}")
+
+        # Create manifest with entries in original order
+        manifest = cls(entries=entries)
+
+        # Add metadata if present
+        if "snapshot_id" in data and "entries_hash" in data:
             try:
-                entry = _create_entry(full_path, str(posix_path), cfg)
-                entries[str(posix_path)] = entry
+                manifest.metadata = ManifestMetadata.model_validate(data)
             except Exception as e:
-                logger.error(f"Error processing {full_path}: {e}")
+                logger.warning(f"Failed to validate manifest metadata: {e}")
 
-    return ScanResult(manifest=Manifest(root=entries), ignored=ignored)
+        return manifest
 
+    def verify_integrity(self) -> bool:
+        """Verify that the manifest matches its metadata"""
+        if self.metadata is None:
+            logger.warning("No metadata available to verify against")
+            return False
 
+        # Check entry count
+        if len(self.entries) != self.metadata.entry_count:
+            logger.warning(
+                f"Entry count mismatch: {len(self.entries)} vs {self.metadata.entry_count}"
+            )
+            return False
 
+        h = xxhash.xxh3_64()
+        # Use entries in their original order
+        for entry in self.entries.values():
+            h.update(orjson.dumps(entry.model_dump()))
+        calculated_hash = h.hexdigest()
+        if calculated_hash != self.metadata.entries_hash:
+            logger.warning(
+                f"Hash mismatch: {calculated_hash} vs {self.metadata.entries_hash}"
+            )
+            return False
+        return True
 
-# ---- CLI ----
+    def generate_metadata(
+        self, snapshot_id: str = "", user_id: Optional[str] = None
+    ) -> None:
+        """Generate metadata for this manifest"""
+        self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
 
-app = typer.Typer()
-root_arg = typer.Argument(..., exists=True, file_okay=False, help="Root directory to scan")
-
-@app.command()
-def show(root_path: Path = root_arg) -> None:  # pragma: no cover
-    cfg = Config.load()
-    result = scan_directory(cfg, root_path)
-    for entry in result.manifest.root.values():
-        print(entry)
-    if result.ignored:
-        print("\n# Ignored paths:")
-        for p in result.ignored:
-            print(f"# {p}")
-
-if __name__ == "__main__":
-    app()  # pragma: no cover
 
 # done.
