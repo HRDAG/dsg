@@ -362,4 +362,122 @@ def test_project_config_handles_directory_paths():
     assert PurePosixPath("logs") in cfg._ignored_exact
     assert PurePosixPath("temp/files") in cfg._ignored_exact
 
+
+def test_validate_config_valid_configuration(basic_project_config, monkeypatch):
+    """Test validate_config with a valid configuration."""
+    from dsg.config_manager import validate_config
+    
+    # Change to project directory
+    monkeypatch.chdir(basic_project_config["repo_dir"])
+    
+    # Run validation
+    errors = validate_config(check_backend=False)
+    
+    # Should return empty list (no errors)
+    assert errors == []
+
+
+def test_validate_config_missing_project_config(tmp_path, monkeypatch):
+    """Test validate_config with missing project config."""
+    from dsg.config_manager import validate_config
+    
+    # Change to an empty directory with no config
+    monkeypatch.chdir(tmp_path)
+    
+    # Run validation
+    errors = validate_config()
+    
+    # Should contain an error about missing project config
+    assert len(errors) == 1
+    assert "Missing project config file" in errors[0]
+
+
+def test_validate_config_invalid_project_config(basic_project_config, monkeypatch):
+    """Test validate_config with invalid project config."""
+    from dsg.config_manager import validate_config
+    
+    # Change to project directory
+    monkeypatch.chdir(basic_project_config["repo_dir"])
+    
+    # Corrupt the project config by removing a required field
+    config_path = basic_project_config["config_path"]
+    project_data = yaml.safe_load(config_path.read_text())
+    project_data.pop("repo_type")  # Remove required field
+    config_path.write_text(yaml.dump(project_data))
+    
+    # Run validation
+    errors = validate_config()
+    
+    # Should contain an error about the missing field
+    assert len(errors) >= 1
+    assert any("repo_type" in error for error in errors)
+
+
+def test_validate_config_invalid_user_config(basic_project_config, monkeypatch, tmp_path):
+    """Test validate_config with valid project config but invalid user config."""
+    from dsg.config_manager import validate_config
+    
+    # Set up invalid user config with bad email
+    user_dir = tmp_path / "usercfg"
+    user_dir.mkdir()
+    user_cfg = user_dir / "dsg.yml"
+    user_cfg.write_text("""
+    user_name: Joe
+    user_id: invalid-email  # Not a valid email
+    """)
+    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+    
+    # Change to project directory
+    monkeypatch.chdir(basic_project_config["repo_dir"])
+    
+    # Run validation
+    errors = validate_config()
+    
+    # Should contain an error about the invalid email
+    assert len(errors) >= 1
+    assert any("user_id" in error.lower() for error in errors)
+    assert any("email" in error.lower() for error in errors)
+
+
+@patch("dsg.backends.can_access_backend")
+def test_validate_config_check_backend(mock_can_access, basic_project_config, monkeypatch):
+    """Test validate_config with check_backend=True."""
+    from dsg.config_manager import validate_config
+    
+    # Mock the backend check to fail
+    mock_can_access.return_value = (False, "Backend not accessible: Test error message")
+    
+    # Change to project directory
+    monkeypatch.chdir(basic_project_config["repo_dir"])
+    
+    # Run validation with backend check
+    errors = validate_config(check_backend=True)
+    
+    # Should contain an error from backend check
+    assert len(errors) == 1
+    assert "Backend not accessible" in errors[0]
+    assert "Test error message" in errors[0]
+    
+    # Verify the backend check was called
+    mock_can_access.assert_called_once()
+
+
+def test_validate_config_project_file_error(basic_project_config, monkeypatch):
+    """Test validate_config with a project config file that can't be read."""
+    from dsg.config_manager import validate_config
+    
+    # Change to project directory
+    monkeypatch.chdir(basic_project_config["repo_dir"])
+    
+    # Corrupt the project config file (make it unreadable YAML)
+    config_path = basic_project_config["config_path"]
+    config_path.write_text(": invalid: yaml: content: ")
+    
+    # Run validation
+    errors = validate_config()
+    
+    # Should contain an error about reading the project config
+    assert len(errors) == 1
+    assert "Error reading project config" in errors[0]
+
 # done.

@@ -6,8 +6,11 @@
 # ------
 
 from collections import OrderedDict
+import os
 import pytest
 from pathlib import Path, PurePosixPath
+from unittest.mock import patch
+import xxhash
 
 from dsg.scanner import (
     _is_hidden_path,
@@ -16,9 +19,11 @@ from dsg.scanner import (
     scan_directory,
     scan_directory_no_cfg,
     manifest_from_scan_result,
+    compute_hashes_for_manifest,
+    hash_file,
     ScanResult
 )
-from dsg.manifest import FileRef, Manifest
+from dsg.manifest import FileRef, LinkRef, Manifest
 from dsg.config_manager import Config, ProjectConfig
 
 
@@ -315,5 +320,168 @@ class TestScanDirectory:
         assert len(result_manifest.entries) == 1
         assert "test/file.txt" in result_manifest.entries
         assert result_manifest.entries["test/file.txt"] is original_manifest.entries["test/file.txt"]
+
+class TestHashing:
+    """Tests for file hashing functionality"""
+    
+    @pytest.fixture
+    def hash_test_dir(self, tmp_path):
+        """Create a simple directory structure for hash testing"""
+        project_root = tmp_path / "hash_test"
+        project_root.mkdir()
+        
+        # Create data directories
+        input_dir = project_root / "input"
+        input_dir.mkdir()
+        
+        # Create a few test files with different content
+        file1 = input_dir / "file1.txt"
+        file1.write_text("This is file 1")
+        
+        file2 = input_dir / "file2.txt"
+        file2.write_text("This is file 2")
+        
+        # Create a symlink with relative path (important for test)
+        symlink = input_dir / "link_to_file1.txt"
+        os.symlink("file1.txt", symlink)  # Using relative path
+        
+        return {
+            "root": project_root,
+            "input_dir": input_dir,
+            "file1": file1,
+            "file2": file2,
+            "symlink": symlink
+        }
+    
+    def test_scan_directory_without_hashes(self, hash_test_dir):
+        """Test that scan_directory doesn't compute hashes by default"""
+        project_root = hash_test_dir["root"]
+        
+        # Scan directory without compute_hashes
+        result = scan_directory_no_cfg(
+            project_root,
+            data_dirs={"input"}
+        )
+        
+        # Check files are found but hashes are empty
+        manifest = result.manifest
+        assert "input/file1.txt" in manifest.entries
+        assert "input/file2.txt" in manifest.entries
+        assert "input/link_to_file1.txt" in manifest.entries
+        
+        # Check that file entries have empty hashes
+        for path, entry in manifest.entries.items():
+            if isinstance(entry, FileRef):
+                assert entry.hash == "", f"Hash should be empty for {path}"
+    
+    def test_scan_directory_with_hashes(self, hash_test_dir):
+        """Test that scan_directory computes hashes when requested"""
+        project_root = hash_test_dir["root"]
+        
+        # Scan directory with compute_hashes=True
+        result = scan_directory_no_cfg(
+            project_root,
+            compute_hashes=True,
+            data_dirs={"input"}
+        )
+        
+        # Check files are found with non-empty hashes
+        manifest = result.manifest
+        assert "input/file1.txt" in manifest.entries
+        assert "input/file2.txt" in manifest.entries
+        assert "input/link_to_file1.txt" in manifest.entries
+        
+        # Check that file entries have non-empty hashes
+        file_entries = [entry for entry in manifest.entries.values() 
+                       if isinstance(entry, FileRef)]
+        assert len(file_entries) == 2  # Two files, one symlink
+        
+        for entry in file_entries:
+            assert entry.hash != "", f"Hash should not be empty for {entry.path}"
+            # Check hash is 16 hex chars (xxhash.xxh3_64 produces 8-byte hash)
+            assert len(entry.hash) == 16
+            assert all(c in "0123456789abcdef" for c in entry.hash)
+        
+        # Verify symlink doesn't have a hash
+        symlink_entry = manifest.entries["input/link_to_file1.txt"]
+        assert isinstance(symlink_entry, LinkRef)
+        assert not hasattr(symlink_entry, "hash")
+    
+    def test_hash_file_function(self, hash_test_dir):
+        """Test the hash_file function directly"""
+        file1 = hash_test_dir["file1"]
+        
+        # Compute hash with our function
+        hash_value = hash_file(file1)
+        
+        # Compute hash directly with xxhash
+        h = xxhash.xxh3_64()
+        h.update(file1.read_bytes())
+        expected_hash = h.hexdigest()
+        
+        # Verify hashes match
+        assert hash_value == expected_hash
+    
+    def test_compute_hashes_for_existing_manifest(self, hash_test_dir):
+        """Test computing hashes for an existing manifest"""
+        project_root = hash_test_dir["root"]
+        
+        # First create a manifest without hashes
+        result = scan_directory_no_cfg(
+            project_root,
+            data_dirs={"input"}
+        )
+        manifest = result.manifest
+        
+        # Verify hashes are empty
+        for path, entry in manifest.entries.items():
+            if isinstance(entry, FileRef):
+                assert entry.hash == ""
+        
+        # Now use compute_hashes_for_manifest
+        compute_hashes_for_manifest(manifest, project_root)
+        
+        # Verify hashes are no longer empty for file entries
+        file_entries = [entry for entry in manifest.entries.values() 
+                       if isinstance(entry, FileRef)]
+        for entry in file_entries:
+            assert entry.hash != ""
+    
+    def test_race_condition_handling(self, hash_test_dir):
+        """Test handling of race conditions with symlinks"""
+        project_root = hash_test_dir["root"]
+        file1_path = hash_test_dir["file1"]
+        
+        # Create a manifest entry independently to avoid file system operations
+        file_entry = FileRef(
+            type="file",
+            path="input/file1.txt",
+            filesize=14,
+            mtime="2023-05-15T12:30:00-07:00",
+            hash=""
+        )
+        
+        # Create a manifest with one entry
+        entries = OrderedDict({"input/file1.txt": file_entry})
+        manifest = Manifest(entries=entries)
+        
+        # We'll modify our file to make it look like a symlink for the is_symlink check
+        # This simulates a race condition where the file was converted to a symlink
+        # after the entry was already created
+        original_is_symlink = Path.is_symlink
+        
+        def mock_is_symlink(self):
+            # Make only our specific file look like a symlink
+            if self == file1_path:
+                return True
+            return original_is_symlink(self)
+        
+        # Apply the patch but with our custom function
+        with patch('pathlib.Path.is_symlink', mock_is_symlink):
+            # Try to compute hashes - it should skip our file due to race condition check
+            compute_hashes_for_manifest(manifest, project_root)
+            
+            # Hash should still be empty because of our mock making it look like a symlink
+            assert manifest.entries["input/file1.txt"].hash == ""
 
 # done.

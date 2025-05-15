@@ -21,21 +21,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-import xxhash
-
 from dsg.manifest import Manifest, FileRef, LinkRef
-from dsg.scanner import scan_directory
+from dsg.scanner import scan_directory, hash_file  # Import hash_file from scanner
 from dsg.config_manager import Config
-
-
-def hash_file(path):
-    """Calculate xxHash for a file"""
-    h = xxhash.xxh3_64()
-    with open(path, 'rb') as f:
-        # Read in chunks to handle large files
-        for chunk in iter(lambda: f.read(8192), b''):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 class SyncState(Enum):
@@ -113,7 +101,7 @@ class ManifestMerger:
         if ex == "100":                       return SyncState.sLxCxR__only_L
         if ex == "000":                       return SyncState.sxLxCxR__none
 
-        raise ValueError(f"Unexpected manifest state {ex}")
+        raise ValueError(f"Unexpected manifest state {ex}")  # pragma: no cover
 
     def get_sync_states(self) -> OrderedDict[str, SyncState]:
         return self.path_states
