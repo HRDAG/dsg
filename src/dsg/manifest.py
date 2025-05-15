@@ -49,6 +49,20 @@ class FileRef(BaseModel):
             type="file", path=path, filesize=stat_info.st_size, mtime=mtime_iso, hash=""
         )
 
+    def eq_shallow(self, other) -> bool:
+        """
+        Compare FileRef objects ignoring the hash value.
+        Used for situations where we want to check if metadata matches
+        but hash hasn't been computed yet.
+        """
+        if not isinstance(other, FileRef):
+            return False
+        return (
+            self.path == other.path and
+            self.filesize == other.filesize and
+            self.mtime == other.mtime
+        )
+
 
 class LinkRef(BaseModel):
     """Symlink reference representing a symbolic link in the manifest"""

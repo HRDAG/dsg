@@ -164,3 +164,5 @@ cython_debug/
 .txt
 .parquet
 output
+
+**/.claude/settings.local.json
