@@ -1,6 +1,4 @@
-dog|rating
-bob|10
-kodi|7
-mackey|6
-carly|9
-lali|12
+id,name,value
+1,Alice,100
+2,Bob,200
+3,Charlie,300
