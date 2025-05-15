@@ -69,11 +69,52 @@ test_cases = [
     (r"relative\path\to\file.txt", True), # common Windows relative
 ]
 
-
 @pytest.mark.parametrize("path_str, expected_valid", test_cases)
 def test_validate_path(path_str, expected_valid):
     is_valid, reason = validate_path(path_str)
     assert is_valid == expected_valid, f"Unexpected result for {path_str!r}: {reason}"
 
+def test_windows_path_validation():
+    """Test Windows-specific path validation rules"""
+    # Test backslash variations
+    assert not validate_path(r"path\..\file.txt")[0]  # Contains relative path with backslash
+    assert not validate_path(r".\file.txt")[0]        # Starts with .\
+    assert not validate_path(r"path\.")[0]            # Ends with \.
+    assert not validate_path(r"path\.\file.txt")[0]   # Contains \.\ 
+    
+    # Test that valid Windows paths are accepted
+    assert validate_path(r"C:\Users\name\file.txt")[0]
+    assert validate_path(r"relative\path\file.txt")[0]
+
+def test_windows_relative_paths():
+    """Test Windows-specific relative path validation"""
+    # Test ..\\ variations
+    assert not validate_path(r"path\..\\file.txt")[0]  # Contains relative path with double backslash
+    assert not validate_path(r"..\\file.txt")[0]       # Starts with ..\ and double backslash
+    assert not validate_path(r"path\\..")[0]           # Ends with \.. and double backslash
+    assert not validate_path(r"path\..\file.txt")[0]   # Contains \..\ in middle
+    assert not validate_path(r"path\..\\file.txt")[0]  # Contains \..\ with double backslash
+    
+    # Test that paths without .. are accepted
+    assert validate_path(r"path\file.txt")[0]
+    assert validate_path(r"path\subdir\file.txt")[0]
+
+def test_path_length_limits():
+    """Test path and component length limits"""
+    # Test overall path length limit (4096 bytes)
+    long_path = "dir/" + ("x" * 4095)  # Total length > 4096 bytes with dir/ prefix
+    assert not validate_path(long_path)[0]
+    
+    # Test path just under the limit
+    path_under_limit = "dir/" + ("x" * 200)  # Total length < 4096 bytes
+    assert validate_path(path_under_limit)[0]
+    
+    # Test component length limit (255 bytes)
+    long_component = "dir/" + ("x" * 256) + ".txt"
+    assert not validate_path(long_component)[0]
+    
+    # Test valid lengths
+    valid_path = "dir/" + ("x" * 200) + ".txt"  # Well under the 4096 byte limit
+    assert validate_path(valid_path)[0]
 
 # done.

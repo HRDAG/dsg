@@ -1,0 +1,47 @@
+# DSG Project Configuration
+
+# repo_name must match the name of the directory containing .dsg/
+# In this case, since .dsg is in the 'data' directory, repo_name must be 'data'
+repo_name: data
+
+# repo_path specifies where the repository lives on the remote host
+# This is NOT the local path, but rather the path on the host machine
+repo_path: /var/repos/dsg
+
+# host must be either the system's hostname or a host defined in .ssh/config
+# It cannot be 'localhost' - must be a real hostname
+host: dsg-server  # in most applications this will be `scott`
+
+repo_type: zfs
+
+# Data directories that will be scanned
+data_dirs:
+  - input
+  - output
+  - frozen
+
+# File patterns to ignore during scanning
+ignored_names:
+  - .DS_Store
+  - .Rhistory
+  - .RData
+  - __pycache__
+  - .ipynb_checkpoints
+
+ignored_suffixes:
+  - .pyc
+  - .log
+  - .tmp
+  - .temp
+  - .swp
+  - .swo
+  - .bak
+  - .cache
+  - .pkl
+  - .ipynb
+  - "~"
+
+ignored_paths:
+  - "data/task1/input/some_credential_file.txt"
+
+# done

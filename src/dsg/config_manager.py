@@ -24,7 +24,7 @@ from typer import Exit
 USER_CFG: Final = "dsg.yml"
 PROJECT_CFG: Final = "config.yml"
 PROJECT_CONFIG_FILENAME: Final = Path(".dsg") / PROJECT_CFG
-
+DEFAULT_DATA_DIRS: Final = {'input', 'output', 'frozen'}
 
 # ---- Config Finders ----
 
@@ -60,9 +60,9 @@ def find_project_config_path(start: Path | None = None) -> Path:
 
 class ProjectConfig(BaseModel):
     repo_name: str
-    data_dirs: set[str]
-    host: str
-    repo_path: Path
+    data_dirs: set[str] = DEFAULT_DATA_DIRS
+    host: str         # e.g., scott
+    repo_path: Path   # e.g., /var/repos/dgs
     repo_type: Literal["zfs", "xfs"]
 
     ignored_paths: set[str] = Field(default_factory=set)
@@ -73,87 +73,143 @@ class ProjectConfig(BaseModel):
 
     # Derived fields (not part of YAML schema)
     _ignored_exact: set[PurePosixPath] = PrivateAttr(default_factory=set)
-    _ignored_prefixes: set[PurePosixPath] = PrivateAttr(default_factory=set)
+    _normalized_paths: set[PurePosixPath] = PrivateAttr(default_factory=set)
 
     @model_validator(mode="after")
     def normalize_paths(self) -> "ProjectConfig":
+        # Normalize data_dirs by stripping trailing slashes - they're all directories
         self.data_dirs = {d.rstrip("/") for d in self.data_dirs}
 
+        # Process ignored paths - normalize by stripping trailing slashes
         self._ignored_exact = set()
-        self._ignored_prefixes = set()
-        for s in self.ignored_paths:
-            p = PurePosixPath(s.rstrip("/"))
-            if s.endswith("/"):
-                self._ignored_prefixes.add(p)
-            else:
-                self._ignored_exact.add(p)
-
+        self._normalized_paths = set()
+        
+        normalized_ignored = set()
+        for path in self.ignored_paths:
+            # Strip trailing slashes from paths instead of rejecting them
+            normalized = path.rstrip("/")
+            normalized_ignored.add(normalized)
+            self._ignored_exact.add(PurePosixPath(normalized))
+            self._normalized_paths.add(PurePosixPath(normalized))
+        
+        self.ignored_paths = normalized_ignored
         return self
+
+    @classmethod
+    def minimal(cls, root_path: Path, **overrides) -> "ProjectConfig":
+        """Create a minimal ProjectConfig with sensible defaults"""
+        # Start with default values
+        params = {
+            "repo_name": "temp",
+            "data_dirs": DEFAULT_DATA_DIRS,
+            "host": "localhost",
+            "repo_path": root_path,
+            "repo_type": "xfs"
+        }
+        params.update(overrides)
+        config = cls(**params)
+        return config.normalize_paths()
+
+
+class UserConfig(BaseModel):
+    user_name: str
+    user_id: EmailStr
+    default_host: Optional[str] = None
+    default_project_path: Optional[Path] = None
+
+    @classmethod
+    def load(cls, config_path: Path) -> "UserConfig":
+        """Load user config from a file. Raises ValueError if required fields missing."""
+        with config_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+            
+        # Check required fields before validation
+        missing = []
+        if not data.get("user_name"):
+            missing.append("user_name")
+        if not data.get("user_id"):
+            missing.append("user_id")
+        if missing:
+            raise ValueError(f"Missing required fields in user config: {', '.join(missing)}")
+            
+        return cls.model_validate(data)
 
 
 class Config(BaseModel):
-    user_name: str
-    user_id: EmailStr
-    project: Optional[ProjectConfig] = None
+    user: Optional[UserConfig] = None
+    project: ProjectConfig
     project_root: Path = Field(exclude=True)
 
     @classmethod
-    def load(cls) -> Config:
-        user_config_path = find_user_config_path()
-        project_config_path = find_project_config_path(Path.cwd())
-        project_root = project_config_path.parent.parent  # .dsg/config.yml → .dsg → project root
-
+    def load(cls, start_path: Path | None = None) -> Config:
         data: dict[str, Any] = {}
 
-        with user_config_path.open("r", encoding="utf-8") as f:
-            data.update(yaml.safe_load(f) or {})
-
+        # Load project config first - this is required
+        project_config_path = find_project_config_path(start_path)
+        project_root = project_config_path.parent.parent
+        
         with project_config_path.open("r", encoding="utf-8") as f:
             data["project"] = yaml.safe_load(f) or {}
+        data["project_root"] = project_root
 
-        data['project_root'] = project_root
-        config = cls.model_validate(data)
-        return config
+        # Try to load user config if it exists
+        try:
+            user_config_path = find_user_config_path()
+            data["user"] = UserConfig.load(user_config_path)
+        except (Exit, ValueError):
+            pass  # User config not found or invalid, continue without it
+
+        return cls.model_validate(data)
 
 
 def validate_config(check_backend: bool = False) -> list[str]:
-
     """Return a list of validation errors. Empty list means config is valid."""
     errors = []
 
-    try:
-        user_config_path = find_user_config_path()
-    except Exit:
-        errors.append("Missing user config file (DSG_CONFIG_HOME, XDG_CONFIG_HOME, or ~/.config/dsg/)")
-        return errors
-
+    # Project config is required
     try:
         project_config_path = find_project_config_path()
     except Exit:
         errors.append("Missing project config file (.dsg/config.yml not found in any parent directory)")
         return errors
 
+    # Load project config
     try:
-        with user_config_path.open("r", encoding="utf-8") as f:
-            user_data = yaml.safe_load(f) or {}
-
         with project_config_path.open("r", encoding="utf-8") as f:
             project_data = yaml.safe_load(f) or {}
+    except Exception as e:
+        errors.append(f"Error reading project config: {e}")
+        return errors
 
-        combined = dict(user_data)
-        combined["project"] = project_data
-        combined["project_root"] = project_config_path.parent.parent
+    data = {
+        "project": project_data,
+        "project_root": project_config_path.parent.parent
+    }
 
-        cfg = Config.model_validate(combined)
+    # Try user config if it exists
+    try:
+        user_config_path = find_user_config_path()
+        with user_config_path.open("r", encoding="utf-8") as f:
+            user_data = yaml.safe_load(f) or {}
+        data["user"] = UserConfig.model_validate(user_data)
+    except Exit:
+        pass  # User config not found, which is fine
+    except Exception as e:
+        errors.append(f"Error in user config: {e}")
 
+    # Validate full config
+    try:
+        cfg = Config.model_validate(data)
     except Exception as e:
         errors.append(str(e))
+        return errors
 
     if check_backend:
         from dsg.backends import can_access_backend
         ok, msg = can_access_backend(cfg)
         if not ok:
             errors.append(msg)
+
     return errors
 
 
