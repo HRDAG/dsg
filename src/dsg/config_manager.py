@@ -80,15 +80,14 @@ class ProjectConfig(BaseModel):
         # Normalize data_dirs by stripping trailing slashes - they're all directories
         self.data_dirs = {d.rstrip("/") for d in self.data_dirs}
 
-        # Process ignored paths - all should be files, no trailing slashes
+        # Process ignored paths - normalize by stripping trailing slashes
         self._ignored_exact = set()
         self._normalized_paths = set()
         
         normalized_ignored = set()
         for path in self.ignored_paths:
-            if path.endswith("/"):
-                raise ValueError(f"ignored_paths cannot end with '/': {path}")
-            normalized = path.rstrip("/")  # just in case, for migration
+            # Strip trailing slashes from paths instead of rejecting them
+            normalized = path.rstrip("/")
             normalized_ignored.add(normalized)
             self._ignored_exact.add(PurePosixPath(normalized))
             self._normalized_paths.add(PurePosixPath(normalized))
@@ -142,11 +141,11 @@ class Config(BaseModel):
     project_root: Path = Field(exclude=True)
 
     @classmethod
-    def load(cls) -> Config:
+    def load(cls, start_path: Path | None = None) -> Config:
         data: dict[str, Any] = {}
 
         # Load project config first - this is required
-        project_config_path = find_project_config_path(Path.cwd())
+        project_config_path = find_project_config_path(start_path)
         project_root = project_config_path.parent.parent
         
         with project_config_path.open("r", encoding="utf-8") as f:

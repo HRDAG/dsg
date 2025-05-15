@@ -34,7 +34,6 @@ def scan_directory(cfg: Config) -> ScanResult:
         root_path=cfg.project_root,
         data_dirs=cfg.project.data_dirs,
         ignored_exact=cfg.project._ignored_exact,
-        ignored_prefixes=cfg.project._ignored_prefixes,
         ignored_names=cfg.project.ignored_names,
         ignored_suffixes=cfg.project.ignored_suffixes
     )
@@ -46,7 +45,6 @@ def scan_directory_no_cfg(root_path: Path, **config_overrides) -> ScanResult:
         root_path=root_path,
         data_dirs=project_config.data_dirs,
         ignored_exact=project_config._ignored_exact,
-        ignored_prefixes=project_config._ignored_prefixes,
         ignored_names=project_config.ignored_names,
         ignored_suffixes=project_config.ignored_suffixes
     )
@@ -57,15 +55,27 @@ def _should_ignore_path(
     filename: str,
     full_path: Path,
     ignored_exact: set[PurePosixPath],
-    ignored_prefixes: set[PurePosixPath],
     ignored_names: set[str],
     ignored_suffixes: set[str]) -> bool:
-    return (
+    
+    logger.debug(f"  _should_ignore_path called with path: {posix_path}")
+    logger.debug(f"  ignored_exact set contains: {ignored_exact}")
+    
+    # Debug logging for exact path comparison
+    for ignore_path in ignored_exact:
+        logger.debug(f"  Comparing path: '{posix_path}' with ignored path: '{ignore_path}'")
+        logger.debug(f"  Types: {type(posix_path)} vs {type(ignore_path)}")
+        if posix_path == ignore_path:
+            logger.debug(f"  MATCH: '{posix_path}' matches '{ignore_path}'")
+    
+    result = (
         posix_path in ignored_exact or
-        any(posix_path.is_relative_to(prefix) for prefix in ignored_prefixes) or
         filename in ignored_names or
         full_path.suffix in ignored_suffixes
     )
+    
+    logger.debug(f"  _should_ignore_path result: {result}")
+    return result
 
 
 def _is_hidden_path(path: Path) -> bool:
@@ -80,7 +90,6 @@ def _scan_directory_internal(
     root_path: Path,
     data_dirs: set[str],
     ignored_exact: set[PurePosixPath],
-    ignored_prefixes: set[PurePosixPath],
     ignored_names: set[str],
     ignored_suffixes: set[str]) -> ScanResult:
     """Internal implementation of directory scanning"""
@@ -117,7 +126,7 @@ def _scan_directory_internal(
 
         should_ignore = _should_ignore_path(
             posix_path, full_path.name, full_path,
-            ignored_exact, ignored_prefixes, ignored_names, ignored_suffixes
+            ignored_exact, ignored_names, ignored_suffixes
         )
 
         logger.debug(f"  Should ignore: {should_ignore}")

@@ -5,9 +5,8 @@
 #
 # ------
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
-import os
 
 import typer
 from rich.console import Console
@@ -20,30 +19,44 @@ app = typer.Typer(help="DSG - Project data management tools")
 console = Console()
 
 
-# TODO: if we're in a project, find and use cfg. maybe needs 2 versions of list_files?
 @app.command()
+def init():
+    """Initialize dsg metadata directory"""
+    raise NotImplementedError("The init command has not been implemented yet")
+
+
+@app.command(name="list-files")
 def list_files(
     path: str = typer.Argument(".", help="Directory to scan"),
     ignored_names: Optional[str] = typer.Option(None, help="Comma-separated list of filenames to ignore"),
     ignored_suffixes: Optional[str] = typer.Option(None, help="Comma-separated list of file suffixes to ignore"),
-    ignored_paths: Optional[str] = typer.Option(None, help="Comma-separated list of paths to ignore"),
+    ignored_paths: Optional[str] = typer.Option(None, help="Comma-separated list of exact paths to ignore"),
     no_ignored: bool = typer.Option(False, "--no-ignored", help="Hide ignored files from output"),
     debug: bool = typer.Option(False, "--debug", help="Show debug information"),
 ):
     """
     List files in a directory with their status, path, timestamp, and size.
-    Uses project config if available, otherwise uses minimal manifest configuration.
-    """
-    project_root = Path(path).resolve()
 
+    Uses project configuration when available, or minimal defaults.
+    """
     if debug:
-        console.print(f"Scanning directory: [bold]{project_root}[/bold]")
-        console.print("Directory contains:")
-        items = list(project_root.iterdir())
-        for i, item in enumerate(items[:10]):  # Limit to first 10 items
-            console.print(f"  - {item.name}")
-        if len(items) > 10:
-            console.print(f"  - ... and {len(items) - 10} more items")
+        import logging
+        from loguru import logger
+        logger.remove()
+        logger.add(logging.StreamHandler(), level="DEBUG")
+
+    # Convert path to absolute path
+    abs_path = Path(path).absolute()
+    console.print(f"Scanning directory: {abs_path}")
+
+    # Check if directory exists
+    if not abs_path.exists():
+        console.print(f"[red]Error: Directory '{abs_path}' does not exist[/red]")
+        raise typer.Exit(1)
+
+    if not abs_path.is_dir():
+        console.print(f"[red]Error: '{abs_path}' is not a directory[/red]")
+        raise typer.Exit(1)
 
     # Parse comma-separated lists into sets
     overrides = {}
@@ -52,6 +65,7 @@ def list_files(
     if ignored_suffixes:
         overrides["ignored_suffixes"] = set(s.strip() for s in ignored_suffixes.split(","))
     if ignored_paths:
+        # Convert ignored_paths to ignored_exact with PurePosixPath
         overrides["ignored_paths"] = set(p.strip() for p in ignored_paths.split(","))
 
     if debug:
@@ -60,79 +74,88 @@ def list_files(
         console.print(f"  - ignored_suffixes: {overrides.get('ignored_suffixes', 'default')}")
         console.print(f"  - ignored_paths: {overrides.get('ignored_paths', 'default')}")
 
-    # Try to load project config, fall back to minimal config if not found
+    # Get directory contents
+    try:
+        if debug:
+            items = list(abs_path.iterdir())
+            console.print("Directory contains:")
+            for item in items:
+                console.print(f"  - {item.name}")
+    except Exception as e:
+        console.print(f"[red]Error listing directory: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Try to load config from .dsg/config.yml or use minimal config with overrides
     try:
         from dsg.config_manager import Config
-        cfg = Config.load()
-        # Apply any command-line overrides to the project config
-        if overrides:
-            if "ignored_names" in overrides:
-                cfg.project.ignored_names = overrides["ignored_names"]
-            if "ignored_suffixes" in overrides:
-                cfg.project.ignored_suffixes = overrides["ignored_suffixes"]
-            if "ignored_paths" in overrides:
-                cfg.project.ignored_paths = overrides["ignored_paths"]
-                cfg.project.normalize_paths()  # Re-normalize after changing ignored_paths
+        cfg = Config.load(abs_path)
+        
+        # Apply any overrides from command line
+        for key, value in overrides.items():
+            if key == "ignored_paths":
+                cfg.project.ignored_paths.update(value)
+                # Update _ignored_exact to match
+                cfg.project._ignored_exact.update(PurePosixPath(p) for p in value)
+            else:
+                # For other properties, update directly
+                getattr(cfg.project, key).update(value)
+                
         result = scan_directory(cfg)
     except Exception as e:
         if debug:
-            console.print(f"No project config found ({str(e)}), using minimal config")
-        result = scan_directory_no_cfg(project_root, **overrides)
+            console.print(f"[yellow]Could not load config, using minimal config: {e}[/yellow]")
+        # Fall back to minimal config
+        result = scan_directory_no_cfg(abs_path, **overrides)
 
-    if debug:
-        emsg = (f"Found {len(result.manifest.entries)}"
-                f" included files and {len(result.ignored)} excluded files")
-        console.print(emsg)
-
-    # Create a table for output
-    table = Table(show_header=True, box=None, show_lines=False)
-    table.add_column("Status", style="green", no_wrap=True)
-    table.add_column("Path", no_wrap=True)
+    # Display results
+    table = Table()
+    table.add_column("Status")
+    table.add_column("Path")
     table.add_column("Timestamp")
     table.add_column("Size", justify="right")
 
-    # Add included files
-    for file_path, entry in result.manifest.entries.items():
+    # Get the base path to strip from displayed paths
+    base_path = str(abs_path) + "/"
+
+    # Add manifest entries to table
+    for path_str, entry in result.manifest.entries.items():
+        # Remove the base directory for display
+        display_path = path_str
+        if path_str.startswith(base_path):
+            display_path = path_str[len(base_path):]
+
+        # Handle different types of entries
         if entry.type == "file":
             table.add_row(
                 "included",
-                file_path,
-                entry.mtime,
-                f"{entry.filesize:,} bytes"
+                display_path,
+                entry.mtime,  # FileRef has mtime
+                f"{entry.filesize:,} bytes"  # FileRef has filesize
             )
         elif entry.type == "link":
             table.add_row(
                 "included",
-                f"{file_path} -> {entry.reference}",
+                f"{display_path} -> {entry.reference}",  # Show symlink target
                 "",
                 "symlink"
             )
 
-    # Add ignored files (default behavior, unless --no-ignored is specified)
+    # Add ignored entries if requested
     if not no_ignored:
-        for file_path in result.ignored:
-            full_path = project_root / file_path
-            if full_path.exists():
-                try:
-                    size = full_path.stat().st_size
-                    size_str = f"{size:,} bytes"
-                    timestamp = ""  # We don't get timestamps for ignored files from the scanner
-                except (PermissionError, FileNotFoundError):
-                    size_str = "unknown"
-                    timestamp = ""
+        for path_str in result.ignored:
+            # Remove the base directory for display
+            display_path = path_str
+            if path_str.startswith(base_path):
+                display_path = path_str[len(base_path):]
 
-                table.add_row(
-                    "excluded",
-                    file_path,
-                    timestamp,
-                    size_str,
-                    style="dim"  # Make excluded rows appear dimmed
-                )
+            table.add_row(
+                "excluded",
+                display_path,
+                "",
+                "0 bytes"
+            )
 
-    # Print the table
     console.print(table)
-
-    # Print summary
     console.print(f"\nIncluded: {len(result.manifest.entries)} files")
     console.print(f"Excluded: {len(result.ignored)} files")
 

@@ -12,6 +12,8 @@ repo_path: /var/repos/dsg
 # It cannot be 'localhost' - must be a real hostname
 host: dsg-server  # in most applications this will be `scott`
 
+repo_type: zfs
+
 # Data directories that will be scanned
 data_dirs:
   - input
@@ -37,7 +39,9 @@ ignored_suffixes:
   - .cache
   - .pkl
   - .ipynb
-  - ~
+  - "~"
 
 ignored_paths:
   - "data/task1/input/some_credential_file.txt"
+
+# done

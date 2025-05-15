@@ -138,7 +138,6 @@ def ignore_rules():
     """Create test ignore rules"""
     return {
         "ignored_exact": {PurePosixPath("ignored/exact.txt")},
-        "ignored_prefixes": {PurePosixPath("ignored/dir")},
         "ignored_names": {"ignored_name.txt", "temp.tmp"},
         "ignored_suffixes": {".pyc", ".log"}
     }
@@ -193,7 +192,6 @@ class TestHelperFunctions:
         """Test _should_ignore_path function"""
         # Create test paths
         exactly_ignored = PurePosixPath("ignored/exact.txt")
-        prefix_ignored = PurePosixPath("ignored/dir/file.txt")
         name_ignored = PurePosixPath("input/ignored_name.txt")
         suffix_ignored = PurePosixPath("output/script.pyc")
         not_ignored = PurePosixPath("input/normal.txt")
@@ -202,15 +200,6 @@ class TestHelperFunctions:
         assert _should_ignore_path(
             exactly_ignored, exactly_ignored.name, Path("ignored/exact.txt"),
             ignore_rules["ignored_exact"],
-            ignore_rules["ignored_prefixes"],
-            ignore_rules["ignored_names"],
-            ignore_rules["ignored_suffixes"]
-        )
-
-        assert _should_ignore_path(
-            prefix_ignored, prefix_ignored.name, Path("ignored/dir/file.txt"),
-            ignore_rules["ignored_exact"],
-            ignore_rules["ignored_prefixes"],
             ignore_rules["ignored_names"],
             ignore_rules["ignored_suffixes"]
         )
@@ -218,7 +207,6 @@ class TestHelperFunctions:
         assert _should_ignore_path(
             name_ignored, name_ignored.name, Path("input/ignored_name.txt"),
             ignore_rules["ignored_exact"],
-            ignore_rules["ignored_prefixes"],
             ignore_rules["ignored_names"],
             ignore_rules["ignored_suffixes"]
         )
@@ -226,7 +214,6 @@ class TestHelperFunctions:
         assert _should_ignore_path(
             suffix_ignored, suffix_ignored.name, Path("output/script.pyc"),
             ignore_rules["ignored_exact"],
-            ignore_rules["ignored_prefixes"],
             ignore_rules["ignored_names"],
             ignore_rules["ignored_suffixes"]
         )
@@ -235,7 +222,6 @@ class TestHelperFunctions:
         assert not _should_ignore_path(
             not_ignored, not_ignored.name, Path("input/normal.txt"),
             ignore_rules["ignored_exact"],
-            ignore_rules["ignored_prefixes"],
             ignore_rules["ignored_names"],
             ignore_rules["ignored_suffixes"]
         )

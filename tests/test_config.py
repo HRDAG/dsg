@@ -234,20 +234,6 @@ def test_project_config_path_handling():
     assert PurePosixPath("../parent.txt") in cfg._ignored_exact
 
 
-def test_project_config_rejects_directory_paths():
-    """Test that ignored_paths rejects paths ending in /"""
-    with pytest.raises(ValueError) as excinfo:
-        ProjectConfig(
-            repo_name="demo",
-            repo_type="zfs",
-            host="scott",
-            repo_path=Path("/tmp/repo"),
-            data_dirs={"input"},
-            ignored_paths={"logs/"},  # Should raise error
-        )
-    assert "cannot end with '/'" in str(excinfo.value)
-
-
 def test_config_load_project_only(basic_project_config, monkeypatch):
     """Test that Config.load() works with only project config."""
     # Ensure no user config exists
@@ -354,5 +340,26 @@ def test_project_root_computation(basic_project_config, monkeypatch):
     assert cfg.project_root.name == basic_project_config["repo_name"]
     assert (cfg.project_root / ".dsg").is_dir()
     assert (cfg.project_root / ".dsg" / "config.yml").is_file()
+
+
+def test_project_config_handles_directory_paths():
+    """Test that ignored_paths with trailing slashes are normalized"""
+    # Create a config with paths having trailing slashes
+    cfg = ProjectConfig(
+        repo_name="demo",
+        repo_type="zfs",
+        host="scott",
+        repo_path=Path("/tmp/repo"),
+        data_dirs={"input"},
+        ignored_paths={"logs/", "temp/files/"},  # Paths with trailing slashes
+    )
+    
+    # Check that trailing slashes are removed in the normalized paths
+    assert "logs" in cfg.ignored_paths  # Trailing slash should be stripped
+    assert "temp/files" in cfg.ignored_paths  # Trailing slash should be stripped
+    
+    # Check that internal representation uses normalized paths
+    assert PurePosixPath("logs") in cfg._ignored_exact
+    assert PurePosixPath("temp/files") in cfg._ignored_exact
 
 # done.

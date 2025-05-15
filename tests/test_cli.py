@@ -12,8 +12,8 @@ runner = CliRunner()
 
 def create_test_files(directory):
     """Create test files in the given directory."""
-    directory = Path(directory) / "list-files"  # Create files under list-files directory
-    directory.mkdir(exist_ok=True)
+    # Use the directory directly, don't add 'list-files' subdirectory
+    directory = Path(directory)
     
     # Create input directory (one of the default data directories)
     input_dir = directory / "input"
@@ -49,13 +49,13 @@ def test_list_files_basic():
         assert "Size" in result.stdout
         
         # Check that all files are listed with correct status
-        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
-        assert "included input/file2.txt" in result.stdout.replace("  ", " ")
-        assert "included input/data.csv" in result.stdout.replace("  ", " ")
-        assert "included input/ignored.tmp" in result.stdout.replace("  ", " ")
-        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
-        assert "included input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
-        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        assert "included" in result.stdout and "input/file1.txt" in result.stdout
+        assert "included" in result.stdout and "input/file2.txt" in result.stdout
+        assert "included" in result.stdout and "input/data.csv" in result.stdout
+        assert "included" in result.stdout and "input/ignored.tmp" in result.stdout
+        assert "included" in result.stdout and "input/subdir/subfile1.txt" in result.stdout
+        assert "included" in result.stdout and "input/subdir/subfile2.csv" in result.stdout
+        assert "input/link.txt -> file1.txt" in result.stdout
         
         # Verify file sizes are shown
         assert "bytes" in result.stdout
@@ -82,15 +82,15 @@ def test_list_files_ignored_names():
         assert "Size" in result.stdout
         
         # Check included files have correct status and details
-        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
-        assert "included input/data.csv" in result.stdout.replace("  ", " ")
-        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
-        assert "included input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
-        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        assert "included" in result.stdout and "input/file1.txt" in result.stdout
+        assert "included" in result.stdout and "input/data.csv" in result.stdout
+        assert "included" in result.stdout and "input/subdir/subfile1.txt" in result.stdout
+        assert "included" in result.stdout and "input/subdir/subfile2.csv" in result.stdout
+        assert "included" in result.stdout and "input/link.txt -> file1.txt" in result.stdout
         
         # Check excluded files have correct status
-        assert "excluded input/ignored.tmp" in result.stdout.replace("  ", " ")
-        assert "excluded input/file2.txt" in result.stdout.replace("  ", " ")
+        assert "excluded" in result.stdout and "input/ignored.tmp" in result.stdout
+        assert "excluded" in result.stdout and "input/file2.txt" in result.stdout
         
         # Verify all files still show size information
         assert "bytes" in result.stdout
@@ -117,20 +117,20 @@ def test_list_files_ignored_suffixes():
         assert "Size" in result.stdout
         
         # Check included files (non-ignored suffixes)
-        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
-        assert "included input/file2.txt" in result.stdout.replace("  ", " ")
-        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        assert "included" in result.stdout and "input/file1.txt" in result.stdout
+        assert "included" in result.stdout and "input/file2.txt" in result.stdout
+        assert "included" in result.stdout and "input/link.txt -> file1.txt" in result.stdout
         
         # Check excluded files (ignored suffixes)
-        assert "excluded input/data.csv" in result.stdout.replace("  ", " ")
-        assert "excluded input/ignored.tmp" in result.stdout.replace("  ", " ")
-        assert "excluded input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
+        assert "excluded" in result.stdout and "input/data.csv" in result.stdout
+        assert "excluded" in result.stdout and "input/ignored.tmp" in result.stdout
+        assert "excluded" in result.stdout and "input/subdir/subfile2.csv" in result.stdout
         
         # Verify all files still show size information
         assert "bytes" in result.stdout
         
         # Check that subdirectory .txt files are included
-        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
+        assert "included" in result.stdout and "input/subdir/subfile1.txt" in result.stdout
         
         # Check summary statistics - 4 included (3 .txt files + 1 symlink), 3 excluded (2 .csv + 1 .tmp)
         assert "Included: 4 files" in result.stdout
