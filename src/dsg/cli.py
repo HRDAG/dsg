@@ -7,6 +7,7 @@
 
 from pathlib import Path
 from typing import Optional
+import os
 
 import typer
 from rich.console import Console
@@ -20,7 +21,7 @@ console = Console()
 
 
 # TODO: if we're in a project, find and use cfg. maybe needs 2 versions of list_files?
-@app.command("list-files")
+@app.command()
 def list_files(
     path: str = typer.Argument(".", help="Directory to scan"),
     ignored_names: Optional[str] = typer.Option(None, help="Comma-separated list of filenames to ignore"),
@@ -64,12 +65,14 @@ def list_files(
     result = scan_directory_no_cfg(project_root, **overrides)
 
     if debug:
-        console.print(f"Found {len(result.manifest.entries)} included files and {len(result.ignored)} excluded files")
+        emsg = (f"Found {len(result.manifest.entries)}"
+                " included files and {len(result.ignored)} excluded files")
+        console.print(emsg)
 
     # Create a table for output
-    table = Table(show_header=True)
-    table.add_column("Status", style="green")
-    table.add_column("Path")
+    table = Table(show_header=True, box=None, show_lines=False)
+    table.add_column("Status", style="green", no_wrap=True)
+    table.add_column("Path", no_wrap=True)
     table.add_column("Timestamp")
     table.add_column("Size", justify="right")
 
@@ -127,3 +130,4 @@ if __name__ == "__main__":
     app()
 
 # done
+

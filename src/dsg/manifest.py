@@ -84,14 +84,7 @@ class LinkRef(BaseModel):
             logger.warning(emsg)
             return None
 
-        source_dir = os.path.dirname(os.path.join(project_root, path))
-        target_path = os.path.normpath(os.path.join(source_dir, raw_target))
-
-        if not target_path.startswith(str(project_root)):
-            emsg = f"Symlink at {path} points outside project: {raw_target}"
-            logger.warning(emsg)
-            return None
-        # Use the raw target as the reference
+        # Keep the raw target as is - don't add parent directory
         return cls(type="link", path=path, reference=raw_target)
 
 

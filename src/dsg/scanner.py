@@ -87,30 +87,51 @@ def _scan_directory_internal(
     entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
 
-    for full_path in [p for p in root_path.rglob('*') if p.is_file()]:
+    logger.debug(f"Scanning directory: {root_path}")
+    logger.debug(f"Data directories: {data_dirs}")
+    logger.debug(f"Ignored names: {ignored_names}")
+    logger.debug(f"Ignored suffixes: {ignored_suffixes}")
+
+    for full_path in [p for p in root_path.rglob('*') if p.is_file() or p.is_symlink()]:
         relative_path = full_path.relative_to(root_path)
         path_parts = relative_path.parts
         posix_path = PurePosixPath(relative_path)
         str_path = str(posix_path)
 
+        logger.debug(f"Processing file: {str_path}")
+        logger.debug(f"  Path parts: {path_parts}")
+
         is_dsg_file = _is_dsg_path(relative_path)
-        is_in_data_dir = any(part in data_dirs for part in relative_path.parts)
+        is_in_data_dir = path_parts[0] in data_dirs if path_parts else False
         is_hidden = _is_hidden_path(relative_path)
         should_include = is_dsg_file or (is_in_data_dir and not is_hidden)
+
+        logger.debug(f"  Is DSG file: {is_dsg_file}")
+        logger.debug(f"  Is in data dir: {is_in_data_dir}")
+        logger.debug(f"  Is hidden: {is_hidden}")
+        logger.debug(f"  Should include: {should_include}")
+
         if not should_include:
+            logger.debug("  Skipping file (not in data dir or hidden)")
             continue
 
         should_ignore = _should_ignore_path(
             posix_path, full_path.name, full_path,
             ignored_exact, ignored_prefixes, ignored_names, ignored_suffixes
         )
+
+        logger.debug(f"  Should ignore: {should_ignore}")
+
         if should_ignore:
             ignored.append(str_path)
+            logger.debug("  Adding to ignored list")
             continue
 
         if entry := Manifest.create_entry(full_path, root_path):
             entries[str_path] = entry
+            logger.debug("  Adding to manifest")
 
+    logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
     return ScanResult(manifest=Manifest(entries=entries), ignored=ignored)
 
 

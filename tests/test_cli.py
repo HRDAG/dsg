@@ -1,0 +1,197 @@
+"""Test suite for CLI functionality."""
+
+import os
+from pathlib import Path
+from typer.testing import CliRunner
+from rich.console import Console
+
+from dsg.cli import app
+
+# Setup test runner
+runner = CliRunner()
+
+def create_test_files(directory):
+    """Create test files in the given directory."""
+    directory = Path(directory) / "list-files"  # Create files under list-files directory
+    directory.mkdir(exist_ok=True)
+    
+    # Create input directory (one of the default data directories)
+    input_dir = directory / "input"
+    input_dir.mkdir(exist_ok=True)
+    
+    # Create test files in input directory
+    (input_dir / "file1.txt").write_text("content1")
+    (input_dir / "file2.txt").write_text("content2")
+    (input_dir / "data.csv").write_text("data")
+    (input_dir / "ignored.tmp").write_text("temp")
+    
+    # Create a subdirectory with files
+    subdir = input_dir / "subdir"
+    subdir.mkdir(exist_ok=True)
+    (subdir / "subfile1.txt").write_text("sub1")
+    (subdir / "subfile2.csv").write_text("sub2")
+    
+    # Create a symlink with relative path including parent directory
+    (input_dir / "link.txt").symlink_to("file1.txt")
+
+def test_list_files_basic():
+    """Test basic file listing without options."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(app, ["list-files"])  # Use default path
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Check that all expected columns are present
+        assert "Status" in result.stdout
+        assert "Path" in result.stdout
+        assert "Timestamp" in result.stdout
+        assert "Size" in result.stdout
+        
+        # Check that all files are listed with correct status
+        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
+        assert "included input/file2.txt" in result.stdout.replace("  ", " ")
+        assert "included input/data.csv" in result.stdout.replace("  ", " ")
+        assert "included input/ignored.tmp" in result.stdout.replace("  ", " ")
+        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
+        assert "included input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
+        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        
+        # Verify file sizes are shown
+        assert "bytes" in result.stdout
+        
+        # Check summary statistics
+        assert "Included: 7 files" in result.stdout
+        assert "Excluded: 0 files" in result.stdout
+
+def test_list_files_ignored_names():
+    """Test file listing with ignored names."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(
+            app, 
+            ["list-files", "--ignored-names", "ignored.tmp,file2.txt"]
+        )
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Check that all expected columns are present
+        assert "Status" in result.stdout
+        assert "Path" in result.stdout
+        assert "Timestamp" in result.stdout
+        assert "Size" in result.stdout
+        
+        # Check included files have correct status and details
+        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
+        assert "included input/data.csv" in result.stdout.replace("  ", " ")
+        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
+        assert "included input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
+        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        
+        # Check excluded files have correct status
+        assert "excluded input/ignored.tmp" in result.stdout.replace("  ", " ")
+        assert "excluded input/file2.txt" in result.stdout.replace("  ", " ")
+        
+        # Verify all files still show size information
+        assert "bytes" in result.stdout
+        
+        # Check summary statistics
+        assert "Included: 5 files" in result.stdout
+        assert "Excluded: 2 files" in result.stdout
+
+def test_list_files_ignored_suffixes():
+    """Test file listing with ignored suffixes."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(
+            app, 
+            ["list-files", "--ignored-suffixes", ".tmp,.csv"]
+        )
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Check that all expected columns are present
+        assert "Status" in result.stdout
+        assert "Path" in result.stdout
+        assert "Timestamp" in result.stdout
+        assert "Size" in result.stdout
+        
+        # Check included files (non-ignored suffixes)
+        assert "included input/file1.txt" in result.stdout.replace("  ", " ")
+        assert "included input/file2.txt" in result.stdout.replace("  ", " ")
+        assert "included input/link.txt -> file1.txt" in result.stdout.replace("  ", " ")
+        
+        # Check excluded files (ignored suffixes)
+        assert "excluded input/data.csv" in result.stdout.replace("  ", " ")
+        assert "excluded input/ignored.tmp" in result.stdout.replace("  ", " ")
+        assert "excluded input/subdir/subfile2.csv" in result.stdout.replace("  ", " ")
+        
+        # Verify all files still show size information
+        assert "bytes" in result.stdout
+        
+        # Check that subdirectory .txt files are included
+        assert "included input/subdir/subfile1.txt" in result.stdout.replace("  ", " ")
+        
+        # Check summary statistics - 4 included (3 .txt files + 1 symlink), 3 excluded (2 .csv + 1 .tmp)
+        assert "Included: 4 files" in result.stdout
+        assert "Excluded: 3 files" in result.stdout
+
+def test_list_files_no_ignored():
+    """Test file listing with --no-ignored flag."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(
+            app,
+            ["list-files", "--ignored-suffixes", ".tmp", "--no-ignored"]
+        )
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Should not show excluded files
+        assert "input/ignored.tmp" not in result.stdout
+        assert "excluded" not in result.stdout
+        
+        # Should show included files
+        assert "input/file1.txt" in result.stdout
+        assert "input/file2.txt" in result.stdout
+
+def test_list_files_debug():
+    """Test debug output."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(app, ["list-files", "--debug"])
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Check debug information
+        assert "Scanning directory:" in result.stdout
+        assert "Directory contains:" in result.stdout
+        assert "Using ignore rules:" in result.stdout
+        assert "Found" in result.stdout and "files" in result.stdout
+
+def test_list_files_symlinks():
+    """Test handling of symlinks."""
+    with runner.isolated_filesystem() as td:
+        create_test_files(td)
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(app, ["list-files"])
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        
+        # Check symlink representation
+        assert "input/link.txt -> file1.txt" in result.stdout
+        assert "symlink" in result.stdout
+
+def test_list_files_nonexistent_path():
+    """Test behavior with nonexistent directory."""
+    result = runner.invoke(app, ["list-files", "nonexistent_dir"])
+    assert result.exit_code != 0
+    assert "Error" in result.stdout or "error" in result.stdout.lower()
+
+def test_list_files_empty_dir():
+    """Test behavior with empty directory."""
+    with runner.isolated_filesystem() as td:
+        os.chdir(td)  # Change to test directory
+        result = runner.invoke(app, ["list-files"])
+        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+        assert "Included: 0 files" in result.stdout
+        assert "Excluded: 0 files" in result.stdout 
