@@ -61,8 +61,8 @@ def find_project_config_path(start: Path | None = None) -> Path:
 class ProjectConfig(BaseModel):
     repo_name: str
     data_dirs: set[str] = DEFAULT_DATA_DIRS
-    host: str
-    repo_path: Path
+    host: str         # e.g., scott
+    repo_path: Path   # e.g., /var/repos/dgs
     repo_type: Literal["zfs", "xfs"]
 
     ignored_paths: set[str] = Field(default_factory=set)
@@ -108,8 +108,13 @@ class ProjectConfig(BaseModel):
 class Config(BaseModel):
     user_name: str
     user_id: EmailStr
+    # TODO: add and test these fields from user_config
+    default_host: str          # e.g., scott
+    default_project_path: str  # e.g., /var/repos/dgs
+    # ------
     project: Optional[ProjectConfig] = None
     project_root: Path = Field(exclude=True)
+
 
     @classmethod
     def load(cls) -> Config:

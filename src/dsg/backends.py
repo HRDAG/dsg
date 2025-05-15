@@ -43,10 +43,12 @@ def can_access_backend(cfg: Config) -> tuple[bool, str]:
 
     # TODO: encapsulate SSH command in backend method
     cmd = ["ssh", repo.host, "test", "-d", str(path / ".dsg")]
-    result = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    if result == 0:
-        return True, "OK"
-    return False, f"Cannot access {path}/.dsg on remote host {repo.host} via SSH"
+    try:
+        result = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result == 0:
+            return True, "OK"
+        return False, f"Cannot access {path}/.dsg on remote host {repo.host} via SSH"
+    except subprocess.SubprocessError:
+        return False, f"Cannot access {path}/.dsg on remote host {repo.host} via SSH (SSH error)"
 
 # done.

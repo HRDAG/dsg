@@ -1,4 +1,3 @@
-
 # Author: PB & Claude
 # Maintainer: PB
 # Original date: 2025.05.13
@@ -250,6 +249,8 @@ class TestScanDirectory:
         config = Config(
             user_name="Test User",
             user_id="test@example.com",
+            default_host="localhost",
+            default_project_path="/var/repos/dgs",
             project=project_config,
             project_root=project_root
         )

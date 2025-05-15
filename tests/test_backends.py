@@ -8,9 +8,11 @@
 
 import pytest
 import socket
+import subprocess
 from pathlib import Path
 from dsg.config_manager import Config, ProjectConfig
-from dsg.backends import can_access_backend
+from dsg.backends import can_access_backend, _is_local_host
+from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -26,20 +28,28 @@ def base_config(tmp_path):
     cfg = Config(
         user_name="Clayton Chiclitz",
         user_id="clayton@yoyodyne.net",
+        default_host="localhost",
+        default_project_path="/var/repos/dgs",
         project=project,
         project_root=tmp_path
     )
     return cfg
 
 
-def test_is_local_host_matches_self():
-    from dsg.backends import _is_local_host
-    current_host = socket.gethostname()
+def test_is_local_host():
+    """Test local host detection"""
+    # Get actual hostname and FQDN
+    hostname = socket.gethostname()
     fqdn = socket.getfqdn()
-
-    assert _is_local_host(current_host)
+    
+    # Test with actual hostname
+    assert _is_local_host(hostname)
+    
+    # Test with actual FQDN
     assert _is_local_host(fqdn)
-    assert not _is_local_host("some-other-host")
+    
+    # Test with non-local hostname
+    assert not _is_local_host("some-other-host.example.com")
 
 
 def test_backend_access_local_repo_dir_missing(base_config):
@@ -73,22 +83,40 @@ def test_backend_access_unsupported_type(base_config):
     assert "not yet supported" in msg
 
 
-def test_backend_access_remote(monkeypatch, base_config):
-    base_config.project.host = "scott"
+def test_remote_backend_valid(base_config):
+    """Test remote backend with valid repository"""
+    # Set remote host
+    base_config.project.host = "remote-host"
+    
+    # Mock successful SSH command
+    with patch('subprocess.call', return_value=0):
+        ok, msg = can_access_backend(base_config)
+        assert ok
+        assert msg == "OK"
 
-    # Pretend we're not on 'scott'
-    monkeypatch.setattr("dsg.backends._is_local_host", lambda h: False)
 
-    # Simulate `.dsg/` directory exists remotely (SSH test -d passes)
-    monkeypatch.setattr("subprocess.call", lambda *a, **kw: 0)
-    ok, msg = can_access_backend(base_config)
-    assert ok
-    assert msg == "OK"
+def test_remote_backend_invalid(base_config):
+    """Test remote backend with invalid repository"""
+    # Set remote host
+    base_config.project.host = "remote-host"
+    
+    # Mock failed SSH command
+    with patch('subprocess.call', return_value=1):
+        ok, msg = can_access_backend(base_config)
+        assert not ok
+        assert "Cannot access" in msg
+        assert "remote-host" in msg
 
-    # Simulate SSH test -d fails (no .dsg/ remotely)
-    monkeypatch.setattr("subprocess.call", lambda *a, **kw: 1)
-    ok, msg = can_access_backend(base_config)
-    assert not ok
-    assert ".dsg" in msg
+
+def test_remote_backend_ssh_error(base_config):
+    """Test remote backend with SSH error"""
+    # Set remote host
+    base_config.project.host = "remote-host"
+    
+    # Mock SSH command that raises an exception
+    with patch('subprocess.call', side_effect=subprocess.SubprocessError("SSH failed")):
+        ok, msg = can_access_backend(base_config)
+        assert not ok
+        assert "Cannot access" in msg
 
 # done.

@@ -10,6 +10,7 @@ import os
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 import yaml
+import socket
 
 import pytest
 import typer
@@ -31,8 +32,10 @@ def config_files(tmp_path, monkeypatch):
     user_dir.mkdir()
     user_cfg = user_dir / "dsg.yml"
     user_cfg.write_text("""
-user_name: Clayton Chiclitz
-user_id: clayton@yoyodyne.net
+user_name: Joe
+user_id: joe@example.org
+default_host: localhost
+default_project_path: /var/repos/dgs
 """)
 
     # Project config
@@ -64,8 +67,10 @@ ignored_paths:
 
 def test_config_load_success(config_files):
     cfg = Config.load()
-    assert cfg.user_name == "Clayton Chiclitz"
-    assert cfg.user_id == "clayton@yoyodyne.net"
+    assert cfg.user_name == "Joe"
+    assert cfg.user_id == "joe@example.org"
+    assert cfg.default_host == "localhost"
+    assert cfg.default_project_path == "/var/repos/dgs"
     assert cfg.project is not None
     assert cfg.project.repo_name == config_files["repo_name"]
     assert cfg.project.repo_type == "zfs"
@@ -272,6 +277,8 @@ def test_config_loads_all_ignored_types(tmp_path):
     user_cfg.write_text(yaml.dump({
         "user_name": "Joe",
         "user_id": "joe@example.org",
+        "default_host": "localhost",
+        "default_project_path": "/var/repos/dgs",
     }))
     with patch("dsg.config_manager.find_user_config_path", return_value=user_cfg), \
          patch("dsg.config_manager.find_project_config_path", return_value=dsg_dir / "config.yml"):
@@ -329,5 +336,25 @@ def test_project_config_minimal():
     assert len(paths_config._ignored_prefixes) == 1
     assert PurePosixPath("ignore/this/path") in paths_config._ignored_exact
     assert PurePosixPath("ignore/this/directory") in paths_config._ignored_prefixes
+
+@pytest.fixture
+def base_config(tmp_path):
+    project = ProjectConfig(
+        repo_name="KO",
+        repo_type="zfs",
+        host=socket.gethostname(),  # this is the local host
+        repo_path=tmp_path,
+        data_dirs={"input/", "output/", "frozen/"},
+        ignored_paths={"graphs/"}
+    )
+    cfg = Config(
+        user_name="Clayton Chiclitz",
+        user_id="clayton@yoyodyne.net",
+        default_host="localhost",      # Add this line
+        default_project_path="/var/repos/dgs",  # Add this line
+        project=project,
+        project_root=tmp_path
+    )
+    return cfg
 
 # done.

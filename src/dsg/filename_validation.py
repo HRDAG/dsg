@@ -1,4 +1,3 @@
-
 # Author: PB & ChatGPT
 # Maintainer: PB
 # Original date: 2025.05.09
@@ -78,9 +77,6 @@ def validate_path(path_str) -> tuple[bool, str]:
     if "\\.\\\\" in path_str or path_str.startswith(".\\") or path_str.endswith("\\."):
         return (False, "Path contains invalid relative component '.\\'")
 
-    if "\\..\\" in path_str or path_str.startswith("..\\") or path_str.endswith("\\.."):
-            return (False, "Path contains invalid relative component '..\\'")
-
     # Normalize all remaining backslashes to slashes for uniform downstream processing
     path_str = path_str.replace("\\", "/")
     path = PurePosixPath(path_str)
@@ -96,9 +92,6 @@ def validate_path(path_str) -> tuple[bool, str]:
 
     if re.fullmatch(r"[a-zA-Z]:(/*)?", path_str):
         return (False, "Path is a bare Windows drive root")
-
-    if len(path_str.encode('utf-8')) > 4096:
-        return (False, "Path exceeds maximum length of 4096 bytes")
 
     if len(path.parts) == 1:
         part = path.parts[0]
@@ -158,7 +151,7 @@ def validate_path(path_str) -> tuple[bool, str]:
 path_arg = typer.Argument(..., help="Root directory to scan recursively")
 
 @app.command()
-def walk(root_path: str = path_arg):
+def walk(root_path: str = path_arg):  # pragma: no cover
     """ diagnostic tool to see filenames that fail validation """
     # TODO: could be used to walk-and-fix-inplace invalid filenames.
     try:
