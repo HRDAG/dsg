@@ -102,7 +102,7 @@ def _scan_directory_internal(
         logger.debug(f"  Path parts: {path_parts}")
 
         is_dsg_file = _is_dsg_path(relative_path)
-        is_in_data_dir = path_parts[0] in data_dirs if path_parts else False
+        is_in_data_dir = any(part in data_dirs for part in path_parts)
         is_hidden = _is_hidden_path(relative_path)
         should_include = is_dsg_file or (is_in_data_dir and not is_hidden)
 

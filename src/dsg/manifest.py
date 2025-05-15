@@ -84,7 +84,16 @@ class LinkRef(BaseModel):
             logger.warning(emsg)
             return None
 
-        # Keep the raw target as is - don't add parent directory
+        # Validate that the symlink doesn't escape project directory
+        path_parts = path.split("/")
+        ref_parts = raw_target.split("/")
+        max_up_levels = len([p for p in path_parts if p and p != "."])
+        actual_up_levels = len([p for p in ref_parts if p == ".."])
+        if actual_up_levels > max_up_levels:
+            emsg = f"Symlink at {path} attempts to escape project directory with target: {raw_target}"
+            logger.warning(emsg)
+            return None
+
         return cls(type="link", path=path, reference=raw_target)
 
 
