@@ -32,8 +32,7 @@ def list_files(
 ):
     """
     List files in a directory with their status, path, timestamp, and size.
-
-    Uses a minimal manifest configuration for the scan.
+    Uses project config if available, otherwise uses minimal manifest configuration.
     """
     project_root = Path(path).resolve()
 
@@ -61,12 +60,28 @@ def list_files(
         console.print(f"  - ignored_suffixes: {overrides.get('ignored_suffixes', 'default')}")
         console.print(f"  - ignored_paths: {overrides.get('ignored_paths', 'default')}")
 
-    # Scan the directory
-    result = scan_directory_no_cfg(project_root, **overrides)
+    # Try to load project config, fall back to minimal config if not found
+    try:
+        from dsg.config_manager import Config
+        cfg = Config.load()
+        # Apply any command-line overrides to the project config
+        if overrides:
+            if "ignored_names" in overrides:
+                cfg.project.ignored_names = overrides["ignored_names"]
+            if "ignored_suffixes" in overrides:
+                cfg.project.ignored_suffixes = overrides["ignored_suffixes"]
+            if "ignored_paths" in overrides:
+                cfg.project.ignored_paths = overrides["ignored_paths"]
+                cfg.project.normalize_paths()  # Re-normalize after changing ignored_paths
+        result = scan_directory(cfg)
+    except Exception as e:
+        if debug:
+            console.print(f"No project config found ({str(e)}), using minimal config")
+        result = scan_directory_no_cfg(project_root, **overrides)
 
     if debug:
         emsg = (f"Found {len(result.manifest.entries)}"
-                " included files and {len(result.ignored)} excluded files")
+                f" included files and {len(result.ignored)} excluded files")
         console.print(emsg)
 
     # Create a table for output
