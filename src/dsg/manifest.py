@@ -118,7 +118,7 @@ ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
 class ManifestMetadata(BaseModel):
     """Metadata about a manifest snapshot"""
 
-    manifest_version: str = "2.0"
+    manifest_version: str = "0.0.1"
     snapshot_id: str
     created_at: str  # ISO format datetime string for consistency
     entry_count: int

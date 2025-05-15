@@ -58,6 +58,20 @@ class ManifestMerger:
         self._merge()
 
     def _merge(self) -> None:
+        # TODO: Attribution Preservation
+        # Before merging, for local manifest entries that match the cache manifest entries
+        # using eq_shallow, copy the hash and user values from the cache manifest.
+        # This preserves attribution information (like git blame) and avoids rehashing files.
+        # 
+        # However, implementing this requires careful consideration:
+        # 1. Should this happen here in the ManifestMerger or elsewhere?
+        # 2. Adding this dependency might increase coupling between components
+        # 3. The scanner module should ideally remain independent of caching concerns
+        #
+        # For each path in local.entries that exists in cache.entries:
+        #   - If local entry eq_shallow matches the cache entry:
+        #     - Copy hash and user values from cache to preserve attribution
+        
         # Get all paths from all manifests
         all_paths = set(self.local.entries) | set(self.cache.entries) | set(self.remote.entries)
 
