@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Dict
 from unittest.mock import patch
 
+# Import to ensure Config and ManifestMerger types are available for type checking
+from dsg.config_manager import Config
+from dsg.manifest_merger import ManifestMerger
+
 from dsg.manifest import (
     FileRef,
     LinkRef,
@@ -379,9 +383,59 @@ class TestManifestMerger:
 class TestManifestMergerEdgeCases:
     """Tests for edge cases in ManifestMerger"""
     
-    # We've added pragma: no cover to the error path in _classify,
-    # so we no longer need this test that was trying to trigger it
-    pass
+    def test_config_requirement(self, test_manifests, test_config):
+        """Test that ManifestMerger raises ValueError if config lacks user or project_root"""
+        from dsg.config_manager import UserConfig
+        import unittest.mock as mock
+        
+        # Create a mock Config with no user
+        mock_config_no_user = mock.MagicMock()
+        mock_config_no_user.user = None
+        mock_config_no_user.project_root = Path("/tmp")
+        
+        # Test that ManifestMerger raises ValueError if config doesn't have user
+        with pytest.raises(ValueError, match="ManifestMerger requires config with user and project_root"):
+            merger = ManifestMerger(
+                local=test_manifests["local"],
+                cache=test_manifests["cache"],
+                remote=test_manifests["remote"],
+                config=mock_config_no_user
+            )
+        
+        # Create a mock Config with no project_root
+        mock_config_no_project_root = mock.MagicMock()
+        mock_config_no_project_root.user = UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        )
+        mock_config_no_project_root.project_root = None
+        
+        # Test that ManifestMerger raises ValueError if config doesn't have project_root
+        with pytest.raises(ValueError, match="ManifestMerger requires config with user and project_root"):
+            merger = ManifestMerger(
+                local=test_manifests["local"],
+                cache=test_manifests["cache"],
+                remote=test_manifests["remote"],
+                config=mock_config_no_project_root
+            )
+            
+    def test_none_state_for_nonexistent_path(self, test_manifests, test_config):
+        """Test that SyncState.sxLxCxR__none is returned for a non-existent path"""
+        merger = ManifestMerger(
+            local=test_manifests["local"],
+            cache=test_manifests["cache"],
+            remote=test_manifests["remote"],
+            config=test_config
+        )
+        
+        states = merger.get_sync_states()
+        
+        # Check a nonsensical path that couldn't possibly exist
+        impossible_path = "this/path/definitely/does/not/exist/anywhere.txt"
+        assert states.get(impossible_path, None) is None
+        
+        # Test directly calling _classify with a non-existent path
+        assert merger._classify(impossible_path) == SyncState.sxLxCxR__none
 
 
 # These tests for LocalVsLastComparator were already commented out and are no longer needed
