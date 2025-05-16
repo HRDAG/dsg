@@ -49,17 +49,22 @@ def scan_directory(cfg: Config, compute_hashes: bool = False) -> ScanResult:
         cfg: Configuration object with project settings
         compute_hashes: When True, calculates file hashes for all files in the manifest
     """
+    # Use getattr to safely handle the user_id attribute
+    user_id = getattr(cfg.user, 'user_id', None) if cfg.user else None
+        
     return _scan_directory_internal(
         root_path=cfg.project_root,
         data_dirs=cfg.project.data_dirs,
         ignored_exact=cfg.project._ignored_exact,
         ignored_names=cfg.project.ignored_names,
         ignored_suffixes=cfg.project.ignored_suffixes,
-        compute_hashes=compute_hashes
+        compute_hashes=compute_hashes,
+        user_id=user_id
     )
 
 
-def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, **config_overrides) -> ScanResult:
+def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, 
+                        user_id: Optional[str] = None, **config_overrides) -> ScanResult:
     """
     Scan a directory using a minimal configuration created on the fly.
 
@@ -71,6 +76,7 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, **confi
     Args:
         root_path: Path to the project root directory to scan
         compute_hashes: When True, calculates file hashes for all files in the manifest
+        user_id: Optional user ID to attribute to new entries
         **config_overrides: Override values for the minimal config (data_dirs, ignored_paths, etc.)
     """
     project_config = ProjectConfig.minimal(root_path, **config_overrides)
@@ -80,7 +86,8 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, **confi
         ignored_exact=project_config._ignored_exact,
         ignored_names=project_config.ignored_names,
         ignored_suffixes=project_config.ignored_suffixes,
-        compute_hashes=compute_hashes
+        compute_hashes=compute_hashes,
+        user_id=user_id
     )
 
 
@@ -126,7 +133,8 @@ def _scan_directory_internal(
     ignored_exact: set[PurePosixPath],
     ignored_names: set[str],
     ignored_suffixes: set[str],
-    compute_hashes: bool = False) -> ScanResult:
+    compute_hashes: bool = False,
+    user_id: Optional[str] = None) -> ScanResult:
     """
     Internal implementation of directory scanning.
 
@@ -137,6 +145,7 @@ def _scan_directory_internal(
         ignored_names: Set of filenames to ignore
         ignored_suffixes: Set of file extensions to ignore
         compute_hashes: When True, calculates file hashes for all files in the manifest
+        user_id: Optional user ID to attribute to new entries
     """
     entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
@@ -183,6 +192,11 @@ def _scan_directory_internal(
             continue
 
         if entry := Manifest.create_entry(full_path, root_path):
+            # Set user attribution if provided
+            if user_id and hasattr(entry, "user") and not entry.user:
+                entry.user = user_id
+                logger.debug(f"  Setting user attribution for {str_path}: {user_id}")
+                
             # Determine if this is a file that can be safely hashed
             # Double-check against race conditions where symlinks might be created between
             # the time create_entry() was called and now

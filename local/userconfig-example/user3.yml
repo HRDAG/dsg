@@ -1,0 +1,5 @@
+# User with all fields
+user_name: "Carol Davis"
+user_id: "carol@example.com"
+default_host: "backup-server"
+default_project_path: "/var/repos/dsg"

@@ -238,17 +238,34 @@ def test_manifest_creation(manifest_setup):
     assert last_sync_path.exists(), "last-sync.json should have been created"
 
 
-def test_manifest_merger_identical_repos(manifest_setup):
+def test_manifest_merger_identical_repos(manifest_setup, temp_repo_setup):
     """Test ManifestMerger with identical repositories"""
     local_manifest = manifest_setup["local_manifest"]
     cache_manifest = manifest_setup["cache_manifest"]
     remote_manifest = manifest_setup["remote_manifest"]
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Get local config from temp_repo_setup
+    base_config = temp_repo_setup["local_config"]
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=base_config.project,
+        project_root=temp_repo_setup["local_path"]
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_manifest,
         cache=cache_manifest,
-        remote=remote_manifest
+        remote=remote_manifest,
+        config=test_config
     )
     
     # Get sync states
@@ -275,11 +292,25 @@ def test_manifest_merger_with_local_changes(temp_repo_setup, manifest_setup):
     # Create new manifests after the changes
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_scan_result.manifest,
         cache=manifest_setup["cache_manifest"],
-        remote=manifest_setup["remote_manifest"]
+        remote=manifest_setup["remote_manifest"],
+        config=test_config
     )
     
     # Get sync states
@@ -322,11 +353,25 @@ def test_multiple_sync_states(temp_repo_setup, manifest_setup):
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     remote_scan_result = scan_directory(remote_config, compute_hashes=True)
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_scan_result.manifest,
         cache=manifest_setup["cache_manifest"],
-        remote=remote_scan_result.manifest
+        remote=remote_scan_result.manifest,
+        config=test_config
     )
     
     # Get sync states

@@ -52,25 +52,26 @@ class ManifestMerger:
     local: Manifest
     cache: Manifest
     remote: Manifest
+    config: Config
     path_states: OrderedDict[str, SyncState] = field(init=False, default_factory=OrderedDict)
 
     def __post_init__(self):
         self._merge()
 
     def _merge(self) -> None:
-        # TODO: Attribution Preservation
-        # Before merging, for local manifest entries that match the cache manifest entries
-        # using eq_shallow, copy the hash and user values from the cache manifest.
-        # This preserves attribution information (like git blame) and avoids rehashing files.
-        # 
-        # However, implementing this requires careful consideration:
-        # 1. Should this happen here in the ManifestMerger or elsewhere?
-        # 2. Adding this dependency might increase coupling between components
-        # 3. The scanner module should ideally remain independent of caching concerns
-        #
-        # For each path in local.entries that exists in cache.entries:
-        #   - If local entry eq_shallow matches the cache entry:
-        #     - Copy hash and user values from cache to preserve attribution
+        # Ensure we have the required config
+        if not self.config.user or not self.config.project_root:
+            raise ValueError("ManifestMerger requires config with user and project_root")
+        
+        user_id = self.config.user.user_id
+        project_root = self.config.project_root
+        
+        # Recover or compute metadata for local manifest
+        self.local.recover_or_compute_metadata(
+            other_manifest=self.cache,
+            user_id=user_id,
+            project_root=project_root
+        )
         
         # Get all paths from all manifests
         all_paths = set(self.local.entries) | set(self.cache.entries) | set(self.remote.entries)
@@ -121,16 +122,16 @@ class ManifestMerger:
         return self.path_states
 
 
-class ComparisonState(Enum):
-    IDENTICAL = "identical"
-    CHANGED = "changed"
-    NEW = "new"
-    GONE = "gone"
+# class ComparisonState(Enum):
+#     IDENTICAL = "identical"
+#     CHANGED = "changed"
+#     NEW = "new"
+#     GONE = "gone"
 
 
-@dataclass(frozen=True)
-class ComparisonResult:
-    state: ComparisonState
+# @dataclass(frozen=True)
+# class ComparisonResult:
+#     state: ComparisonState
 
 
 # class LocalVsLastComparator:
