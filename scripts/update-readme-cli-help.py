@@ -14,20 +14,20 @@ cli_help = result.stdout
 with open('README.md', 'r') as f:
     readme_content = f.read()
 
-# Find the section to replace
+# Find the section to replace - note the exact formatting with spaces
 pattern = r'(<!--- CLI help output start --->\n   ```\n)(.*?)(   ```\n   <!--- CLI help output end --->)'
-replacement = r'\1' + '\n'.join(f'   {line}' for line in cli_help.splitlines()) + '\n' + r'\3'
+
+# Format CLI help with proper indentation
+formatted_help = '\n'.join(f'   {line}' for line in cli_help.splitlines()) + '\n'
 
 # Replace the section
+replacement = r'\1' + formatted_help + r'\3'
 new_content = re.sub(pattern, replacement, readme_content, flags=re.DOTALL)
 
-# Write back to README
-with open('README.md', 'w') as f:
-    f.write(new_content)
-
-# Check if README was modified
-result = subprocess.run(['git', 'diff', '--quiet', 'README.md'])
-if result.returncode != 0:
+# Write back to README only if changed
+if new_content != readme_content:
+    with open('README.md', 'w') as f:
+        f.write(new_content)
     print("README.md updated with latest CLI help")
     subprocess.run(['git', 'add', 'README.md'])
 else:
