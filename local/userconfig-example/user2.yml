@@ -1,0 +1,4 @@
+# User with default host
+user_name: "Bob Johnson"
+user_id: "bob@example.com"
+default_host: "main-server"

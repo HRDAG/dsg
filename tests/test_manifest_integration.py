@@ -238,17 +238,34 @@ def test_manifest_creation(manifest_setup):
     assert last_sync_path.exists(), "last-sync.json should have been created"
 
 
-def test_manifest_merger_identical_repos(manifest_setup):
+def test_manifest_merger_identical_repos(manifest_setup, temp_repo_setup):
     """Test ManifestMerger with identical repositories"""
     local_manifest = manifest_setup["local_manifest"]
     cache_manifest = manifest_setup["cache_manifest"]
     remote_manifest = manifest_setup["remote_manifest"]
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Get local config from temp_repo_setup
+    base_config = temp_repo_setup["local_config"]
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=base_config.project,
+        project_root=temp_repo_setup["local_path"]
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_manifest,
         cache=cache_manifest,
-        remote=remote_manifest
+        remote=remote_manifest,
+        config=test_config
     )
     
     # Get sync states
@@ -275,11 +292,25 @@ def test_manifest_merger_with_local_changes(temp_repo_setup, manifest_setup):
     # Create new manifests after the changes
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_scan_result.manifest,
         cache=manifest_setup["cache_manifest"],
-        remote=manifest_setup["remote_manifest"]
+        remote=manifest_setup["remote_manifest"],
+        config=test_config
     )
     
     # Get sync states
@@ -322,11 +353,25 @@ def test_multiple_sync_states(temp_repo_setup, manifest_setup):
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     remote_scan_result = scan_directory(remote_config, compute_hashes=True)
     
-    # Create a ManifestMerger
+    # Create a proper UserConfig for the test
+    from dsg.config_manager import Config, UserConfig
+    
+    # Create a Config with user and project_root
+    test_config = Config(
+        user=UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        ),
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Create a ManifestMerger with the proper config
     merger = ManifestMerger(
         local=local_scan_result.manifest,
         cache=manifest_setup["cache_manifest"],
-        remote=remote_scan_result.manifest
+        remote=remote_scan_result.manifest,
+        config=test_config
     )
     
     # Get sync states
@@ -358,3 +403,111 @@ def test_multiple_sync_states(temp_repo_setup, manifest_setup):
     deleted_rel_path = str(local_deleted_path.relative_to(local_path))
     assert sync_states[deleted_rel_path] == SyncState.sxLCR__C_eq_R, \
         f"Deleted local file should be in sxLCR__C_eq_R state, but is in {sync_states[deleted_rel_path]}"
+
+
+def test_user_attribution_preservation(temp_repo_setup, manifest_setup):
+    """Test user attribution preservation when merging manifests."""
+    import yaml
+    from pathlib import Path
+    from dsg.config_manager import Config, UserConfig
+    
+    local_path = temp_repo_setup["local_path"]
+    local_config = temp_repo_setup["local_config"]
+    
+    # Load user1 config from local/userconfig-example/
+    user1_config_path = Path(__file__).parents[1] / "local" / "userconfig-example" / "user1.yml"
+    with open(user1_config_path) as f:
+        user1_data = yaml.safe_load(f)
+    
+    # Create UserConfig from user1.yml
+    user1 = UserConfig(
+        user_name=user1_data["user_name"],
+        user_id=user1_data["user_id"]
+    )
+    
+    # Create a Config with user1 and project_root
+    user1_config = Config(
+        user=user1,
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Create initial manifest (cache) with user1 attribution
+    cache_manifest = manifest_setup["cache_manifest"]
+    for entry in cache_manifest.entries.values():
+        entry.user = user1.user_id
+    
+    # Write to last-sync.json for reference
+    last_sync_path = local_path / ".dsg" / "last-sync.json"
+    cache_manifest.to_json(last_sync_path, include_metadata=True, user_id=user1.user_id)
+    
+    # Make changes as user2
+    user2_config_path = Path(__file__).parents[1] / "local" / "userconfig-example" / "user2.yml"
+    with open(user2_config_path) as f:
+        user2_data = yaml.safe_load(f)
+    
+    user2 = UserConfig(
+        user_name=user2_data["user_name"],
+        user_id=user2_data["user_id"]
+    )
+    
+    user2_config = Config(
+        user=user2,
+        project=local_config.project,
+        project_root=local_path
+    )
+    
+    # Modify a file in the local repository
+    test_file_path = local_path / "task1" / "input" / "dt1.csv"
+    test_file_path.write_text("Modified by user2 for testing")
+    
+    # Create new local manifest with user2
+    local_scan_result = scan_directory(user2_config, compute_hashes=True)
+    local_manifest = local_scan_result.manifest
+    
+    # Create a ManifestMerger and merge
+    merger = ManifestMerger(
+        local=local_manifest,
+        cache=cache_manifest,
+        remote=manifest_setup["remote_manifest"],
+        config=user2_config
+    )
+    
+    # Get sync states for verification
+    sync_states = merger.get_sync_states()
+    
+    # Write merged result to local-merged-last.json for inspection
+    merged_path = local_path / ".dsg" / "local-merged-last.json"
+    local_manifest.to_json(merged_path, include_metadata=True, user_id=user2.user_id)
+    
+    # Verify user attribution
+    modified_file_rel_path = str(test_file_path.relative_to(local_path))
+    
+    # Modified file should have user2 attribution
+    assert local_manifest.entries[modified_file_rel_path].user == user2.user_id, \
+        f"Modified file should have user2 attribution: {user2.user_id}"
+    
+    # Unmodified files should maintain user1 attribution if metadata matched
+    unmodified_files_checked = 0
+    for path, entry in local_manifest.entries.items():
+        if path != modified_file_rel_path and path in cache_manifest.entries:
+            if entry.eq_shallow(cache_manifest.entries[path]):
+                assert entry.user == user1.user_id, \
+                    f"Unmodified file {path} should maintain user1 attribution"
+                unmodified_files_checked += 1
+    
+    # Ensure we actually checked some unmodified files
+    assert unmodified_files_checked > 0, "No unmodified files were checked for attribution"
+    
+    # If we create a brand new file, it should have user2 attribution
+    new_file_path = local_path / "task1" / "output" / "user2_new_file.csv"
+    new_file_path.write_text("New file created by user2")
+    
+    # Create new scan with the new file
+    local_scan_result_updated = scan_directory(user2_config, compute_hashes=True)
+    local_manifest_updated = local_scan_result_updated.manifest
+    
+    # New file should have user2 attribution
+    new_file_rel_path = str(new_file_path.relative_to(local_path))
+    assert local_manifest_updated.entries[new_file_rel_path].user == user2.user_id, \
+        f"New file should have user2 attribution: {user2.user_id}"

@@ -62,6 +62,29 @@ class FileRef(BaseModel):
             self.filesize == other.filesize and
             self.mtime == other.mtime
         )
+        
+    def __eq__(self, other) -> bool:
+        """
+        Two FileRef objects are equal if they have the same path and hash.
+        This ensures that files with same content are considered equal,
+        regardless of metadata differences.
+        
+        Raises a ValueError if either object is missing a hash value,
+        as all files should have complete metadata at comparison time.
+        """
+        if not isinstance(other, FileRef):
+            return False
+            
+        # First check path is the same
+        if self.path != other.path:
+            return False
+            
+        # Ensure hashes exist - this is a strict requirement for equality checks
+        if not self.hash or not other.hash:
+            raise ValueError(f"Cannot compare FileRef objects with missing hash values: {self.path}")
+            
+        # Compare hash values
+        return self.hash == other.hash
 
 
 class LinkRef(BaseModel):
@@ -86,6 +109,30 @@ class LinkRef(BaseModel):
         if actual_up_levels > max_up_levels:
             raise ValueError("Symlink target attempts to escape project directory")
         return v
+        
+    def eq_shallow(self, other) -> bool:
+        """
+        Compare LinkRef objects to see if they reference the same target.
+        Used for situations where we want to check if the symlink targets match.
+        """
+        if not isinstance(other, LinkRef):
+            return False
+        return (
+            self.path == other.path and
+            self.reference == other.reference
+        )
+        
+    def __eq__(self, other) -> bool:
+        """
+        Two LinkRef objects are equal if they have the same path and reference.
+        This matches the behavior of eq_shallow since links don't have hash values.
+        """
+        if not isinstance(other, LinkRef):
+            return False
+        return (
+            self.path == other.path and
+            self.reference == other.reference
+        )
 
     @classmethod
     def _from_path(cls, full_path: Path, path: str, project_root: Path) -> LinkRef:
@@ -171,6 +218,42 @@ class Manifest(BaseModel):
         elif full_path.is_file():
             return FileRef._from_path(full_path, rel_path)
         raise ValueError(f"Unsupported path type: {full_path}")
+
+    def recover_or_compute_metadata(self, other_manifest: 'Manifest', user_id: str, project_root: Path) -> None:
+        """
+        Recover metadata for local from cache where possible, or compute new metadata.
+
+        For entries that match by metadata with the other manifest, copy attribution.
+        For all other entries, set user_id and compute hash values as needed.
+
+        Args:
+            other_manifest: The manifest to recover attribution from
+            user_id: User ID to set for entries that need new attribution
+            project_root: Path to project root for computing file hashes
+        """
+        from dsg.scanner import hash_file
+
+        for path, entry in self.entries.items():
+            other_entry = other_manifest.entries.get(path)
+
+            # Try to recover attribution from matching entries
+            if other_entry and entry.eq_shallow(other_entry):
+                entry.user = other_entry.user
+                if isinstance(entry, FileRef):
+                    entry.hash = other_entry.hash
+                continue
+
+            # If we get here, we need to set new attribution
+            entry.user = user_id
+
+            if isinstance(entry, FileRef):
+                try:
+                    full_path = project_root / path
+                    if full_path.is_file() and not full_path.is_symlink():
+                        entry.hash = hash_file(full_path)
+                except Exception as e:
+                    logger.error(f"Failed to compute hash for {path}: {e}")
+        self.generate_metadata(user_id=user_id)
 
     def _validate_symlinks(self) -> list[str]:
         """

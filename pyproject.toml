@@ -1,37 +1,53 @@
-[project]
-name = "dsg"
-version = "0.0.1"
-description = ""
-authors = [
-    {name = "Sam Z",email = "shimian.zhang@gmail.com"},
-    {name = "Patrick Ball",email = "pball@hrdag.org"},
-]
-readme = "README.md"
-requires-python = ">=3.13,<4.0"
-dependencies = [
-    "typer (>=0.15.3,<0.16.0)",
-    "tomlkit (>=0.13.2,<0.14.0)",
-    "loguru (>=0.7.3,<0.8.0)",
-    "xxhash (>=3.5.0,<4.0.0)",
-    "orjson (>=3.9.15,<4.0.0)"
-]
+# To check for missing dependencies, use pipreqs:
+# pipx install pipreqs  # one-time installation
+# pipreqs . --print    # shows all imports without creating a file
+# Then add any missing packages with: poetry add package-name
 
 [tool.poetry]
-packages = [{include = "dsg", from = "src"}]
+name = "dsg"
+version = "0.0.2"
+description = "Data Sync Gizmo - HRDAG's data versioning system"
+authors = ["Sam Z <shimian.zhang@gmail.com>", "Patrick Ball <pball@hrdag.org>"]
+readme = "README.md"
+packages = [{ include = "dsg", from = "src" }]
+homepage = "https://github.com/hrdag/dsg"
+repository = "https://github.com/hrdag/dsg"
+classifiers = [
+    "Private :: Do Not Upload"
+]
 
-[project.scripts]
-dsg = "dsg.cli:main"
-
-# [tool.poetry.scripts]
-# pdp = "dsg.main:app"
+[tool.poetry.dependencies]
+python = ">=3.13,<4.0"
+typer = ">=0.15.3,<0.16.0"
+tomlkit = ">=0.13.2,<0.14.0"
+loguru = ">=0.7.3,<0.8.0"
+xxhash = ">=3.5.0,<4.0.0"
+orjson = ">=3.9.15,<4.0.0"
+pydantic = ">=2.0,<3.0"
+rich = ">=13.0,<14.0"
+pyyaml = ">=6.0,<7.0"
+email-validator = ">=2.0,<3.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.5"
+pytest-cov = "^4.0.0"
+pytest-mock = "^3.10.0"
 expects = "^0.9.0"
 pyfakefs = "^5.8.0"
 
+[tool.poetry.scripts]
+dsg = "dsg.cli:main"
+
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=1.0.0,<2.0.0"]
 build-backend = "poetry.core.masonry.api"
 
-# done.
+[tool.poetry.urls]
+"Homepage" = "https://github.com/hrdag/dsg"
+"Bug Tracker" = "https://github.com/hrdag/dsg/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
