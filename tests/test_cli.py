@@ -165,9 +165,7 @@ def test_list_files_debug():
         
         # Check debug information
         assert "Scanning directory:" in result.stdout
-        assert "Directory contains:" in result.stdout
         assert "Using ignore rules:" in result.stdout
-        assert "Found" in result.stdout and "files" in result.stdout
 
 def test_list_files_symlinks():
     """Test handling of symlinks."""

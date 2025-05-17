@@ -63,7 +63,6 @@ A data versioning system based on Scott's `snap`. But generalized across backend
 ### For End Users at HRDAG
 
 Not implemented yet! hang on.
-```
 
 ## A few decisions
 * see `pyproject.toml` for project depdendencies
