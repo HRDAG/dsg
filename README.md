@@ -52,9 +52,22 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    │ --help                        Show this message and exit.                    │
    ╰──────────────────────────────────────────────────────────────────────────────╯
    ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-   │ init         Initialize dsg metadata directory                               │
-   │ list-files   List files in a directory with their status, path, timestamp,   │
-   │              and size.                                                       │
+   │ init                Initialize dsg metadata directory in the current         │
+   │                     directory.                                               │
+   │ list-files          List all files in data directories with metadata.        │
+   │ status              Show sync status by comparing local files with last      │
+   │                     sync.                                                    │
+   │ sync                Synchronize local files with remote repository.          │
+   │ exclude-once        Temporarily exclude a path from the current session.     │
+   │ blame               Show modification history for a file.                    │
+   │ snapmount           Mount snapshots for browsing historical data.            │
+   │ snapfetch           Fetch a single file from a snapshot.                     │
+   │ validate-config     Validate configuration files and optionally test backend │
+   │                     connectivity.                                            │
+   │ validate-file       Validate a file's hash against the manifest.             │
+   │ validate-snapshot   Validate a single snapshot's integrity and optionally    │
+   │                     its file hashes.                                         │
+   │ validate-chain      Validate the entire snapshot chain integrity.            │
    ╰──────────────────────────────────────────────────────────────────────────────╯
    
    ```

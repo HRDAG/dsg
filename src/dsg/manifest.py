@@ -171,6 +171,12 @@ class ManifestMetadata(BaseModel):
     entry_count: int
     entries_hash: str
     created_by: Optional[str] = None
+    
+    # TODO: Add snapshot-specific fields (optional - only used for snapshot manifests)
+    # snapshot_id: Optional[str] = None  # Sequential: s1, s2, s3, ...
+    # snapshot_message: Optional[str] = None  # User-provided sync message
+    # snapshot_previous: Optional[str] = None  # Reference to previous snapshot (e.g., s1)
+    # snapshot_hash: Optional[str] = None  # Hash of entries_hash + message + prev_hash
 
     @classmethod
     def _create(
@@ -375,6 +381,15 @@ class Manifest(BaseModel):
     ) -> None:
         """Generate metadata for this manifest"""
         self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
+    
+    # TODO: Add method to compute snapshot hash
+    # def compute_snapshot_hash(self, prev_snapshot_hash: str = "") -> str:
+    #     """Compute snapshot hash for chain validation.
+    #     
+    #     For s1: hash(entries_hash + snapshot_message + "")
+    #     For others: hash(entries_hash + snapshot_message + prev_snapshot_hash)
+    #     """
+    #     pass
 
 
 # done.

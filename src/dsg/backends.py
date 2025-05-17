@@ -53,6 +53,32 @@ class Backend(ABC):
     def copy_file(self, source_path: Path, rel_dest_path: str) -> None:
         """Copy a file from local filesystem to the backend."""
         raise NotImplementedError("copy_file() not implemented")
+    
+    # TODO: Add snapshot operation methods
+    # @abstractmethod
+    # def list_snapshots(self) -> List[Dict[str, Any]]:
+    #     """List available snapshots."""
+    #     raise NotImplementedError("list_snapshots() not implemented")
+    #
+    # @abstractmethod
+    # def mount_snapshot(self, num: int, mount_path: Path) -> None:
+    #     """Mount a snapshot at the specified path."""
+    #     raise NotImplementedError("mount_snapshot() not implemented")
+    #
+    # @abstractmethod
+    # def unmount_snapshot(self, num: int, mount_path: Path) -> None:
+    #     """Unmount a snapshot."""
+    #     raise NotImplementedError("unmount_snapshot() not implemented")
+    #
+    # @abstractmethod
+    # def snapshot_exists(self, num: int) -> bool:
+    #     """Check if a snapshot exists."""
+    #     raise NotImplementedError("snapshot_exists() not implemented")
+    #
+    # @abstractmethod
+    # def fetch_file_from_snapshot(self, num: int, file_path: str, output_path: Path) -> None:
+    #     """Fetch a single file from a snapshot."""
+    #     raise NotImplementedError("fetch_file_from_snapshot() not implemented")
 
 
 class LocalhostBackend(Backend):
