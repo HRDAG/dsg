@@ -172,11 +172,11 @@ class ManifestMetadata(BaseModel):
     entries_hash: str
     created_by: Optional[str] = None
     
-    # TODO: Add snapshot-specific fields (optional - only used for snapshot manifests)
-    # snapshot_id: Optional[str] = None  # Sequential: s1, s2, s3, ...
-    # snapshot_message: Optional[str] = None  # User-provided sync message
-    # snapshot_previous: Optional[str] = None  # Reference to previous snapshot (e.g., s1)
-    # snapshot_hash: Optional[str] = None  # Hash of entries_hash + message + prev_hash
+    # Snapshot-specific fields (optional - only used for snapshot manifests)
+    snapshot_message: Optional[str] = None  # User-provided sync message
+    snapshot_previous: Optional[str] = None  # Reference to previous snapshot (e.g., s1)
+    snapshot_hash: Optional[str] = None  # Hash of entries_hash + message + prev_hash
+    snapshot_notes: Optional[str] = None  # Additional notes (e.g., "btrsnap-migration")
 
     @classmethod
     def _create(
@@ -382,14 +382,34 @@ class Manifest(BaseModel):
         """Generate metadata for this manifest"""
         self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
     
-    # TODO: Add method to compute snapshot hash
-    # def compute_snapshot_hash(self, prev_snapshot_hash: str = "") -> str:
-    #     """Compute snapshot hash for chain validation.
-    #     
-    #     For s1: hash(entries_hash + snapshot_message + "")
-    #     For others: hash(entries_hash + snapshot_message + prev_snapshot_hash)
-    #     """
-    #     pass
+    def compute_snapshot_hash(
+        self, message: str, prev_snapshot_hash: Optional[str] = None
+    ) -> str:
+        """Compute snapshot hash for chain validation.
+        
+        For s1: hash(entries_hash + snapshot_message + "")
+        For others: hash(entries_hash + snapshot_message + prev_snapshot_hash)
+        
+        Args:
+            message: The snapshot message to include in the hash
+            prev_snapshot_hash: Hash of previous snapshot, or None for first snapshot
+            
+        Returns:
+            Hexadecimal string hash for this snapshot
+        """
+        if not self.metadata or not self.metadata.entries_hash:
+            raise ValueError("Cannot compute snapshot hash: missing metadata or entries_hash")
+            
+        h = xxhash.xxh3_64()
+        h.update(self.metadata.entries_hash.encode())
+        h.update(message.encode())
+        
+        if prev_snapshot_hash:
+            h.update(prev_snapshot_hash.encode())
+        else:
+            h.update(b"")  # Empty string for first snapshot
+            
+        return h.hexdigest()
 
 
 # done.

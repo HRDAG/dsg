@@ -611,3 +611,98 @@ class TestManifest:
         manifest_with_metadata = Manifest.from_json(manifest_file)
         assert manifest_with_metadata.metadata is not None
         assert manifest_with_metadata.verify_integrity() is True
+        
+    def test_compute_snapshot_hash(self, test_project_dir):
+        """Test the compute_snapshot_hash method"""
+        project_root = test_project_dir["root"]
+        sample_file = test_project_dir["sample_file"]
+
+        # Create entries
+        entries = OrderedDict()
+        file_entry = Manifest.create_entry(sample_file, project_root)
+        entries[str(sample_file.relative_to(project_root))] = file_entry
+        
+        # Create a test manifest
+        manifest = Manifest(entries=entries)
+        manifest.generate_metadata(snapshot_id="s1", user_id="test@example.com")
+        
+        # Test hash computation without previous hash (for s1)
+        hash1 = manifest.compute_snapshot_hash("Initial snapshot")
+        assert hash1, "Hash should not be empty"
+        assert isinstance(hash1, str), "Hash should be a string"
+        assert len(hash1) > 0, "Hash should not be empty"
+        
+        # Test hash computation with previous hash (for s2+)
+        hash2 = manifest.compute_snapshot_hash("Second snapshot", hash1)
+        assert hash2, "Hash should not be empty"
+        assert hash2 != hash1, "Hash should be different with different inputs"
+        
+        # Verify hash is deterministic
+        hash1_again = manifest.compute_snapshot_hash("Initial snapshot")
+        assert hash1 == hash1_again, "Hash should be deterministic"
+        
+        # Verify different message leads to different hash
+        hash3 = manifest.compute_snapshot_hash("Different message")
+        assert hash3 != hash1, "Different message should yield different hash"
+
+    def test_compute_snapshot_hash_error(self, test_project_dir):
+        """Test that compute_snapshot_hash raises ValueError when metadata is None"""
+        manifest = Manifest(entries=OrderedDict())
+        with pytest.raises(ValueError, match="Cannot compute snapshot hash"):
+            manifest.compute_snapshot_hash("Test message")
+        
+    def test_manifest_metadata_snapshot_fields(self, test_project_dir):
+        """Test the new snapshot-specific fields in ManifestMetadata"""
+        # Create a manifest file with snapshot-specific metadata fields
+        manifest_file = test_project_dir["manifest_dir"] / "snapshot_fields.json"
+        
+        # Create test data
+        metadata = {
+            "manifest_version": "0.0.1",
+            "snapshot_id": "s1",
+            "created_at": "2025-05-17T12:00:00",
+            "entry_count": 1,
+            "entries_hash": "test_hash",
+            "created_by": "test@example.com",
+            "snapshot_message": "Initial snapshot",
+            "snapshot_previous": None,
+            "snapshot_hash": "s1_hash",
+            "snapshot_notes": "test-migration"
+        }
+        
+        # Create entries
+        entries_data = [
+            {
+                "type": "file",
+                "path": "file1.txt",
+                "user": "user1", 
+                "filesize": 100, 
+                "mtime": "2025-05-17T12:00:00", 
+                "hash": "hash1"
+            }
+        ]
+        
+        # Write test JSON file
+        test_json = {"entries": entries_data}
+        test_json.update(metadata)
+        manifest_file.write_bytes(orjson.dumps(test_json))
+        
+        # Load the manifest
+        loaded_manifest = Manifest.from_json(manifest_file)
+        
+        # Verify metadata fields
+        assert loaded_manifest.metadata is not None
+        assert loaded_manifest.metadata.snapshot_id == "s1"
+        assert loaded_manifest.metadata.snapshot_message == "Initial snapshot"
+        assert loaded_manifest.metadata.snapshot_hash == "s1_hash"
+        assert loaded_manifest.metadata.snapshot_notes == "test-migration"
+        
+        # Test that these fields are preserved when writing back to JSON
+        output_file = test_project_dir["manifest_dir"] / "output_snapshot_fields.json"
+        loaded_manifest.to_json(output_file, include_metadata=True)
+        
+        # Read JSON directly to verify
+        json_data = orjson.loads(output_file.read_bytes())
+        assert json_data.get("snapshot_message") == "Initial snapshot"
+        assert json_data.get("snapshot_hash") == "s1_hash"
+        assert json_data.get("snapshot_notes") == "test-migration"
