@@ -23,8 +23,27 @@ packages = [{include = "dsg", from = "src"}]
 dsg = "dsg.cli:main"
 
 # [tool.poetry.scripts]
-# pdp = "dsg.main:app"
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
 
+[project]
+name = "your-package"
+version = "0.1.0"
+# other project metadata...
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.5"
 expects = "^0.9.0"
