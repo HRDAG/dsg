@@ -127,6 +127,25 @@ def _is_dsg_path(path: Path) -> bool:
     return any(part == '.dsg' for part in path.parts)
 
 
+def _is_in_data_dir(path_parts, data_dirs) -> bool:
+    """
+    Check if a path should be included based on data_dirs.
+    
+    Args:
+        path_parts: Parts of the path to check
+        data_dirs: Set of directory names to include
+        
+    Returns:
+        True if the path should be included, False otherwise
+    """
+    # Special case: if "*" is in data_dirs, include all non-hidden directories
+    if "*" in data_dirs:
+        return True
+    
+    # Standard case: check if any part of the path is in data_dirs
+    return any(part in data_dirs for part in path_parts)
+
+
 def _scan_directory_internal(
     root_path: Path,
     data_dirs: set[str],
@@ -166,7 +185,7 @@ def _scan_directory_internal(
         logger.debug(f"  Path parts: {path_parts}")
 
         is_dsg_file = _is_dsg_path(relative_path)
-        is_in_data_dir = any(part in data_dirs for part in path_parts)
+        is_in_data_dir = _is_in_data_dir(path_parts, data_dirs)
         is_hidden = _is_hidden_path(relative_path)
         should_include = is_dsg_file or (is_in_data_dir and not is_hidden)
 

@@ -362,11 +362,13 @@ class TestManifest:
                     "path": "invalid/unknown_type.txt"
                 }
             ],
-            "manifest_version": "2.0",
-            "snapshot_id": "test_invalid",
-            "created_at": "2023-05-15T12:30:00-07:00",
-            "entry_count": 4,  # Incorrect count
-            "entries_hash": "invalid_hash"
+            "metadata": {
+                "manifest_version": "2.0",
+                "snapshot_id": "test_invalid",
+                "created_at": "2023-05-15T12:30:00-07:00",
+                "entry_count": 4,  # Incorrect count
+                "entries_hash": "invalid_hash"
+            }
         }
 
         manifest_file.write_bytes(orjson.dumps(invalid_data))
@@ -658,7 +660,7 @@ class TestManifest:
         
         # Create test data
         metadata = {
-            "manifest_version": "0.0.1",
+            "manifest_version": "0.1.0",
             "snapshot_id": "s1",
             "created_at": "2025-05-17T12:00:00",
             "entry_count": 1,
@@ -682,9 +684,11 @@ class TestManifest:
             }
         ]
         
-        # Write test JSON file
-        test_json = {"entries": entries_data}
-        test_json.update(metadata)
+        # Write test JSON file with nested metadata
+        test_json = {
+            "entries": entries_data, 
+            "metadata": metadata
+        }
         manifest_file.write_bytes(orjson.dumps(test_json))
         
         # Load the manifest
@@ -703,6 +707,10 @@ class TestManifest:
         
         # Read JSON directly to verify
         json_data = orjson.loads(output_file.read_bytes())
-        assert json_data.get("snapshot_message") == "Initial snapshot"
-        assert json_data.get("snapshot_hash") == "s1_hash"
-        assert json_data.get("snapshot_notes") == "test-migration"
+        
+        # Check that metadata is properly nested
+        assert "metadata" in json_data
+        metadata = json_data["metadata"]
+        assert metadata["snapshot_message"] == "Initial snapshot"
+        assert metadata["snapshot_hash"] == "s1_hash"
+        assert metadata["snapshot_notes"] == "test-migration"

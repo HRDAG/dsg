@@ -11,12 +11,20 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import os
 from pathlib import Path
+import importlib.metadata
 
 import orjson
 import loguru
 from pydantic import BaseModel, Field, field_validator
 from typing import Annotated, Union, Literal, Optional
 import xxhash
+
+# Get the package version from pyproject.toml
+try:
+    PKG_VERSION = importlib.metadata.version("dsg")
+except importlib.metadata.PackageNotFoundError:
+    # Default for development environment when package is not installed
+    PKG_VERSION = "0.1.0"
 
 # Los Angeles timezone
 LA_TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -165,7 +173,7 @@ ManifestEntry = Annotated[Union[FileRef, LinkRef], Field(discriminator="type")]
 class ManifestMetadata(BaseModel):
     """Metadata about a manifest snapshot"""
 
-    manifest_version: str = "0.0.1"
+    manifest_version: str = PKG_VERSION  # Use the package version from pyproject.toml
     snapshot_id: str
     created_at: str  # ISO format datetime string for consistency
     entry_count: int
@@ -302,9 +310,13 @@ class Manifest(BaseModel):
                 # Pass the actual OrderedDict, not a list
                 metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
                 self.metadata = metadata  # Store for future use
+                
+            # Update the manifest version to reflect the new structure
+            if hasattr(metadata, "manifest_version"):
+                metadata.manifest_version = "0.1.0"  # Bump version for new structure
 
-            # Add metadata to output
-            output.update(metadata.model_dump())
+            # Add metadata as a nested object instead of flattening
+            output["metadata"] = metadata.model_dump()
         json_bytes = orjson.dumps(output, option=orjson.OPT_INDENT_2)
         file_path.write_bytes(json_bytes)
 
@@ -342,12 +354,14 @@ class Manifest(BaseModel):
         # Create manifest with entries in original order
         manifest = cls(entries=entries)
 
-        # Add metadata if present
-        if "snapshot_id" in data and "entries_hash" in data:
+        # Check for metadata in the nested format
+        if "metadata" in data:
             try:
-                manifest.metadata = ManifestMetadata.model_validate(data)
+                metadata_data = data.pop("metadata")
+                manifest.metadata = ManifestMetadata.model_validate(metadata_data)
+                logger.debug(f"Loaded metadata (version {manifest.metadata.manifest_version})")
             except Exception as e:
-                logger.warning(f"Failed to validate manifest metadata: {e}")
+                logger.warning(f"Failed to validate metadata: {e}")
 
         return manifest
 

@@ -15,6 +15,7 @@ import xxhash
 from dsg.scanner import (
     _is_hidden_path,
     _is_dsg_path,
+    _is_in_data_dir,
     _should_ignore_path,
     scan_directory,
     scan_directory_no_cfg,
@@ -192,6 +193,30 @@ class TestHelperFunctions:
         assert _is_dsg_path(test_paths["dsg_config"])
         assert _is_dsg_path(test_paths["dsg_other"])
         assert _is_dsg_path(test_paths["dsg_nested"])
+        
+    def test_is_in_data_dir(self):
+        """Test _is_in_data_dir function"""
+        # Test with standard data dirs
+        standard_data_dirs = {"input", "output", "frozen"}
+        
+        # Paths that should match standard data dirs
+        assert _is_in_data_dir(("input", "file.txt"), standard_data_dirs)
+        assert _is_in_data_dir(("output", "results.csv"), standard_data_dirs)
+        assert _is_in_data_dir(("path", "to", "input", "data.csv"), standard_data_dirs)
+        assert _is_in_data_dir(("nested", "frozen", "archive.zip"), standard_data_dirs)
+        
+        # Paths that should not match standard data dirs
+        assert not _is_in_data_dir(("docs", "readme.md"), standard_data_dirs)
+        assert not _is_in_data_dir(("src", "main.py"), standard_data_dirs)
+        
+        # Test with wildcard in data dirs
+        wildcard_data_dirs = {"*"}
+        
+        # All paths should match when "*" is in data_dirs
+        assert _is_in_data_dir(("docs", "readme.md"), wildcard_data_dirs)
+        assert _is_in_data_dir(("src", "main.py"), wildcard_data_dirs)
+        assert _is_in_data_dir(("input", "data.csv"), wildcard_data_dirs)
+        assert _is_in_data_dir(("any", "path", "should", "match.txt"), wildcard_data_dirs)
 
     def test_should_ignore_path(self, ignore_rules):
         """Test _should_ignore_path function"""
@@ -294,6 +319,44 @@ class TestScanDirectory:
         assert ".dsg/config.yml" in result.manifest.entries  # .dsg files should be included
         assert "individual/ABC/export/output/temp.pyc" not in result.manifest.entries
         assert "individual/ABC/export/output/temp.pyc" in result.ignored
+        
+    def test_scan_with_wildcard_data_dir(self, test_project_structure):
+        """Test scanning with wildcard data_dir to include all non-hidden paths"""
+        project_root = test_project_structure["root"]
+        
+        # Scan with wildcard data_dir
+        result = scan_directory_no_cfg(
+            project_root,
+            data_dirs={"*"}  # Use wildcard to include everything
+        )
+        
+        # Verify that non-standard directories are included
+        expected_included_paths = [
+            # Standard data dir files
+            "individual/ABC/import/input/data.csv",
+            "individual/ABC/export/output/results.txt",
+            "standard/frozen/archive.zip",
+            
+            # Non-standard directory files should also be included now
+            # like anything outside the default "input", "output", "frozen" dirs
+            ".dsg/config.yml"
+        ]
+        
+        # Hidden files and ignored files should still be excluded
+        expected_excluded_paths = [
+            ".hidden/hidden.txt",
+            "individual/ABC/import/input/.extra_hidden/hidden_config.json",
+            "individual/ABC/import/input/.extra_hidden/notes.txt",
+            "individual/ABC/export/output/temp.pyc"  # Excluded by suffix
+        ]
+        
+        # Verify all expected paths are included
+        for path in expected_included_paths:
+            assert path in result.manifest.entries, f"Path {path} should be included with wildcard data_dir"
+            
+        # Verify excluded paths are still excluded
+        for path in expected_excluded_paths:
+            assert path not in result.manifest.entries, f"Path {path} should be excluded even with wildcard data_dir"
 
     def test_manifest_from_scan_result(self, test_project_structure):
         # Create a simple ScanResult with a manifest
