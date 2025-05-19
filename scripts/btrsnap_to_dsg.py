@@ -374,12 +374,18 @@ def migrate_snapshot(
     snapshot_info: SnapshotInfo,
     prev_snapshot_id: Optional[str] = None,
     prev_snapshot_hash: Optional[str] = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    metadata_only: bool = True  # Default to metadata-only mode
 ) -> Tuple[bool, Optional[str]]:
     """
-    Migrate metadata from a btrfs snapshot to a ZFS snapshot using the clone approach.
+    Migrate metadata from a btrfs snapshot to a ZFS snapshot.
     
-    Steps:
+    In metadata_only mode:
+    1. Mount the ZFS snapshot read-only
+    2. Generate manifest and metadata
+    3. Save metadata to a local directory
+    
+    In full migration mode:
     1. Create ZFS clone of the snapshot
     2. Mount the clone
     3. Modify the clone to add metadata
@@ -391,263 +397,518 @@ def migrate_snapshot(
     """
     logger.info(f"Migrating {repo}/{snapshot_id} metadata: {btrfs_path} -> {zfs_path}")
     
+    # Metadata output directory
+    metadata_dir = Path(f"/tmp/dsg-metadata/{repo}/{snapshot_id}")
+    
     # ZFS dataset and mount paths
     zfs_dataset = f"zsd/{repo}"
     clone_dataset = f"zsd/{repo}-tmp-{snapshot_id}"
     clone_mountpoint = f"/tmp/zsd-{repo}-{snapshot_id}"
+    zfs_snapshot_mountpoint = f"/tmp/zsd-snap-{repo}-{snapshot_id}"
     
-    # Create mount directory if it doesn't exist
-    if not os.path.exists(clone_mountpoint):
+    # Create mount and metadata directories if they don't exist
+    os.makedirs(metadata_dir, exist_ok=True)
+    if not metadata_only:
         os.makedirs(clone_mountpoint, exist_ok=True)
+    os.makedirs(zfs_snapshot_mountpoint, exist_ok=True)
     
     if dry_run:
-        logger.info(f"DRY RUN: Would clone {zfs_dataset}@{snapshot_id} to {clone_dataset}")
-        logger.info(f"DRY RUN: Would mount clone at {clone_mountpoint}")
-        logger.info(f"DRY RUN: Would add .dsg metadata to clone")
-        logger.info(f"DRY RUN: Would create new snapshot and replace original")
+        if metadata_only:
+            logger.info(f"DRY RUN: Would mount ZFS snapshot read-only at {zfs_snapshot_mountpoint}")
+            logger.info(f"DRY RUN: Would generate metadata in {metadata_dir}")
+        else:
+            logger.info(f"DRY RUN: Would clone {zfs_dataset}@{snapshot_id} to {clone_dataset}")
+            logger.info(f"DRY RUN: Would mount clone at {clone_mountpoint}")
+            logger.info(f"DRY RUN: Would add .dsg metadata to clone")
+            logger.info(f"DRY RUN: Would create new snapshot and replace original")
         return True, "dryrun-hash"
     
     try:
-        # Step 1: Clone the snapshot
-        logger.info(f"Creating clone: {zfs_dataset}@{snapshot_id} -> {clone_dataset}")
-        
-        # First ensure any existing clone with the same name is destroyed
-        try:
-            subprocess.run(
-                ["sudo", "zfs", "destroy", "-f", clone_dataset],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False  # Don't raise exception if it doesn't exist
+        if metadata_only:
+            # In metadata-only mode, we just use the existing read-only snapshot
+            # and generate metadata files in a separate directory
+            
+            # Mount the ZFS snapshot read-only for scanning
+            logger.info(f"Mounting ZFS snapshot read-only at {zfs_snapshot_mountpoint}")
+            
+            # Check if already mounted
+            if os.path.ismount(zfs_snapshot_mountpoint):
+                logger.info(f"Snapshot already mounted at {zfs_snapshot_mountpoint}")
+            else:
+                # Create a bind mount from the .zfs/snapshot path to the mount point
+                subprocess.run(
+                    ["sudo", "mount", "--bind", "-o", "ro", str(zfs_path), zfs_snapshot_mountpoint],
+                    check=True
+                )
+            
+            # Build manifest from filesystem
+            logger.info(f"Building manifest from {zfs_snapshot_mountpoint}")
+            manifest = build_manifest_from_filesystem(
+                Path(zfs_snapshot_mountpoint), 
+                snapshot_info.user_id
             )
-        except Exception as e:
-            # Ignore errors here - likely the dataset doesn't exist yet
-            pass
-        
-        # Create the clone
-        subprocess.run(
-            ["sudo", "zfs", "clone", f"{zfs_dataset}@{snapshot_id}", clone_dataset],
-            check=True
-        )
-        
-        # Step 2: Set mountpoint and mount the clone
-        logger.info(f"Setting mountpoint: {clone_dataset} -> {clone_mountpoint}")
-        subprocess.run(
-            ["sudo", "zfs", "set", f"mountpoint={clone_mountpoint}", clone_dataset],
-            check=True
-        )
-        
-        # Check if already mounted
-        try:
-            # Try to mount, but don't fail if it's already mounted
+            logger.info(f"Built manifest with {len(manifest.entries)} entries")
+            
+            # Generate metadata
+            manifest.generate_metadata(snapshot_id=snapshot_id, user_id=snapshot_info.user_id)
+            
+            # Compute snapshot hash using the Manifest method
+            snapshot_hash = manifest.compute_snapshot_hash(
+                snapshot_info.message,
+                prev_snapshot_hash
+            )
+            
+            # Store the snapshot hash and other metadata
+            if manifest.metadata:
+                manifest.metadata.snapshot_hash = snapshot_hash
+                manifest.metadata.snapshot_message = snapshot_info.message
+                manifest.metadata.snapshot_notes = "btrsnap-migration"
+                if prev_snapshot_id:
+                    manifest.metadata.snapshot_previous = prev_snapshot_id
+            
+            # Create .dsg directory structure in metadata_dir
+            dsg_dir = metadata_dir / ".dsg"
+            os.makedirs(dsg_dir, exist_ok=True)
+            
+            # Create archive directory
+            archive_dir = dsg_dir / "archive"
+            os.makedirs(archive_dir, exist_ok=True)
+            
+            # Write last-sync.json using the built-in method
+            last_sync_path = dsg_dir / "last-sync.json"
+            manifest.to_json(
+                file_path=last_sync_path,
+                include_metadata=True
+            )
+            
+            # Write sync-messages.json (for now with just this snapshot)
+            sync_messages = {
+                "sync_messages": [
+                    {
+                        "snapshot_id": snapshot_id,
+                        "timestamp": snapshot_info.timestamp.isoformat(timespec="seconds"),
+                        "user_id": snapshot_info.user_id,
+                        "message": snapshot_info.message,
+                        "notes": "btrsnap-migration"
+                    }
+                ]
+            }
+            
+            # Check if previous snapshot's metadata has been generated
+            if prev_snapshot_id:
+                prev_sync_messages_path = Path(f"/tmp/dsg-metadata/{repo}/{prev_snapshot_id}/.dsg/sync-messages.json")
+                
+                if prev_sync_messages_path.exists():
+                    try:
+                        with open(prev_sync_messages_path, "rb") as f:
+                            existing_messages = orjson.loads(f.read())
+                            prev_messages = existing_messages.get("sync_messages", [])
+                            
+                            # Add all previous messages
+                            sync_messages["sync_messages"] = prev_messages + sync_messages["sync_messages"]
+                    except Exception as e:
+                        logger.error(f"Failed to read previous sync-messages.json: {e}")
+            
+            # Write sync-messages.json
+            sync_messages_path = dsg_dir / "sync-messages.json"
+            sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
+            with open(sync_messages_path, "wb") as f:
+                f.write(sync_messages_json)
+            
+            # Archive previous snapshot if it exists
+            if prev_snapshot_id:
+                prev_archive_path = archive_dir / f"{prev_snapshot_id}-sync.json.lz4"
+                
+                if not prev_archive_path.exists():
+                    prev_last_sync_path = Path(f"/tmp/dsg-metadata/{repo}/{prev_snapshot_id}/.dsg/last-sync.json")
+                    
+                    if prev_last_sync_path.exists():
+                        try:
+                            # Compress and store in archive
+                            subprocess.run(
+                                ["lz4", "-f", str(prev_last_sync_path), str(prev_archive_path)],
+                                check=True
+                            )
+                            
+                            logger.info(f"Archived {prev_snapshot_id} to {prev_archive_path}")
+                        except Exception as e:
+                            logger.warning(f"Failed to archive {prev_snapshot_id}: {e}")
+            
+            # Unmount the snapshot
+            if os.path.ismount(zfs_snapshot_mountpoint):
+                logger.info(f"Unmounting {zfs_snapshot_mountpoint}")
+                subprocess.run(
+                    ["sudo", "umount", zfs_snapshot_mountpoint],
+                    check=True
+                )
+            
+            # Print the output location
+            logger.info(f"Metadata successfully generated in {metadata_dir}")
+            logger.info(f"To apply: sudo cp -r {metadata_dir}/.dsg {zfs_path}/")
+            
+            logger.info(f"Successfully generated metadata for {repo}/{snapshot_id}")
+            return True, snapshot_hash
+            
+        else:
+            # In full migration mode, we create a ZFS clone and modify it directly
+            # This is the original implementation but requires more permissions
+            
+            # Step 1: Clone the snapshot
+            logger.info(f"Creating clone: {zfs_dataset}@{snapshot_id} -> {clone_dataset}")
+            
+            # First ensure any existing clone with the same name is destroyed
+            try:
+                subprocess.run(
+                    ["sudo", "zfs", "destroy", "-f", clone_dataset],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False  # Don't raise exception if it doesn't exist
+                )
+            except Exception as e:
+                # Ignore errors here - likely the dataset doesn't exist yet
+                pass
+            
+            # Create the clone
             subprocess.run(
-                ["sudo", "zfs", "mount", clone_dataset],
+                ["sudo", "zfs", "clone", f"{zfs_dataset}@{snapshot_id}", clone_dataset],
+                check=True
+            )
+            
+            # Step 2: Set mountpoint and mount the clone
+            logger.info(f"Setting mountpoint: {clone_dataset} -> {clone_mountpoint}")
+            subprocess.run(
+                ["sudo", "zfs", "set", f"mountpoint={clone_mountpoint}", clone_dataset],
+                check=True
+            )
+            
+            # Check if already mounted
+            try:
+                # Try to mount, but don't fail if it's already mounted
+                subprocess.run(
+                    ["sudo", "zfs", "mount", clone_dataset],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+            except Exception as e:
+                logger.debug(f"Mount attempt resulted in: {e}")
+                # It's fine if it's already mounted
+            
+            # Check that the mount worked
+            if not os.path.ismount(clone_mountpoint):
+                raise RuntimeError(f"Failed to mount {clone_dataset} at {clone_mountpoint}")
+            
+            # Normalize filenames in the clone
+            logger.info(f"Normalizing filenames in {clone_mountpoint}")
+            renamed_files = normalize_directory_tree(Path(clone_mountpoint))
+            if renamed_files:
+                logger.info(f"Renamed {len(renamed_files)} files in {clone_mountpoint}")
+            
+            # Build manifest from filesystem
+            logger.info(f"Building manifest from {clone_mountpoint}")
+            manifest = build_manifest_from_filesystem(
+                Path(clone_mountpoint), 
+                snapshot_info.user_id, 
+                renamed_files
+            )
+            logger.info(f"Built manifest with {len(manifest.entries)} entries")
+            
+            # Generate metadata
+            manifest.generate_metadata(snapshot_id=snapshot_id, user_id=snapshot_info.user_id)
+            
+            # Compute snapshot hash using the Manifest method
+            snapshot_hash = manifest.compute_snapshot_hash(
+                snapshot_info.message,
+                prev_snapshot_hash
+            )
+            
+            # Store the snapshot hash and other metadata
+            if manifest.metadata:
+                manifest.metadata.snapshot_hash = snapshot_hash
+                manifest.metadata.snapshot_message = snapshot_info.message
+                manifest.metadata.snapshot_notes = "btrsnap-migration"
+                if prev_snapshot_id:
+                    manifest.metadata.snapshot_previous = prev_snapshot_id
+            
+            # Create .dsg directory in the clone
+            dsg_dir = Path(clone_mountpoint) / ".dsg"
+            os.makedirs(dsg_dir, exist_ok=True)
+            
+            # Make sure we have the right permissions
+            subprocess.run(
+                ["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(dsg_dir)],
+                check=True
+            )
+            
+            # Create archive directory
+            archive_dir = dsg_dir / "archive"
+            os.makedirs(archive_dir, exist_ok=True)
+            
+            # Write last-sync.json using the built-in method
+            last_sync_path = dsg_dir / "last-sync.json"
+            manifest.to_json(
+                file_path=last_sync_path,
+                include_metadata=True
+            )
+            
+            # Write sync-messages.json (for now with just this snapshot)
+            sync_messages = {
+                "sync_messages": [
+                    {
+                        "snapshot_id": snapshot_id,
+                        "timestamp": snapshot_info.timestamp.isoformat(timespec="seconds"),
+                        "user_id": snapshot_info.user_id,
+                        "message": snapshot_info.message,
+                        "notes": "btrsnap-migration"
+                    }
+                ]
+            }
+            
+            # Check if previous snapshot's metadata exists (in the original ZFS snapshot)
+            if prev_snapshot_id:
+                prev_sync_messages_path = zfs_path.parent / prev_snapshot_id / ".dsg/sync-messages.json"
+                
+                # Can't directly read the ZFS snapshot, so use a temporary clone if needed
+                prev_messages = []
+                if prev_sync_messages_path.exists():
+                    try:
+                        # Use cat command to read from the snapshot
+                        result = subprocess.run(
+                            ["cat", str(prev_sync_messages_path)],
+                            capture_output=True,
+                            text=False,
+                            check=True
+                        )
+                        existing_messages = orjson.loads(result.stdout)
+                        prev_messages = existing_messages.get("sync_messages", [])
+                        
+                        # Add all previous messages
+                        sync_messages["sync_messages"] = prev_messages + sync_messages["sync_messages"]
+                    except Exception as e:
+                        logger.error(f"Failed to read previous sync-messages.json: {e}")
+            
+            # Write sync-messages.json
+            sync_messages_path = dsg_dir / "sync-messages.json"
+            sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
+            with open(sync_messages_path, "wb") as f:
+                f.write(sync_messages_json)
+            
+            # Archive previous snapshot if it exists
+            if prev_snapshot_id:
+                prev_archive_path = archive_dir / f"{prev_snapshot_id}-sync.json.lz4"
+                
+                if not prev_archive_path.exists():
+                    prev_last_sync_path = zfs_path.parent / prev_snapshot_id / ".dsg/last-sync.json"
+                    
+                    if os.path.exists(str(prev_last_sync_path)):
+                        try:
+                            # First create a temp file with the previous sync json
+                            temp_file = dsg_dir / f"temp-{prev_snapshot_id}-sync.json"
+                            
+                            # Copy the content using cat
+                            subprocess.run(
+                                ["cat", str(prev_last_sync_path)],
+                                stdout=open(temp_file, "wb"),
+                                check=True
+                            )
+                            
+                            # Compress and store in archive
+                            subprocess.run(
+                                ["lz4", "-f", str(temp_file), str(prev_archive_path)],
+                                check=True
+                            )
+                            
+                            # Remove the temp file
+                            os.unlink(temp_file)
+                            
+                            logger.info(f"Archived {prev_snapshot_id} to {prev_archive_path}")
+                        except Exception as e:
+                            logger.warning(f"Failed to archive {prev_snapshot_id}: {e}")
+            
+            # Step 3: Create a new snapshot from the clone
+            new_snapshot_name = f"{snapshot_id}-dsg"
+            logger.info(f"Creating new snapshot: {clone_dataset}@{new_snapshot_name}")
+            create_result = subprocess.run(
+                ["sudo", "zfs", "snapshot", f"{clone_dataset}@{new_snapshot_name}"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False
             )
-        except Exception as e:
-            logger.debug(f"Mount attempt resulted in: {e}")
-            # It's fine if it's already mounted
-        
-        # Check that the mount worked
-        if not os.path.ismount(clone_mountpoint):
-            raise RuntimeError(f"Failed to mount {clone_dataset} at {clone_mountpoint}")
-        
-        # Normalize filenames in the clone
-        logger.info(f"Normalizing filenames in {clone_mountpoint}")
-        renamed_files = normalize_directory_tree(Path(clone_mountpoint))
-        if renamed_files:
-            logger.info(f"Renamed {len(renamed_files)} files in {clone_mountpoint}")
-        
-        # Build manifest from filesystem
-        logger.info(f"Building manifest from {clone_mountpoint}")
-        manifest = build_manifest_from_filesystem(
-            Path(clone_mountpoint), 
-            snapshot_info.user_id, 
-            renamed_files
-        )
-        logger.info(f"Built manifest with {len(manifest.entries)} entries")
-        
-        # Generate metadata
-        manifest.generate_metadata(snapshot_id=snapshot_id, user_id=snapshot_info.user_id)
-        
-        # Compute snapshot hash using the Manifest method
-        snapshot_hash = manifest.compute_snapshot_hash(
-            snapshot_info.message,
-            prev_snapshot_hash
-        )
-        
-        # Store the snapshot hash and other metadata
-        if manifest.metadata:
-            manifest.metadata.snapshot_hash = snapshot_hash
-            manifest.metadata.snapshot_message = snapshot_info.message
-            manifest.metadata.snapshot_notes = "btrsnap-migration"
-            if prev_snapshot_id:
-                manifest.metadata.snapshot_previous = prev_snapshot_id
-        
-        # Create .dsg directory in the clone
-        dsg_dir = Path(clone_mountpoint) / ".dsg"
-        os.makedirs(dsg_dir, exist_ok=True)
-        
-        # Make sure we have the right permissions
-        subprocess.run(
-            ["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(dsg_dir)],
-            check=True
-        )
-        
-        # Create archive directory
-        archive_dir = dsg_dir / "archive"
-        os.makedirs(archive_dir, exist_ok=True)
-        
-        # Write last-sync.json using the built-in method
-        last_sync_path = dsg_dir / "last-sync.json"
-        manifest.to_json(
-            file_path=last_sync_path,
-            include_metadata=True
-        )
-        
-        # Write sync-messages.json (for now with just this snapshot)
-        sync_messages = {
-            "sync_messages": [
-                {
-                    "snapshot_id": snapshot_id,
-                    "timestamp": snapshot_info.timestamp.isoformat(timespec="seconds"),
-                    "user_id": snapshot_info.user_id,
-                    "message": snapshot_info.message,
-                    "notes": "btrsnap-migration"
-                }
-            ]
-        }
-        
-        # Check if previous snapshot's metadata exists (in the original ZFS snapshot)
-        if prev_snapshot_id:
-            prev_sync_messages_path = zfs_path.parent / prev_snapshot_id / ".dsg/sync-messages.json"
             
-            # Can't directly read the ZFS snapshot, so use a temporary clone if needed
-            prev_messages = []
-            if prev_sync_messages_path.exists():
-                try:
-                    # Use cat command to read from the snapshot
-                    result = subprocess.run(
-                        ["cat", str(prev_sync_messages_path)],
-                        capture_output=True,
-                        text=False,
-                        check=True
-                    )
-                    existing_messages = orjson.loads(result.stdout)
-                    prev_messages = existing_messages.get("sync_messages", [])
-                    
-                    # Add all previous messages
-                    sync_messages["sync_messages"] = prev_messages + sync_messages["sync_messages"]
-                except Exception as e:
-                    logger.error(f"Failed to read previous sync-messages.json: {e}")
-        
-        # Write sync-messages.json
-        sync_messages_path = dsg_dir / "sync-messages.json"
-        sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
-        with open(sync_messages_path, "wb") as f:
-            f.write(sync_messages_json)
-        
-        # Archive previous snapshot if it exists
-        if prev_snapshot_id:
-            prev_archive_path = archive_dir / f"{prev_snapshot_id}-sync.json.lz4"
+            if create_result.returncode != 0:
+                logger.error(f"Failed to create snapshot: {create_result.stderr.decode('utf-8')}")
+                # List datasets to verify the clone exists
+                logger.info("Listing clone dataset:")
+                subprocess.run(
+                    ["sudo", "zfs", "list", "-t", "all", "-r", clone_dataset],
+                    check=False
+                )
+                raise RuntimeError(f"Failed to create snapshot {clone_dataset}@{new_snapshot_name}")
+            else:
+                logger.info(f"Successfully created snapshot {clone_dataset}@{new_snapshot_name}")
             
-            if not prev_archive_path.exists():
-                prev_last_sync_path = zfs_path.parent / prev_snapshot_id / ".dsg/last-sync.json"
+            # Step 4: First, verify the new snapshot exists
+            logger.info(f"Checking if new snapshot exists: {clone_dataset}@{new_snapshot_name}")
+            list_result = subprocess.run(
+                ["sudo", "zfs", "list", "-t", "snapshot", f"{clone_dataset}@{new_snapshot_name}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if list_result.returncode != 0:
+                logger.error(f"New snapshot {clone_dataset}@{new_snapshot_name} does not exist or cannot be accessed")
+                logger.error(f"ZFS list stderr: {list_result.stderr.decode('utf-8')}")
+                # Try to list all snapshots to help debugging
+                logger.info("Listing all snapshots of the clone dataset:")
+                subprocess.run(
+                    ["sudo", "zfs", "list", "-t", "snapshot", "-r", clone_dataset],
+                    check=False
+                )
+                raise RuntimeError(f"New snapshot {clone_dataset}@{new_snapshot_name} not found")
+            
+            # Step 5: Create a new snapshot directly on the target dataset
+            logger.info(f"Creating a new snapshot directly on: {zfs_dataset}@{snapshot_id}-new")
+            create_direct_result = subprocess.run(
+                ["sudo", "zfs", "send", f"{clone_dataset}@{new_snapshot_name}", "|", "sudo", "zfs", "receive", f"{zfs_dataset}@{snapshot_id}-new"],
+                shell=True,  # Need shell=True for the pipe to work
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if create_direct_result.returncode != 0:
+                logger.error(f"Failed to send/receive snapshot: {create_direct_result.stderr.decode('utf-8')}")
+                # Try an alternative approach using zfs send/receive
+                logger.info("Trying alternative send/receive approach with temporary file")
                 
-                if os.path.exists(str(prev_last_sync_path)):
-                    try:
-                        # First create a temp file with the previous sync json
-                        temp_file = dsg_dir / f"temp-{prev_snapshot_id}-sync.json"
-                        
-                        # Copy the content using cat
-                        subprocess.run(
-                            ["cat", str(prev_last_sync_path)],
-                            stdout=open(temp_file, "wb"),
-                            check=True
-                        )
-                        
-                        # Compress and store in archive
-                        subprocess.run(
-                            ["lz4", "-f", str(temp_file), str(prev_archive_path)],
-                            check=True
-                        )
-                        
-                        # Remove the temp file
-                        os.unlink(temp_file)
-                        
-                        logger.info(f"Archived {prev_snapshot_id} to {prev_archive_path}")
-                    except Exception as e:
-                        logger.warning(f"Failed to archive {prev_snapshot_id}: {e}")
-        
-        # Step 3: Create a new snapshot from the clone
-        new_snapshot_name = f"{snapshot_id}-dsg"
-        logger.info(f"Creating new snapshot: {clone_dataset}@{new_snapshot_name}")
-        subprocess.run(
-            ["sudo", "zfs", "snapshot", f"{clone_dataset}@{new_snapshot_name}"],
-            check=True
-        )
-        
-        # Step 4: Destroy the original snapshot
-        logger.info(f"Destroying original snapshot: {zfs_dataset}@{snapshot_id}")
-        subprocess.run(
-            ["sudo", "zfs", "destroy", f"{zfs_dataset}@{snapshot_id}"],
-            check=True
-        )
-        
-        # Step 5: Rename the new snapshot to the original name
-        logger.info(f"Renaming new snapshot: {clone_dataset}@{new_snapshot_name} -> {zfs_dataset}@{snapshot_id}")
-        subprocess.run(
-            ["sudo", "zfs", "rename", f"{clone_dataset}@{new_snapshot_name}", f"{zfs_dataset}@{snapshot_id}"],
-            check=True
-        )
-        
-        # Step 6: Clean up - unmount and destroy the clone
-        logger.info(f"Cleaning up: destroying clone {clone_dataset}")
-        
-        # Unmount first
-        subprocess.run(
-            ["sudo", "zfs", "unmount", clone_dataset],
-            check=True
-        )
-        
-        # Then destroy
-        subprocess.run(
-            ["sudo", "zfs", "destroy", clone_dataset],
-            check=True
-        )
-        
-        # Remove the mountpoint directory
-        if os.path.exists(clone_mountpoint) and not os.path.ismount(clone_mountpoint):
-            os.rmdir(clone_mountpoint)
-        
-        logger.info(f"Successfully migrated {repo}/{snapshot_id}")
-        return True, snapshot_hash
+                # Create temporary file for the snapshot
+                temp_file = f"/tmp/{repo}-{snapshot_id}-snapshot.zfs"
+                send_result = subprocess.run(
+                    ["sudo", "zfs", "send", f"{clone_dataset}@{new_snapshot_name}", ">", temp_file],
+                    shell=True,  # Need shell=True for the redirection to work
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+                
+                if send_result.returncode != 0:
+                    logger.error(f"Failed to send snapshot to file: {send_result.stderr.decode('utf-8')}")
+                    raise RuntimeError(f"Failed to create a new snapshot on the target dataset")
+                
+                receive_result = subprocess.run(
+                    ["sudo", "zfs", "receive", f"{zfs_dataset}@{snapshot_id}-new", "<", temp_file],
+                    shell=True,  # Need shell=True for the redirection to work
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False
+                )
+                
+                if receive_result.returncode != 0:
+                    logger.error(f"Failed to receive snapshot from file: {receive_result.stderr.decode('utf-8')}")
+                    # Clean up the temp file
+                    subprocess.run(["rm", "-f", temp_file], check=False)
+                    raise RuntimeError(f"Failed to create a new snapshot on the target dataset")
+                
+                # Clean up the temp file
+                subprocess.run(["rm", "-f", temp_file], check=False)
+            else:
+                logger.info(f"Successfully created new snapshot {zfs_dataset}@{snapshot_id}-new")
+            
+            # Step 6: Destroy the original snapshot
+            logger.info(f"Destroying original snapshot: {zfs_dataset}@{snapshot_id}")
+            destroy_result = subprocess.run(
+                ["sudo", "zfs", "destroy", f"{zfs_dataset}@{snapshot_id}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if destroy_result.returncode != 0:
+                logger.error(f"Failed to destroy original snapshot: {destroy_result.stderr.decode('utf-8')}")
+                logger.warning("Continuing with rename attempt anyway")
+            
+            # Step 7: Rename the new snapshot to the original name
+            logger.info(f"Renaming new snapshot: {zfs_dataset}@{snapshot_id}-new -> {zfs_dataset}@{snapshot_id}")
+            rename_result = subprocess.run(
+                ["sudo", "zfs", "rename", f"{zfs_dataset}@{snapshot_id}-new", f"{zfs_dataset}@{snapshot_id}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if rename_result.returncode != 0:
+                logger.error(f"Failed to rename snapshot: {rename_result.stderr.decode('utf-8')}")
+                raise RuntimeError(f"Failed to rename snapshot")
+            else:
+                logger.info(f"Successfully renamed snapshot")
+            
+            # Step 8: Clean up - unmount and destroy the clone
+            logger.info(f"Cleaning up: destroying clone {clone_dataset}")
+            
+            # Unmount first
+            unmount_result = subprocess.run(
+                ["sudo", "zfs", "unmount", clone_dataset],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if unmount_result.returncode != 0:
+                logger.warning(f"Failed to unmount clone: {unmount_result.stderr.decode('utf-8')}")
+                logger.warning("Continuing with destroy attempt anyway")
+            
+            # Then destroy
+            destroy_result = subprocess.run(
+                ["sudo", "zfs", "destroy", "-f", clone_dataset],  # Added -f to force destruction
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            if destroy_result.returncode != 0:
+                logger.warning(f"Failed to destroy clone: {destroy_result.stderr.decode('utf-8')}")
+                logger.warning("Migration may have succeeded despite cleanup failure")
+            
+            # Remove the mountpoint directory
+            if os.path.exists(clone_mountpoint) and not os.path.ismount(clone_mountpoint):
+                os.rmdir(clone_mountpoint)
+            
+            logger.info(f"Successfully migrated {repo}/{snapshot_id}")
+            return True, snapshot_hash
         
     except Exception as e:
         logger.error(f"Error migrating {repo}/{snapshot_id}: {e}")
         
         # Attempt cleanup on failure
         try:
-            # Try to unmount if mounted
-            subprocess.run(
-                ["sudo", "zfs", "unmount", clone_dataset],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False  # Don't raise exception if it fails
-            )
-            
-            # Try to destroy the clone
-            subprocess.run(
-                ["sudo", "zfs", "destroy", "-f", clone_dataset],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False  # Don't raise exception if it fails
-            )
-            
-            # Try to remove the mountpoint directory
-            if os.path.exists(clone_mountpoint) and not os.path.ismount(clone_mountpoint):
-                os.rmdir(clone_mountpoint)
+            if metadata_only:
+                # Unmount the snapshot
+                if os.path.ismount(zfs_snapshot_mountpoint):
+                    subprocess.run(
+                        ["sudo", "umount", zfs_snapshot_mountpoint],
+                        check=False
+                    )
+            else:
+                # Try to unmount if mounted
+                subprocess.run(
+                    ["sudo", "zfs", "unmount", clone_dataset],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False  # Don't raise exception if it fails
+                )
+                
+                # Try to destroy the clone
+                subprocess.run(
+                    ["sudo", "zfs", "destroy", "-f", clone_dataset],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False  # Don't raise exception if it fails
+                )
+                
+                # Try to remove the mountpoint directory
+                if os.path.exists(clone_mountpoint) and not os.path.ismount(clone_mountpoint):
+                    os.rmdir(clone_mountpoint)
         except Exception as cleanup_err:
             logger.warning(f"Error during cleanup: {cleanup_err}")
         
@@ -677,6 +938,10 @@ def main():
     parser.add_argument(
         "--verbose", "-v", action="store_true",
         help="Enable verbose logging"
+    )
+    parser.add_argument(
+        "--full-migration", action="store_true",
+        help="Perform full migration (clone, modify, replace) rather than just generating metadata"
     )
     args = parser.parse_args()
     
@@ -741,7 +1006,8 @@ def main():
             snapshots_info[snapshot_id],
             prev_id,
             prev_hash,
-            args.dry_run
+            args.dry_run,
+            metadata_only=not args.full_migration
         )
         
         if success:
