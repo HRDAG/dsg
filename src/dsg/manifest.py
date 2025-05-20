@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import os
 from pathlib import Path
 import importlib.metadata
+import unicodedata
 
 import orjson
 import loguru
@@ -216,9 +217,43 @@ class Manifest(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     entries: OrderedDict[str, ManifestEntry]
     metadata: Optional[ManifestMetadata] = None
+    
+    @staticmethod
+    def _normalize_path(full_path: Path, project_root: Path) -> tuple[Path, str, bool]:
+        """
+        Normalize a path to NFC form and rename the file if needed.
+        
+        Args:
+            full_path: The original file path
+            project_root: The project root path
+            
+        Returns:
+            Tuple of (normalized_path, normalized_rel_path, was_normalized)
+        """
+        rel_path = str(full_path.relative_to(project_root))
+        path_parts = rel_path.split('/')
+        normalized_parts = [unicodedata.normalize("NFC", part) for part in path_parts]
+        normalized_path = '/'.join(normalized_parts)
+        
+        # Check if normalization changed anything
+        if normalized_path == rel_path:
+            return full_path, rel_path, False
+            
+        # Normalize the path
+        try:
+            new_full_path = project_root / normalized_path
+            # Ensure parent directory exists
+            os.makedirs(os.path.dirname(str(new_full_path)), exist_ok=True)
+            # Rename the file
+            full_path.rename(new_full_path)
+            logger.info(f"Renamed {full_path} to {new_full_path} for NFC normalization")
+            return new_full_path, normalized_path, True
+        except Exception as e:
+            logger.error(f"Failed to rename {full_path} for normalization: {e}")
+            return full_path, rel_path, False
 
     @staticmethod
-    def create_entry(full_path: Path, project_root: Path) -> ManifestEntry:
+    def create_entry(full_path: Path, project_root: Path, normalize_paths: bool = False) -> ManifestEntry:
         """Create a manifest entry for a path"""
         # Calculate relative path
         try:
@@ -227,6 +262,16 @@ class Manifest(BaseModel):
             emsg = f"Path {full_path} is not within project root {project_root}"
             logger.error(emsg)
             raise ValueError(emsg)
+            
+        # Optionally normalize the path
+        if normalize_paths:
+            from dsg.filename_validation import validate_path
+            
+            # Check if path needs normalization
+            is_valid, message = validate_path(rel_path)
+            if not is_valid and "not NFC-normalized" in message:
+                full_path, rel_path, _ = Manifest._normalize_path(full_path, project_root)
+                
         if full_path.is_symlink():
             return LinkRef._from_path(full_path, rel_path, project_root)
         elif full_path.is_file():

@@ -10,6 +10,7 @@ import pytest
 from datetime import datetime
 from collections import OrderedDict
 import orjson
+import unicodedata
 from unittest.mock import patch
 
 from dsg.manifest import (
@@ -714,3 +715,71 @@ class TestManifest:
         assert metadata["snapshot_message"] == "Initial snapshot"
         assert metadata["snapshot_hash"] == "s1_hash"
         assert metadata["snapshot_notes"] == "test-migration"
+        
+    def test_normalize_path(self, test_project_dir):
+        """Test the _normalize_path method"""
+        project_root = test_project_dir["root"]
+        
+        # Create a file with a non-NFC name
+        # "café" with the é in NFD form (e + combining acute accent)
+        non_nfc_name = "cafe\u0301.txt"
+        non_nfc_path = project_root / non_nfc_name
+        with open(non_nfc_path, "w") as f:
+            f.write("test content")
+            
+        # Verify the file exists with the NFD name
+        assert non_nfc_path.exists()
+        
+        # Normalize the path
+        normalized_path, normalized_rel_path, was_normalized = Manifest._normalize_path(
+            non_nfc_path, project_root
+        )
+        
+        # Verify results
+        assert was_normalized, "Path should have been normalized"
+        
+        # The normalized path should use NFC normalization ("café" as a single code point)
+        expected_normalized = unicodedata.normalize("NFC", non_nfc_name)
+        assert normalized_rel_path == expected_normalized
+        
+        # Original file should be renamed
+        assert not non_nfc_path.exists(), "Original file should be renamed"
+        assert normalized_path.exists(), "Normalized path should exist"
+        
+        # Check the file content is preserved
+        with open(normalized_path, "r") as f:
+            content = f.read()
+            assert content == "test content"
+            
+    def test_create_entry_with_normalization(self, test_project_dir):
+        """Test creating a manifest entry with normalization enabled"""
+        project_root = test_project_dir["root"]
+        
+        # Create a file with a non-NFC name
+        non_nfc_name = "cafe\u0301.txt"
+        non_nfc_path = project_root / non_nfc_name
+        with open(non_nfc_path, "w") as f:
+            f.write("test content")
+        
+        # Create entry without normalization - should succeed but have non-NFC path
+        entry1 = Manifest.create_entry(non_nfc_path, project_root, normalize_paths=False)
+        assert entry1 is not None
+        assert entry1.path == non_nfc_name
+        
+        # Create another non-NFC file for testing normalization
+        non_nfc_name2 = "caf\u0065\u0301.txt"  # Same "café" using different decomposition
+        non_nfc_path2 = project_root / non_nfc_name2
+        with open(non_nfc_path2, "w") as f:
+            f.write("test content 2")
+        
+        # Create entry with normalization enabled
+        entry2 = Manifest.create_entry(non_nfc_path2, project_root, normalize_paths=True)
+        
+        # Verify results
+        assert entry2 is not None
+        expected_normalized = unicodedata.normalize("NFC", non_nfc_name2)
+        assert entry2.path == expected_normalized
+        
+        # Original file should be renamed
+        assert not non_nfc_path2.exists(), "Original file should be renamed"
+        assert (project_root / expected_normalized).exists(), "Normalized path should exist"

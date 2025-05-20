@@ -256,7 +256,8 @@ def build_manifest_from_filesystem(
             user_id=user_id,
             data_dirs={"*"},  # Include all directories
             # Additional ignore patterns for .zfs internals
-            ignored_paths={".zfs/snapshot"}
+            ignored_paths={".zfs/snapshot"},
+            normalize_paths=True  # Always normalize paths during migration
         )
         
         # If we have renamed files, update the paths in the manifest

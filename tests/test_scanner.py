@@ -8,6 +8,7 @@
 from collections import OrderedDict
 import os
 import pytest
+import unicodedata
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 import xxhash
@@ -509,6 +510,60 @@ class TestHashing:
                        if isinstance(entry, FileRef)]
         for entry in file_entries:
             assert entry.hash != ""
+            
+    def test_scan_with_normalization(self, hash_test_dir):
+        """Test scanning a directory with path normalization enabled"""
+        project_root = hash_test_dir["root"]
+        
+        # Create a file with a non-NFC name
+        # "café" with the é in NFD form (e + combining acute accent)
+        non_nfc_name = "cafe\u0301.txt"
+        non_nfc_path = hash_test_dir["input_dir"] / non_nfc_name
+        with open(non_nfc_path, "w") as f:
+            f.write("test content")
+        
+        # Verify the file exists with the NFD name
+        assert non_nfc_path.exists()
+        
+        # Scan without normalization - should include the non-NFC path
+        scan_result_no_norm = scan_directory_no_cfg(
+            project_root, 
+            compute_hashes=True,
+            normalize_paths=False
+        )
+        rel_path = f"input/{non_nfc_name}"
+        assert rel_path in scan_result_no_norm.manifest.entries
+        
+        # Create another non-NFC file
+        non_nfc_name2 = "caf\u0065\u0301.txt"  # Same "café" with different NFD form
+        non_nfc_path2 = hash_test_dir["input_dir"] / non_nfc_name2
+        with open(non_nfc_path2, "w") as f:
+            f.write("test content 2")
+        
+        # Compute what the normalized path should be
+        normalized_filename = unicodedata.normalize("NFC", non_nfc_name)
+        expected_path = f"input/{normalized_filename}"
+        
+        # Scan with normalization enabled
+        scan_result_norm = scan_directory_no_cfg(
+            project_root, 
+            compute_hashes=True,
+            normalize_paths=True
+        )
+        
+        # Check if any entry has a path that matches the normalized form
+        normalized_paths = [entry.path for entry in scan_result_norm.manifest.entries.values()]
+        
+        # Verify we have a normalized path in the results
+        assert any(expected_path == path for path in normalized_paths)
+        
+        # Original files should be renamed
+        assert not non_nfc_path.exists()
+        assert not non_nfc_path2.exists()
+        
+        # A normalized file should exist in the filesystem
+        normalized_file_path = hash_test_dir["input_dir"] / normalized_filename
+        assert normalized_file_path.exists()
     
     def test_race_condition_handling(self, hash_test_dir):
         """Test handling of race conditions with symlinks"""

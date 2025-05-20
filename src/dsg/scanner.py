@@ -41,13 +41,15 @@ def manifest_from_scan_result(scan_result: ScanResult) -> Manifest:
     return Manifest(entries=scan_result.manifest.entries)
 
 
-def scan_directory(cfg: Config, compute_hashes: bool = False) -> ScanResult:
+def scan_directory(cfg: Config, compute_hashes: bool = False, 
+                normalize_paths: bool = False) -> ScanResult:
     """
     Scan a directory using configuration from cfg.
 
     Args:
         cfg: Configuration object with project settings
         compute_hashes: When True, calculates file hashes for all files in the manifest
+        normalize_paths: When True, normalizes invalid paths during scanning
     """
     # Use getattr to safely handle the user_id attribute
     user_id = getattr(cfg.user, 'user_id', None) if cfg.user else None
@@ -59,12 +61,15 @@ def scan_directory(cfg: Config, compute_hashes: bool = False) -> ScanResult:
         ignored_names=cfg.project.ignored_names,
         ignored_suffixes=cfg.project.ignored_suffixes,
         compute_hashes=compute_hashes,
-        user_id=user_id
+        user_id=user_id,
+        normalize_paths=normalize_paths
     )
 
 
 def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, 
-                        user_id: Optional[str] = None, **config_overrides) -> ScanResult:
+                        user_id: Optional[str] = None, 
+                        normalize_paths: bool = False,
+                        **config_overrides) -> ScanResult:
     """
     Scan a directory using a minimal configuration created on the fly.
 
@@ -77,6 +82,7 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False,
         root_path: Path to the project root directory to scan
         compute_hashes: When True, calculates file hashes for all files in the manifest
         user_id: Optional user ID to attribute to new entries
+        normalize_paths: When True, normalizes invalid paths during scanning
         **config_overrides: Override values for the minimal config (data_dirs, ignored_paths, etc.)
     """
     project_config = ProjectConfig.minimal(root_path, **config_overrides)
@@ -87,7 +93,8 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False,
         ignored_names=project_config.ignored_names,
         ignored_suffixes=project_config.ignored_suffixes,
         compute_hashes=compute_hashes,
-        user_id=user_id
+        user_id=user_id,
+        normalize_paths=normalize_paths
     )
 
 
@@ -153,7 +160,8 @@ def _scan_directory_internal(
     ignored_names: set[str],
     ignored_suffixes: set[str],
     compute_hashes: bool = False,
-    user_id: Optional[str] = None) -> ScanResult:
+    user_id: Optional[str] = None,
+    normalize_paths: bool = False) -> ScanResult:
     """
     Internal implementation of directory scanning.
 
@@ -165,6 +173,7 @@ def _scan_directory_internal(
         ignored_suffixes: Set of file extensions to ignore
         compute_hashes: When True, calculates file hashes for all files in the manifest
         user_id: Optional user ID to attribute to new entries
+        normalize_paths: When True, normalizes invalid paths during scanning
     """
     entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
@@ -210,7 +219,7 @@ def _scan_directory_internal(
             logger.debug("  Adding to ignored list")
             continue
 
-        if entry := Manifest.create_entry(full_path, root_path):
+        if entry := Manifest.create_entry(full_path, root_path, normalize_paths):
             # Set user attribution if provided
             if user_id and hasattr(entry, "user") and not entry.user:
                 entry.user = user_id
