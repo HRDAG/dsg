@@ -200,7 +200,8 @@ def write_dsg_metadata(
     last_sync_path = dsg_dir / "last-sync.json"
     manifest.to_json(
         file_path=last_sync_path,
-        include_metadata=True
+        include_metadata=True,
+        timestamp=snapshot_info.timestamp  # Use the timestamp from push.log
     )
     
     # Debug: Verify the message was written correctly
@@ -223,6 +224,8 @@ def write_dsg_metadata(
             logger.error(f"Error verifying metadata in {snapshot_id}: {e}")
     
     # Build sync-messages.json (aggregated history of all messages)
+    # snapshot_info.timestamp is used both for last-sync.json metadata (done above)
+    # and for sync-messages.json (handled in build_sync_messages_file)
     build_sync_messages_file(dsg_dir, snapshot_id, snapshot_info, zfs_mount, prev_snapshot_id, debug_metadata)
     
     # Archive previous snapshots

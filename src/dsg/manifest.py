@@ -32,7 +32,7 @@ LA_TIMEZONE = ZoneInfo("America/Los_Angeles")
 logger = loguru.logger
 
 
-def _dt(tm: datetime = None) -> str:
+def _dt(tm: datetime | None = None) -> str:
     """Return the current time in LA timezone as an ISO format string."""
     if tm:
         return tm.isoformat(timespec="seconds")
@@ -71,27 +71,27 @@ class FileRef(BaseModel):
             self.filesize == other.filesize and
             self.mtime == other.mtime
         )
-        
+
     def __eq__(self, other) -> bool:
         """
         Two FileRef objects are equal if they have the same path and hash.
         This ensures that files with same content are considered equal,
         regardless of metadata differences.
-        
+
         Raises a ValueError if either object is missing a hash value,
         as all files should have complete metadata at comparison time.
         """
         if not isinstance(other, FileRef):
             return False
-            
+
         # First check path is the same
         if self.path != other.path:
             return False
-            
+
         # Ensure hashes exist - this is a strict requirement for equality checks
         if not self.hash or not other.hash:
             raise ValueError(f"Cannot compare FileRef objects with missing hash values: {self.path}")
-            
+
         # Compare hash values
         return self.hash == other.hash
 
@@ -118,7 +118,7 @@ class LinkRef(BaseModel):
         if actual_up_levels > max_up_levels:
             raise ValueError("Symlink target attempts to escape project directory")
         return v
-        
+
     def eq_shallow(self, other) -> bool:
         """
         Compare LinkRef objects to see if they reference the same target.
@@ -130,7 +130,7 @@ class LinkRef(BaseModel):
             self.path == other.path and
             self.reference == other.reference
         )
-        
+
     def __eq__(self, other) -> bool:
         """
         Two LinkRef objects are equal if they have the same path and reference.
@@ -180,7 +180,7 @@ class ManifestMetadata(BaseModel):
     entry_count: int
     entries_hash: str
     created_by: Optional[str] = None
-    
+
     # Snapshot-specific fields (optional - only used for snapshot manifests)
     snapshot_message: Optional[str] = None  # User-provided sync message
     snapshot_previous: Optional[str] = None  # Reference to previous snapshot (e.g., s1)
@@ -193,6 +193,7 @@ class ManifestMetadata(BaseModel):
         entries: OrderedDict[str, ManifestEntry],
         snapshot_id: str = "",
         user_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> ManifestMetadata:
         """Create metadata for a set of entries"""
         # Generate entries hash using xxhash3_64
@@ -205,7 +206,7 @@ class ManifestMetadata(BaseModel):
 
         return cls(
             snapshot_id=snapshot_id if snapshot_id else _dt(),
-            created_at=_dt(),
+            created_at=_dt(timestamp),
             entry_count=len(entries),
             entries_hash=entries_hash,
             created_by=user_id,
@@ -217,16 +218,16 @@ class Manifest(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     entries: OrderedDict[str, ManifestEntry]
     metadata: Optional[ManifestMetadata] = None
-    
+
     @staticmethod
     def _normalize_path(full_path: Path, project_root: Path) -> tuple[Path, str, bool]:
         """
         Normalize a path to NFC form and rename the file if needed.
-        
+
         Args:
             full_path: The original file path
             project_root: The project root path
-            
+
         Returns:
             Tuple of (normalized_path, normalized_rel_path, was_normalized)
         """
@@ -234,11 +235,11 @@ class Manifest(BaseModel):
         path_parts = rel_path.split('/')
         normalized_parts = [unicodedata.normalize("NFC", part) for part in path_parts]
         normalized_path = '/'.join(normalized_parts)
-        
+
         # Check if normalization changed anything
         if normalized_path == rel_path:
             return full_path, rel_path, False
-            
+
         # Normalize the path
         try:
             new_full_path = project_root / normalized_path
@@ -262,16 +263,16 @@ class Manifest(BaseModel):
             emsg = f"Path {full_path} is not within project root {project_root}"
             logger.error(emsg)
             raise ValueError(emsg)
-            
+
         # Optionally normalize the path
         if normalize_paths:
             from dsg.filename_validation import validate_path
-            
+
             # Check if path needs normalization
             is_valid, message = validate_path(rel_path)
             if not is_valid and "not NFC-normalized" in message:
                 full_path, rel_path, _ = Manifest._normalize_path(full_path, project_root)
-                
+
         if full_path.is_symlink():
             return LinkRef._from_path(full_path, rel_path, project_root)
         elif full_path.is_file():
@@ -342,6 +343,7 @@ class Manifest(BaseModel):
         include_metadata: bool = True,
         snapshot_id: str = "",
         user_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
     ) -> None:
         """Write manifest to disk as JSON"""
         # Validate symlinks before saving
@@ -361,9 +363,10 @@ class Manifest(BaseModel):
             metadata = self.metadata
             if metadata is None:
                 # Pass the actual OrderedDict, not a list
-                metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
+                # Pass timestamp if provided
+                metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp)
                 self.metadata = metadata  # Store for future use
-                
+
             # Update the manifest version to reflect the new structure
             if hasattr(metadata, "manifest_version"):
                 metadata.manifest_version = "0.1.0"  # Bump version for new structure
@@ -387,11 +390,11 @@ class Manifest(BaseModel):
         # Ensure entries is a dictionary
         if not isinstance(entries_data, dict):
             raise ValueError(f"Expected entries to be a dictionary, got {type(entries_data).__name__}")
-            
+
         # Process entries dictionary
         for path, entry_data in entries_data.items():
             entry_type = entry_data.get("type")
-            
+
             if entry_type == "file":
                 try:
                     entry = FileRef.model_validate(entry_data)
@@ -447,38 +450,38 @@ class Manifest(BaseModel):
         return True
 
     def generate_metadata(
-        self, snapshot_id: str = "", user_id: Optional[str] = None
+        self, snapshot_id: str = "", user_id: Optional[str] = None, timestamp: Optional[datetime] = None
     ) -> None:
         """Generate metadata for this manifest"""
-        self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id)
-    
+        self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp)
+
     def compute_snapshot_hash(
         self, message: str, prev_snapshot_hash: Optional[str] = None
     ) -> str:
         """Compute snapshot hash for chain validation.
-        
+
         For s1: hash(entries_hash + snapshot_message + "")
         For others: hash(entries_hash + snapshot_message + prev_snapshot_hash)
-        
+
         Args:
             message: The snapshot message to include in the hash
             prev_snapshot_hash: Hash of previous snapshot, or None for first snapshot
-            
+
         Returns:
             Hexadecimal string hash for this snapshot
         """
         if not self.metadata or not self.metadata.entries_hash:
             raise ValueError("Cannot compute snapshot hash: missing metadata or entries_hash")
-            
+
         h = xxhash.xxh3_64()
         h.update(self.metadata.entries_hash.encode())
         h.update(message.encode())
-        
+
         if prev_snapshot_hash:
             h.update(prev_snapshot_hash.encode())
         else:
             h.update(b"")  # Empty string for first snapshot
-            
+
         return h.hexdigest()
 
 

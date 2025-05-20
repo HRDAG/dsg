@@ -86,8 +86,12 @@ def process_snapshot(
     )
     logger.info(f"Built manifest with {len(manifest.entries)} entries")
 
-    # 3. Generate metadata
-    manifest.generate_metadata(snapshot_id=snapshot_id, user_id=snapshot_info.user_id)
+    # 3. Generate metadata using timestamp from push log
+    manifest.generate_metadata(
+        snapshot_id=snapshot_id, 
+        user_id=snapshot_info.user_id,
+        timestamp=snapshot_info.timestamp
+    )
     
     # 4. Write metadata to .dsg directory
     snapshot_hash = write_dsg_metadata(
@@ -266,10 +270,31 @@ def main(
                                     user_id = parts[1].strip() if len(parts) > 1 else "unknown"
                                     logger.info(f"Found message directly from {snapshot_id} push log: '{message}'")
                                     # Create snapshot info with real message
+                                    # Try to extract timestamp from the log line
+                                    try:
+                                        from src.dsg.manifest import LA_TIMEZONE
+                                        # Format: repo/sXX | USER | TIMESTAMP | MESSAGE
+                                        if len(parts) >= 3:
+                                            timestamp_str = parts[2].strip()
+                                            # Format: 2014-05-07 17:27:26 UTC (Wed)
+                                            timestamp_parts = timestamp_str.split(" (")[0]  # Remove day of week
+                                            dt = datetime.datetime.strptime(timestamp_parts, "%Y-%m-%d %H:%M:%S %Z")
+                                            # Set timezone to UTC then convert to LA
+                                            dt = dt.replace(tzinfo=datetime.timezone.utc)
+                                            create_time = dt.astimezone(LA_TIMEZONE)
+                                        else:
+                                            # Fallback to current time if timestamp not found
+                                            create_time = datetime.datetime.now(LA_TIMEZONE)
+                                    except (ValueError, ImportError, IndexError) as e:
+                                        # Fallback if timestamp parsing fails
+                                        logger.warning(f"Failed to parse timestamp from push log line: {e}")
+                                        la_tz = datetime.timezone(datetime.timedelta(hours=-8), name="America/Los_Angeles")
+                                        create_time = datetime.datetime.now(la_tz)
+
                                     snapshot_info = SnapshotInfo(
                                         snapshot_id=snapshot_id,
                                         user_id=user_id,
-                                        timestamp=datetime.datetime.now(datetime.timezone.utc),
+                                        timestamp=create_time,
                                         message=message
                                     )
                                     # Important: Store in snapshots_info for validation
