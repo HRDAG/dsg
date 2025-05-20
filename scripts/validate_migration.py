@@ -305,8 +305,11 @@ def check_snapshot_chain(repo: str, snapshots: List[str]) -> ValidationResult:
         if i > 0:
             prev_id = sorted_snapshots[i-1]
             
+            # Get the metadata section
+            metadata = manifest.get("metadata", {})
+            
             # Check if previous link exists and is correct
-            prev_link = manifest.get("snapshot_previous")
+            prev_link = metadata.get("snapshot_previous")
             if prev_link != prev_id:
                 broken_links.append((snapshot_id, prev_id, prev_link))
                 result.add_detail(
@@ -316,9 +319,10 @@ def check_snapshot_chain(repo: str, snapshots: List[str]) -> ValidationResult:
                 result.add_detail(f"Valid previous link in {snapshot_id}: {prev_link}")
             
             # Check snapshot hash
-            if "snapshot_hash" in manifest and prev_id in manifests:
+            if "snapshot_hash" in metadata and prev_id in manifests:
                 prev_manifest = manifests[prev_id]
-                if "snapshot_hash" in prev_manifest:
+                prev_metadata = prev_manifest.get("metadata", {})
+                if "snapshot_hash" in prev_metadata:
                     # Ideally, we'd recompute the hash here to validate it
                     # For now, just check that the hash exists
                     result.add_detail(f"Hash exists in {snapshot_id}")
@@ -327,7 +331,8 @@ def check_snapshot_chain(repo: str, snapshots: List[str]) -> ValidationResult:
                     result.add_detail(f"Missing hash in previous snapshot {prev_id}")
         else:
             # First snapshot should not have a previous link
-            prev_link = manifest.get("snapshot_previous")
+            metadata = manifest.get("metadata", {})
+            prev_link = metadata.get("snapshot_previous")
             if prev_link:
                 broken_links.append((snapshot_id, None, prev_link))
                 result.add_detail(
@@ -418,7 +423,10 @@ def check_push_log_consistency(repo: str, snapshots: List[str]) -> ValidationRes
                 manifest = orjson.loads(f.read())
             
             push_log_message = push_log_entries[snapshot_id]
-            manifest_message = manifest.get("snapshot_message", "")
+            
+            # Get the message from the nested metadata object
+            metadata = manifest.get("metadata", {})
+            manifest_message = metadata.get("snapshot_message", "")
             
             if push_log_message != manifest_message:
                 mismatches.append(snapshot_id)
@@ -489,6 +497,105 @@ def check_unique_files(repo: str, snapshots: List[str]) -> ValidationResult:
     return result
 
 
+def check_archive_completeness(repo: str, snapshots: List[str]) -> ValidationResult:
+    """
+    Check if all previous snapshots are properly archived in each snapshot.
+    """
+    result = ValidationResult(
+        "archive_completeness", 
+        "Check if all previous snapshots are properly archived"
+    )
+    
+    missing = []
+    
+    # Sort snapshots by number
+    sorted_snapshots = sorted(snapshots, key=lambda s: int(s[1:]))
+    
+    # For each snapshot (except the first one)
+    for i, snapshot_id in enumerate(sorted_snapshots[1:], 1):
+        zfs_snapshot_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{snapshot_id}")
+        archive_dir = zfs_snapshot_path / ".dsg/archive"
+        
+        if not archive_dir.exists():
+            missing.append((snapshot_id, "archive_dir"))
+            result.add_detail(f"No archive directory in {snapshot_id}")
+            continue
+        
+        # This snapshot should have archives for ALL previous snapshots
+        expected_archives = sorted_snapshots[:i]
+        
+        # Check each expected archive
+        for prev_id in expected_archives:
+            archive_file = archive_dir / f"{prev_id}-sync.json.lz4"
+            
+            if not archive_file.exists():
+                missing.append((snapshot_id, prev_id))
+                result.add_detail(f"Missing archive file for {prev_id} in {snapshot_id}")
+            else:
+                result.add_detail(f"Found archive file for {prev_id} in {snapshot_id}")
+    
+    if missing:
+        result.set_passed(False, f"Missing {len(missing)} archive files across all snapshots")
+    else:
+        result.set_passed(True, "All required archives present")
+    
+    return result
+
+
+def check_sync_messages_completeness(repo: str, snapshots: List[str]) -> ValidationResult:
+    """
+    Check if sync-messages.json contains entries for all previous snapshots.
+    """
+    result = ValidationResult(
+        "sync_messages_completeness", 
+        "Check if sync-messages.json contains all snapshots"
+    )
+    
+    incomplete = []
+    
+    # Sort snapshots by number
+    sorted_snapshots = sorted(snapshots, key=lambda s: int(s[1:]))
+    
+    # For each snapshot
+    for i, snapshot_id in enumerate(sorted_snapshots):
+        zfs_snapshot_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{snapshot_id}")
+        sync_messages_path = zfs_snapshot_path / ".dsg/sync-messages.json"
+        
+        if not sync_messages_path.exists():
+            result.add_detail(f"No sync-messages.json in {snapshot_id}")
+            incomplete.append(snapshot_id)
+            continue
+            
+        try:
+            with open(sync_messages_path, "rb") as f:
+                data = orjson.loads(f.read())
+                
+            messages = data.get("sync_messages", [])
+            message_ids = {msg.get("snapshot_id") for msg in messages}
+            
+            # This snapshot should have messages for itself and ALL previous snapshots
+            expected_messages = sorted_snapshots[:i+1]
+            
+            missing_messages = [s for s in expected_messages if s not in message_ids]
+            
+            if missing_messages:
+                incomplete.append(snapshot_id)
+                result.add_detail(f"Sync messages in {snapshot_id} missing entries for: {', '.join(missing_messages)}")
+            else:
+                result.add_detail(f"Sync messages in {snapshot_id} contain all required entries")
+                
+        except Exception as e:
+            result.add_detail(f"Error reading sync-messages.json in {snapshot_id}: {e}")
+            incomplete.append(snapshot_id)
+    
+    if incomplete:
+        result.set_passed(False, f"Incomplete sync messages in {len(incomplete)} snapshots")
+    else:
+        result.set_passed(True, "All sync messages complete")
+    
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Validate btrfs to ZFS metadata migration"
@@ -547,6 +654,8 @@ def main():
         check_last_sync_files(repo, snapshots),
         check_sync_messages(repo, snapshots),
         check_archive_files(repo, snapshots),
+        check_archive_completeness(repo, snapshots),  # Now defined above
+        check_sync_messages_completeness(repo, snapshots),  # Now defined above
         check_manifest_integrity(repo, snapshots),
         check_snapshot_chain(repo, snapshots),
         check_push_log_consistency(repo, snapshots),
