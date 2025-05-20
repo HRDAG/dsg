@@ -439,13 +439,55 @@ def check_snapshot_chain(repo: str, snapshots: List[str], is_partial_chain: bool
             if "snapshot_hash" in metadata and prev_id in manifests:
                 prev_manifest = manifests[prev_id]
                 prev_metadata = prev_manifest.get("metadata", {})
-                if "snapshot_hash" in prev_metadata:
-                    # Ideally, we'd recompute the hash here to validate it
-                    # For now, just check that the hash exists
-                    result.add_detail(f"Hash exists in {snapshot_id}")
-                else:
+                
+                # Extract values needed for hash verification
+                entries_hash = metadata.get("entries_hash")
+                message = metadata.get("snapshot_message", "")
+                stored_hash = metadata.get("snapshot_hash")
+                prev_hash = prev_metadata.get("snapshot_hash")
+                
+                # Log the values for debugging
+                logger.debug(f"Hash verification for {snapshot_id}:")
+                logger.debug(f"  entries_hash: {entries_hash}")
+                logger.debug(f"  message: {message}")
+                logger.debug(f"  stored_hash: {stored_hash}")
+                logger.debug(f"  prev_hash: {prev_hash}")
+                
+                if not prev_hash:
                     invalid_hashes.append((snapshot_id, "missing hash in previous"))
                     result.add_detail(f"Missing hash in previous snapshot {prev_id}")
+                    continue
+                    
+                if not stored_hash or not entries_hash:
+                    invalid_hashes.append((snapshot_id, "missing required hash fields"))
+                    result.add_detail(f"Missing required hash fields in {snapshot_id}")
+                    continue
+                
+                # Calculate expected hash using same algorithm as Manifest.compute_snapshot_hash
+                try:
+                    import xxhash
+                    h = xxhash.xxh3_64()
+                    h.update(entries_hash.encode())
+                    h.update(message.encode())
+                    h.update(prev_hash.encode())
+                    computed_hash = h.hexdigest()
+                    
+                    # Compare computed hash with the stored hash
+                    if computed_hash == stored_hash:
+                        result.add_detail(f"Valid hash in {snapshot_id}: {stored_hash}")
+                        logger.debug(f"Hash verification passed for {snapshot_id}")
+                    else:
+                        invalid_hashes.append((snapshot_id, "hash mismatch"))
+                        result.add_detail(f"Hash mismatch in {snapshot_id}: expected {computed_hash}, got {stored_hash}")
+                        logger.warning(f"Hash mismatch in {snapshot_id}: expected {computed_hash}, got {stored_hash}")
+                except Exception as e:
+                    invalid_hashes.append((snapshot_id, f"hash computation error: {str(e)}"))
+                    result.add_detail(f"Error computing hash for {snapshot_id}: {e}")
+                    logger.error(f"Error computing hash for {snapshot_id}: {e}")
+            else:
+                invalid_hashes.append((snapshot_id, "missing hash fields"))
+                result.add_detail(f"Missing hash fields in {snapshot_id} or {prev_id}")
+                logger.warning(f"Missing hash fields in {snapshot_id} or {prev_id}")
         elif not is_partial_chain:  # First snapshot check only if NOT a partial chain
             # First snapshot should not have a previous link
             prev_link = metadata.get("snapshot_previous")
@@ -460,12 +502,63 @@ def check_snapshot_chain(repo: str, snapshots: List[str], is_partial_chain: bool
             else:
                 result.add_detail(f"First snapshot {snapshot_id} has no previous link (correct)")
                 logger.info(f"First snapshot {snapshot_id} has no previous link (correct)")
+            
+            # Verify hash for first snapshot - in a full chain, first snapshot uses empty string for prev_hash
+            if "snapshot_hash" in metadata:
+                # Extract values needed for hash verification
+                entries_hash = metadata.get("entries_hash")
+                message = metadata.get("snapshot_message", "")
+                stored_hash = metadata.get("snapshot_hash")
+                
+                if not stored_hash or not entries_hash:
+                    invalid_hashes.append((snapshot_id, "missing required hash fields"))
+                    result.add_detail(f"Missing required hash fields in first snapshot {snapshot_id}")
+                    logger.warning(f"Missing required hash fields in first snapshot {snapshot_id}")
+                else:
+                    # For first snapshot in full chain, prev_hash is empty string
+                    try:
+                        import xxhash
+                        h = xxhash.xxh3_64()
+                        h.update(entries_hash.encode())
+                        h.update(message.encode())
+                        h.update(b"")  # Empty bytes for first snapshot
+                        computed_hash = h.hexdigest()
+                        
+                        # Compare computed hash with the stored hash
+                        if computed_hash == stored_hash:
+                            result.add_detail(f"Valid hash in first snapshot {snapshot_id}: {stored_hash}")
+                            logger.debug(f"Hash verification passed for first snapshot {snapshot_id}")
+                        else:
+                            invalid_hashes.append((snapshot_id, "hash mismatch"))
+                            result.add_detail(f"Hash mismatch in first snapshot {snapshot_id}: expected {computed_hash}, got {stored_hash}")
+                            logger.warning(f"Hash mismatch in first snapshot {snapshot_id}: expected {computed_hash}, got {stored_hash}")
+                    except Exception as e:
+                        invalid_hashes.append((snapshot_id, f"hash computation error: {str(e)}"))
+                        result.add_detail(f"Error computing hash for first snapshot {snapshot_id}: {e}")
+                        logger.error(f"Error computing hash for first snapshot {snapshot_id}: {e}")
+            else:
+                invalid_hashes.append((snapshot_id, "missing hash"))
+                result.add_detail(f"First snapshot {snapshot_id} is missing hash field")
+                logger.warning(f"First snapshot {snapshot_id} is missing hash field")
         else:  # First snapshot in a partial chain
             # We expect it might have a previous link and that's OK
             prev_link = metadata.get("snapshot_previous")
             logger.info(f"Checking first snapshot in partial chain: {snapshot_id} has prev_link={prev_link} (allowed)")
             result.add_detail(f"First snapshot in partial chain: {snapshot_id} has previous link: {prev_link}")
             # Don't count this as a broken link since we're only validating a segment of the chain
+            
+            # Additionally, for partial chains, verify the hash of the first snapshot if it has all required fields
+            if is_partial_chain and "snapshot_hash" in metadata:
+                # For partial chains, we can't fully verify the first snapshot's hash without its predecessor
+                # But we can at least check that the hash exists
+                stored_hash = metadata.get("snapshot_hash")
+                if stored_hash:
+                    result.add_detail(f"First snapshot in partial chain {snapshot_id} has hash: {stored_hash}")
+                    logger.debug(f"First snapshot in partial chain {snapshot_id} has hash: {stored_hash}")
+                else:
+                    invalid_hashes.append((snapshot_id, "missing hash"))
+                    result.add_detail(f"First snapshot in partial chain {snapshot_id} is missing hash")
+                    logger.warning(f"First snapshot in partial chain {snapshot_id} is missing hash")
     
     if broken_links or invalid_hashes:
         msg = []
