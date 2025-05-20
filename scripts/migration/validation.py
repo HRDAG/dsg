@@ -19,6 +19,11 @@ from loguru import logger
 from src.dsg.manifest import Manifest
 
 
+class ValidationError(Exception):
+    """Exception raised when validation fails."""
+    pass
+
+
 @dataclass
 class ValidationResult:
     """Store validation results for reporting"""
@@ -201,6 +206,12 @@ def check_sync_messages(repo: str, snapshots: List[str]) -> ValidationResult:
     """
     Check if sync-messages.json files exist, are valid, and contain entries for all snapshots.
     
+    This function supports both the old format:
+    {"sync_messages": [{"snapshot_id": "s1", ...}, ...]} 
+    
+    And the new format:
+    {"metadata_version": "0.1.0", "snapshots": {"s1": {...}, ...}}
+    
     Args:
         repo: Repository name
         snapshots: List of snapshot IDs
@@ -219,6 +230,8 @@ def check_sync_messages(repo: str, snapshots: List[str]) -> ValidationResult:
     
     # First, load all sync-messages.json files
     sync_messages_data = {}
+    # Track format for each snapshot
+    format_types = {}
     
     for snapshot_id in snapshots:
         zfs_snapshot_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{snapshot_id}")
@@ -233,13 +246,48 @@ def check_sync_messages(repo: str, snapshots: List[str]) -> ValidationResult:
             with open(sync_messages_path, "rb") as f:
                 data = orjson.loads(f.read())
             
-            if "sync_messages" not in data:
-                invalid.append((snapshot_id, "Missing 'sync_messages' key"))
-                result.add_detail(f"Missing 'sync_messages' key in {snapshot_id}/sync-messages.json")
-                continue
+            # Check which format the file is in
+            if "snapshots" in data and isinstance(data["snapshots"], dict) and "metadata_version" in data:
+                # New format
+                format_types[snapshot_id] = "new"
                 
-            sync_messages_data[snapshot_id] = data
-            result.add_detail(f"Valid sync-messages.json in {snapshot_id}")
+                # Verify the snapshots object contains this snapshot
+                if snapshot_id not in data["snapshots"]:
+                    invalid.append((snapshot_id, f"Missing entry for {snapshot_id} in snapshots object"))
+                    result.add_detail(f"Missing entry for {snapshot_id} in snapshots object")
+                    continue
+                
+                # Verify all entries in snapshots have required fields
+                all_valid = True
+                for s_id, metadata in data["snapshots"].items():
+                    if "snapshot_id" not in metadata or metadata["snapshot_id"] != s_id:
+                        invalid.append((snapshot_id, f"Missing or incorrect snapshot_id in entry for {s_id}"))
+                        result.add_detail(f"Invalid entry for {s_id} in {snapshot_id}/sync-messages.json")
+                        all_valid = False
+                        break
+                
+                if not all_valid:
+                    continue
+                    
+                sync_messages_data[snapshot_id] = data
+                result.add_detail(f"Valid sync-messages.json in {snapshot_id} (new format)")
+            elif "sync_messages" in data and isinstance(data["sync_messages"], list):
+                # Old format
+                format_types[snapshot_id] = "old"
+                
+                # Verify the sync_messages array contains this snapshot
+                snapshot_ids = {msg.get("snapshot_id") for msg in data["sync_messages"] if "snapshot_id" in msg}
+                if snapshot_id not in snapshot_ids:
+                    inconsistent.append(snapshot_id)
+                    result.add_detail(f"Missing entry for {snapshot_id} in sync_messages array")
+                    continue
+                
+                sync_messages_data[snapshot_id] = data
+                result.add_detail(f"Valid sync-messages.json in {snapshot_id} (old format)")
+            else:
+                invalid.append((snapshot_id, "Invalid format: missing 'sync_messages' or 'snapshots' structure"))
+                result.add_detail(f"Invalid format in {snapshot_id}/sync-messages.json")
+                continue
         except Exception as e:
             invalid.append((snapshot_id, str(e)))
             result.add_detail(f"Invalid JSON in {snapshot_id}/sync-messages.json: {e}")
@@ -249,12 +297,24 @@ def check_sync_messages(repo: str, snapshots: List[str]) -> ValidationResult:
         latest_snapshot = max(snapshots, key=lambda s: int(s[1:]))
         if latest_snapshot in sync_messages_data:
             latest_data = sync_messages_data[latest_snapshot]
-            latest_ids = {msg.get("snapshot_id") for msg in latest_data.get("sync_messages", [])}
             
-            for snapshot_id in snapshots:
-                if snapshot_id not in latest_ids:
-                    inconsistent.append(snapshot_id)
-                    result.add_detail(f"Snapshot {snapshot_id} missing from latest sync-messages.json")
+            # Check based on the format
+            if format_types.get(latest_snapshot) == "new":
+                # New format: check snapshots object contains all snapshots
+                latest_snapshot_ids = set(latest_data["snapshots"].keys())
+                
+                for snapshot_id in snapshots:
+                    if snapshot_id not in latest_snapshot_ids:
+                        inconsistent.append(snapshot_id)
+                        result.add_detail(f"Snapshot {snapshot_id} missing from latest sync-messages.json")
+            else:
+                # Old format: check sync_messages array contains all snapshots
+                latest_ids = {msg.get("snapshot_id") for msg in latest_data.get("sync_messages", [])}
+                
+                for snapshot_id in snapshots:
+                    if snapshot_id not in latest_ids:
+                        inconsistent.append(snapshot_id)
+                        result.add_detail(f"Snapshot {snapshot_id} missing from latest sync-messages.json")
     
     if missing or invalid or inconsistent:
         msg = []
@@ -266,6 +326,13 @@ def check_sync_messages(repo: str, snapshots: List[str]) -> ValidationResult:
             msg.append(f"Inconsistent sync-messages.json (missing entries for {len(inconsistent)} snapshots)")
         result.set_passed(False, "; ".join(msg))
     else:
+        # All files present and valid, but check for mixed formats
+        if len(set(format_types.values())) > 1:
+            old_count = list(format_types.values()).count("old")
+            new_count = list(format_types.values()).count("new")
+            result.add_detail(f"Mixed formats: {old_count} old format, {new_count} new format")
+            # Not failing the test for mixed formats, just a warning
+        
         result.set_passed(True, "All sync-messages.json files are valid and consistent")
     
     return result

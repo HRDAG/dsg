@@ -240,7 +240,12 @@ def build_sync_messages_file(
     debug_metadata: bool = False
 ):
     """
-    Build and write the sync-messages.json file.
+    Build and write the sync-messages.json file using the new format.
+    
+    The new format:
+    1. Uses a "metadata_version" field
+    2. Uses a "snapshots" object with snapshot IDs as keys
+    3. Stores complete metadata for each snapshot, matching last-sync.json
     
     Args:
         dsg_dir: Path to the .dsg directory
@@ -248,123 +253,129 @@ def build_sync_messages_file(
         snapshot_info: Information about the snapshot
         zfs_mount: Path to the ZFS mount
         prev_snapshot_id: Previous snapshot ID, if any
+        debug_metadata: Whether to log debug info
     """
-    # Create message structure to match metadata in last-sync.json
-    new_message = {
-        "snapshot_id": snapshot_id,
-        "timestamp": snapshot_info.timestamp.isoformat(timespec="seconds"),
-        "user_id": snapshot_info.user_id,
-        "message": snapshot_info.message,
-        "notes": "btrsnap-migration"
+    repo = Path(zfs_mount).parts[-1]
+    last_sync_path = dsg_dir / "last-sync.json"
+    
+    # Load metadata from current snapshot's last-sync.json
+    try:
+        with open(last_sync_path, "rb") as f:
+            last_sync = orjson.loads(f.read())
+            
+        if "metadata" not in last_sync:
+            logger.error(f"No metadata found in {last_sync_path}")
+            return
+            
+        # Get the current snapshot's metadata
+        current_metadata = last_sync["metadata"]
+        
+        if debug_metadata:
+            logger.debug(f"Loaded metadata for snapshot {snapshot_id}")
+    except Exception as e:
+        logger.error(f"Error reading {last_sync_path}: {e}")
+        return
+    
+    # Initialize with new format structure
+    sync_messages = {
+        "metadata_version": "0.1.0",
+        "snapshots": {
+            snapshot_id: current_metadata
+        }
     }
     
-    all_messages = []
-    repo = Path(zfs_mount).parts[-1]
-    
-    # Try to find all push log entries
-    push_log_path = None
-    
-    # Try to find the push log in the btrfs repo
-    btrfs_base = Path(f"/var/repos/btrsnap/{repo}")
-    for s_dir in sorted(btrfs_base.glob("s*"), key=lambda p: int(p.name[1:])):
-        push_log = s_dir / ".snap/push.log"
-        if push_log.exists():
-            push_log_path = push_log
-            break
-    
-    # If we found a push log, use it to build the complete messages list
-    if push_log_path and push_log_path.exists():
-        logger.info(f"Building sync-messages from push log: {push_log_path}")
-        
-        import re
-        pattern = re.compile(
-            rf"(?P<snapshot>{repo}/s\d+) \| "
-            r"(?P<user>[^\|]+) \| "
-            r"(?P<timestamp>[^\|]+) \| "
-            r"(?P<message>.*)"
-        )
-        
-        with open(push_log_path, "r") as f:
-            for line in f:
-                match = pattern.match(line.strip())
-                if match:
-                    repo_snapshot = match.group("snapshot")
-                    parts = repo_snapshot.split('/')
-                    if len(parts) == 2:
-                        repo_name, msg_snapshot_id = parts
-                        user_id = match.group("user").strip()
-                        timestamp_str = match.group("timestamp")
-                        message = match.group("message").strip()
-                        
-                        # Parse the timestamp
-                        try:
-                            timestamp_parts = timestamp_str.split(" (")[0]  # Remove day of week
-                            dt = datetime.datetime.strptime(timestamp_parts, "%Y-%m-%d %H:%M:%S %Z")
-                            dt = dt.replace(tzinfo=datetime.timezone.utc)
-                        except ValueError:
-                            dt = datetime.datetime.now(datetime.timezone.utc)
-                        
-                        # Add message to the full list
-                        all_messages.append({
-                            "snapshot_id": msg_snapshot_id,
-                            "timestamp": dt.isoformat(timespec="seconds"),
-                            "user_id": user_id,
-                            "message": message,
-                            "notes": "btrsnap-migration"
-                        })
-                        if debug_metadata:
-                            logger.debug(f"Added message for {msg_snapshot_id} from push log: '{message}'")
-    else:
-        # Fallback: try to read from previous snapshot
-        if prev_snapshot_id:
-            try:
-                prev_snap_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{prev_snapshot_id}/.dsg/sync-messages.json")
-                if prev_snap_path.exists():
-                    with open(prev_snap_path, "rb") as f:
-                        prev_data = orjson.loads(f.read())
-                        all_messages.extend(prev_data.get("sync_messages", []))
-                        logger.info(f"Added {len(prev_data.get('sync_messages', []))} messages from previous snapshot {prev_snapshot_id}")
-            except Exception as e:
-                logger.warning(f"Error reading previous sync messages: {e}")
-    
-    # Clear all_messages and start fresh
-    all_messages = []
-    
-    # First, try to get sync-messages from the previous snapshot
+    # If there's a previous snapshot, load its sync-messages.json and/or last-sync.json
     if prev_snapshot_id:
-        prev_sync_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{prev_snapshot_id}/.dsg/sync-messages.json")
-        if prev_sync_path.exists():
+        prev_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{prev_snapshot_id}")
+        prev_sync_messages_path = prev_path / ".dsg/sync-messages.json"
+        prev_last_sync_path = prev_path / ".dsg/last-sync.json"
+        
+        # Try to get previous snapshots data, first checking sync-messages.json
+        if prev_sync_messages_path.exists():
             try:
-                with open(prev_sync_path, "rb") as f:
-                    prev_data = orjson.loads(f.read())
-                    all_messages.extend(prev_data.get("sync_messages", []))
+                with open(prev_sync_messages_path, "rb") as f:
+                    prev_sync_messages = orjson.loads(f.read())
+                
+                # Check if it's already in the new format
+                if "snapshots" in prev_sync_messages and isinstance(prev_sync_messages["snapshots"], dict):
+                    # Copy all previous snapshots except the current one (which we'll overwrite)
+                    for prev_id, prev_metadata in prev_sync_messages["snapshots"].items():
+                        if prev_id != snapshot_id:
+                            sync_messages["snapshots"][prev_id] = prev_metadata
+                            
                     if debug_metadata:
-                        logger.debug(f"Loaded {len(all_messages)} messages from previous snapshot {prev_snapshot_id}")
+                        logger.debug(f"Copied {len(prev_sync_messages['snapshots'])} snapshots from previous sync-messages.json")
+                else:
+                    # It's in the old format, just add the previous snapshot from its last-sync.json
+                    logger.info(f"Previous sync-messages.json is in old format, using last-sync.json for {prev_snapshot_id}")
+                    if prev_last_sync_path.exists():
+                        try:
+                            with open(prev_last_sync_path, "rb") as f:
+                                prev_last_sync = orjson.loads(f.read())
+                            
+                            if "metadata" in prev_last_sync:
+                                sync_messages["snapshots"][prev_snapshot_id] = prev_last_sync["metadata"]
+                                
+                                if debug_metadata:
+                                    logger.debug(f"Added metadata for previous snapshot {prev_snapshot_id} from last-sync.json")
+                        except Exception as e:
+                            logger.warning(f"Error reading {prev_last_sync_path}: {e}")
             except Exception as e:
-                logger.warning(f"Error reading previous sync messages: {e}")
+                logger.warning(f"Error reading previous sync-messages.json: {e}")
+                
+                # Try fallback to last-sync.json if sync-messages.json read failed
+                if prev_last_sync_path.exists():
+                    try:
+                        with open(prev_last_sync_path, "rb") as f:
+                            prev_last_sync = orjson.loads(f.read())
+                        
+                        if "metadata" in prev_last_sync:
+                            sync_messages["snapshots"][prev_snapshot_id] = prev_last_sync["metadata"]
+                            
+                            if debug_metadata:
+                                logger.debug(f"Added metadata for previous snapshot {prev_snapshot_id} from last-sync.json")
+                    except Exception as e:
+                        logger.warning(f"Error reading {prev_last_sync_path}: {e}")
+        elif prev_last_sync_path.exists():
+            # No previous sync-messages.json, but we have last-sync.json
+            try:
+                with open(prev_last_sync_path, "rb") as f:
+                    prev_last_sync = orjson.loads(f.read())
+                
+                if "metadata" in prev_last_sync:
+                    sync_messages["snapshots"][prev_snapshot_id] = prev_last_sync["metadata"]
+                    
+                    if debug_metadata:
+                        logger.debug(f"Added metadata for previous snapshot {prev_snapshot_id} from last-sync.json")
+                        
+                    # If previous snapshot has a previous link, follow the chain one step back
+                    prev_prev_id = prev_last_sync["metadata"].get("snapshot_previous")
+                    if prev_prev_id:
+                        prev_prev_path = Path(f"/var/repos/zsd/{repo}/.zfs/snapshot/{prev_prev_id}/.dsg/last-sync.json")
+                        
+                        if prev_prev_path.exists():
+                            try:
+                                with open(prev_prev_path, "rb") as f:
+                                    prev_prev_data = orjson.loads(f.read())
+                                
+                                if "metadata" in prev_prev_data:
+                                    sync_messages["snapshots"][prev_prev_id] = prev_prev_data["metadata"]
+                                    
+                                    if debug_metadata:
+                                        logger.debug(f"Added metadata for previous previous snapshot {prev_prev_id}")
+                            except Exception as e:
+                                logger.warning(f"Error reading {prev_prev_path}: {e}")
+            except Exception as e:
+                logger.warning(f"Error reading previous snapshot's metadata: {e}")
     
-    # Now add only the current snapshot's message
-    # First, check if it's already in the list to avoid duplication
-    existing_ids = {msg.get("snapshot_id") for msg in all_messages}
-    if snapshot_id not in existing_ids:
-        all_messages.append(new_message)
-        if debug_metadata:
-            logger.debug(f"Added message for current snapshot {snapshot_id}: '{snapshot_info.message}'")
-    else:
-        # If it's already there, update it to match the current metadata
-        for msg in all_messages:
-            if msg.get("snapshot_id") == snapshot_id:
-                msg.update(new_message)
-                if debug_metadata:
-                    logger.debug(f"Updated existing message for {snapshot_id}: '{snapshot_info.message}'")
-                break
-    
-    # Write updated sync-messages.json with complete history
-    sync_messages = {"sync_messages": all_messages}
-    sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
+    # Write the sync-messages.json file
     sync_messages_path = dsg_dir / "sync-messages.json"
+    sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
+    
     with open(sync_messages_path, "wb") as f:
         f.write(sync_messages_json)
+    
+    logger.info(f"Created sync-messages.json for snapshot {snapshot_id} with {len(sync_messages['snapshots'])} snapshots")
 
 
 def archive_previous_snapshots(archive_dir: Path, snapshot_id: str, zfs_mount: str):
