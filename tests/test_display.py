@@ -199,3 +199,48 @@ def test_format_file_count(sample_display_manifest, sample_ignored_files):
     # Check output format
     assert "Included: 3 files" in result
     assert "Excluded: 3 files" in result
+    
+    # Verify that detailed stats are NOT included in non-verbose mode
+    assert "Regular files:" not in result
+    assert "Symlinks:" not in result
+    assert "Total size:" not in result
+
+
+def test_format_file_count_verbose(sample_display_manifest, sample_ignored_files):
+    """Test format_file_count function with verbose flag."""
+    result = format_file_count(sample_display_manifest, sample_ignored_files, verbose=True)
+    
+    # Check output format includes basic information
+    assert "Included: 3 files" in result
+    assert "Excluded: 3 files" in result
+    
+    # Verify that detailed stats ARE included in verbose mode
+    assert "Regular files: 2" in result
+    assert "Symlinks: 1" in result
+    assert "Total size: 300 bytes" in result
+
+
+def test_manifest_to_table_verbose(sample_display_manifest):
+    """Test manifest_to_table with verbose flag enabled."""
+    table = manifest_to_table(sample_display_manifest, verbose=True)
+    
+    # Convert table to string for easier assertions
+    console = Console(width=120)
+    console.begin_capture()
+    console.print(table)
+    output = console.end_capture()
+    
+    # Check that all entries are present
+    assert "data/file1.txt" in output
+    assert "completely/different/path/file2.csv" in output
+    assert "links/link1.txt -> ../data/file1.txt" in output
+    assert "included" in output
+    
+    # Check that verbose columns are included
+    assert "Hash" in output
+    assert "User" in output
+    assert "Last Sync" in output
+    
+    # Check that hash values appear in the output
+    assert "hash1" in output
+    assert "hash2" in output

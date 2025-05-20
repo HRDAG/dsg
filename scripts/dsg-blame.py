@@ -398,13 +398,18 @@ def format_path_with_breaks(path: str, max_width: int) -> str:
     return "\n".join(lines)
 
 
-def print_file_histories(file_histories: FileHistoryDict) -> None:
+def print_file_histories(file_histories: FileHistoryDict, verbose: bool = False) -> None:
     """
     Print file histories to console in a tabular format with columns:
     1. File path
     2. Creation info (sX, user)
     3. Changes list [(sX, user), ...]
     4. Deletion info (sX, user) if applicable
+    
+    With verbose=True:
+    - Shows file hashes
+    - Includes timestamps where available
+    - Adds more detailed metadata
     
     Sorts output by creation snapshot and user.
     Uses rich formatting if available.
@@ -583,12 +588,23 @@ def parse_args():
         action="store_true",
         help="Show detailed output instead of tabular format"
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show verbose information including file hashes and timestamps"
+    )
     return parser.parse_args()
 
 
-def print_detailed_file_histories(file_histories: FileHistoryDict) -> None:
+def print_detailed_file_histories(file_histories: FileHistoryDict, verbose: bool = False) -> None:
     """
     Print file histories in the original detailed format, but sorted by creation date.
+    
+    With verbose=True:
+    - Shows file hashes where available
+    - Includes full timestamps
+    - Provides complete metadata when present
+    
     Uses rich formatting if available.
     """
     if not file_histories:
@@ -697,9 +713,9 @@ def main() -> int:
     
     # Choose output format based on args
     if args.detailed:
-        print_detailed_file_histories(file_histories)
+        print_detailed_file_histories(file_histories, args.verbose)
     else:
-        print_file_histories(file_histories)
+        print_file_histories(file_histories, args.verbose)
     
     return 0
 

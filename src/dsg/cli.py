@@ -81,6 +81,7 @@ def list_files(
     ignored_paths: Optional[str] = typer.Option(None, help="Comma-separated list of exact paths to ignore"),
     no_ignored: bool = typer.Option(False, "--no-ignored", help="Hide ignored files from output"),
     debug: bool = typer.Option(False, "--debug", help="Show debug information"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information in reports"),
 ):
     """
     List all files in data directories with metadata.
@@ -90,6 +91,11 @@ def list_files(
     - Last sync timestamp  
     - User who last modified
     - File size
+    
+    With --verbose:
+    - Additional file metadata (hash, user)
+    - More detailed summary statistics
+    - Full sync information
     
     Similar to 'git ls-files' - shows the catalog of tracked files.
     """
@@ -133,11 +139,12 @@ def list_files(
         manifest=result.manifest,
         ignored=result.ignored,
         base_path=abs_path,
-        show_ignored=not no_ignored
+        show_ignored=not no_ignored,
+        verbose=verbose
     )
     
     console.print(table)
-    console.print(f"\n{format_file_count(result.manifest, result.ignored)}")
+    console.print(f"\n{format_file_count(result.manifest, result.ignored, verbose=verbose)}")
 
 
 @app.command()
