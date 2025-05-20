@@ -317,9 +317,12 @@ class Manifest(BaseModel):
     def _validate_symlinks(self) -> list[str]:
         """
         Validate that all symlinks point to files that exist within the manifest.
+        This only identifies dangling symlinks (those pointing to files that don't
+        exist in the manifest). Escaping symlinks (those pointing outside the project)
+        are filtered out earlier during creation.
 
         Returns:
-            List of paths with invalid symlinks
+            List of paths with dangling symlinks
         """
         invalid_links = []
         for path, entry in self.entries.items():
@@ -330,6 +333,7 @@ class Manifest(BaseModel):
                 )
                 if target_path not in self.entries:
                     invalid_links.append(path)
+                    logger.debug(f"Dangling symlink: {path} -> {entry.reference} (resolved to {target_path})")
         return invalid_links
 
     def to_json(
@@ -343,8 +347,10 @@ class Manifest(BaseModel):
         # Validate symlinks before saving
         invalid_links = self._validate_symlinks()
         if invalid_links:
+            # Note: These are dangling symlinks (pointing to non-existent targets)
+            # not escaping symlinks (which would have been rejected during creation)
             logger.warning(
-                f"Manifest contains invalid symlinks: {', '.join(invalid_links)}"
+                f"Manifest contains {len(invalid_links)} dangling symlinks (targets don't exist): {', '.join(invalid_links)}"
             )
 
         # Serialize entries as a dictionary with path as key to maintain consistency
