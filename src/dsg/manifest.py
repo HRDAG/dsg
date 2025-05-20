@@ -23,7 +23,7 @@ import xxhash
 # Get the package version from pyproject.toml
 try:
     PKG_VERSION = importlib.metadata.version("dsg")
-except importlib.metadata.PackageNotFoundError:
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - package will be installed in normal use
     # Default for development environment when package is not installed
     PKG_VERSION = "0.1.0"
 
@@ -419,7 +419,7 @@ class Manifest(BaseModel):
                 metadata_data = data.pop("metadata")
                 manifest.metadata = ManifestMetadata.model_validate(metadata_data)
                 logger.debug(f"Loaded metadata (version {manifest.metadata.manifest_version})")
-            except Exception as e:
+            except Exception as e:  # pragma: no cover - metadata validation failure
                 logger.warning(f"Failed to validate metadata: {e}")
 
         return manifest

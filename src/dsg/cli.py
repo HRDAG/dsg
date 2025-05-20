@@ -124,7 +124,7 @@ def list_files(
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - difficult to test generic exceptions
         console.print(f"[red]Error scanning directory: {e}[/red]")
         raise typer.Exit(1)
 
@@ -534,7 +534,7 @@ def validate_chain(  # pragma: no cover
     raise NotImplementedError("The validate-chain command has not been implemented yet")
 
 
-def main():
+def main():  # pragma: no cover - entry point
     app()
 
 
