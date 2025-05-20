@@ -347,7 +347,9 @@ class Manifest(BaseModel):
                 f"Manifest contains invalid symlinks: {', '.join(invalid_links)}"
             )
 
-        output = {"entries": [entry.model_dump() for entry in self.entries.values()]}
+        # Serialize entries as a dictionary with path as key to maintain consistency
+        entries_dict = {entry.path: entry.model_dump() for entry in self.entries.values()}
+        output = {"entries": entries_dict}
         if include_metadata:
             # Use existing metadata or create new
             metadata = self.metadata
@@ -372,15 +374,18 @@ class Manifest(BaseModel):
         json_bytes = file_path.read_bytes()
         data = orjson.loads(json_bytes)
 
-        # Extract entries
-        entries_data = data.pop("entries", [])
+        # Extract entries as a dictionary
+        entries_data = data.pop("entries", {})
         entries = OrderedDict()
 
-        # Add entries in the order they appear in the JSON
-        for entry_data in entries_data:
+        # Ensure entries is a dictionary
+        if not isinstance(entries_data, dict):
+            raise ValueError(f"Expected entries to be a dictionary, got {type(entries_data).__name__}")
+            
+        # Process entries dictionary
+        for path, entry_data in entries_data.items():
             entry_type = entry_data.get("type")
-            path = entry_data.get("path")
-
+            
             if entry_type == "file":
                 try:
                     entry = FileRef.model_validate(entry_data)

@@ -339,30 +339,30 @@ class TestManifest:
         """Test loading manifest with invalid entries"""
         manifest_file = test_project_dir["manifest_dir"] / "invalid_manifest.json"
 
-        # Create a manifest JSON with invalid entries
+        # Create a manifest JSON with invalid entries using dictionary format
         invalid_data = {
-            "entries": [
-                {
+            "entries": {
+                "valid/file.txt": {
                     "type": "file",
                     "path": "valid/file.txt",
                     "filesize": 100,
                     "mtime": "2023-05-15T12:30:00-07:00"
                 },
-                {
+                "invalid/missing_fields.txt": {
                     "type": "file",
                     "path": "invalid/missing_fields.txt"
                     # Missing required fields
                 },
-                {
+                "valid/link.txt": {
                     "type": "link",
                     "path": "valid/link.txt",
                     "reference": "../target.txt"
                 },
-                {
+                "invalid/unknown_type.txt": {
                     "type": "unknown",
                     "path": "invalid/unknown_type.txt"
                 }
-            ],
+            },
             "metadata": {
                 "manifest_version": "2.0",
                 "snapshot_id": "test_invalid",
@@ -508,26 +508,26 @@ class TestManifest:
 
         # Create a manifest JSON with invalid link entries that will fail validation
         invalid_data = {
-            "entries": [
+            "entries": {
                 # Valid file entry
-                {
+                "data/valid.txt": {
                     "type": "file",
                     "path": "data/valid.txt",
                     "filesize": 100,
                     "mtime": "2023-05-15T12:30:00-07:00"
                 },
                 # Invalid link entry - missing required 'reference' field
-                {
+                "links/invalid1.txt": {
                     "type": "link",
                     "path": "links/invalid1.txt"
                 },
                 # Invalid link entry - absolute reference path (will fail validation)
-                {
+                "links/invalid2.txt": {
                     "type": "link",
                     "path": "links/invalid2.txt",
                     "reference": "/absolute/path/invalid.txt"
                 }
-            ],
+            },
             "snapshot_id": "test_invalid_links",
             "created_at": "2023-05-15T12:30:00-07:00",
             "entry_count": 3,
@@ -554,14 +554,14 @@ class TestManifest:
 
         # Create a manifest JSON with valid entries but invalid metadata
         invalid_data = {
-            "entries": [
-                {
+            "entries": {
+                "data/valid.txt": {
                     "type": "file",
                     "path": "data/valid.txt",
                     "filesize": 100,
                     "mtime": "2023-05-15T12:30:00-07:00"
                 }
-            ],
+            },
             # Include snapshot_id and entries_hash to trigger metadata validation
             "snapshot_id": "test_invalid",
             "entries_hash": "dummy_hash",
@@ -673,9 +673,9 @@ class TestManifest:
             "snapshot_notes": "test-migration"
         }
         
-        # Create entries
-        entries_data = [
-            {
+        # Create entries as a dictionary
+        entries_data = {
+            "file1.txt": {
                 "type": "file",
                 "path": "file1.txt",
                 "user": "user1", 
@@ -683,7 +683,7 @@ class TestManifest:
                 "mtime": "2025-05-17T12:00:00", 
                 "hash": "hash1"
             }
-        ]
+        }
         
         # Write test JSON file with nested metadata
         test_json = {
