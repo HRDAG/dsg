@@ -15,7 +15,7 @@ from typing import List, Optional
 import typer
 from loguru import logger
 
-from scripts.migration.fs_utils import get_sdir_numbers, normalize_directory_tree
+from scripts.migration.fs_utils import get_sdir_numbers, normalize_directory_tree, normalize_source, cleanup_temp_dir
 from scripts.migration.snapshot_info import (
     SnapshotInfo, parse_push_log, find_push_log, create_default_snapshot_info
 )
@@ -60,80 +60,104 @@ def process_snapshot(
         Tuple of (snapshot_id, snapshot_hash)
     """
     snapshot_id = f"s{num}"
-    src = f"{bb_dir}/{snapshot_id}/"
-    logger.info(f"Processing {src}")
+    src_dir = f"{bb_dir}/{snapshot_id}/"
+    logger.info(f"Processing {src_dir}")
     repo = Path(zfs_mount).parts[-1]
-
-    # === STEP 1: Rsync data ===
-    # Rsync with delete for exact copy
-    logger.info(f"Copying data from {src} to {zfs_mount}")
-    # Ensure we have write access to the destination
-    subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", zfs_mount], check=True)
-    subprocess.run(["rsync", "-a", "--delete", src, zfs_mount], check=True)
-
-    # === STEP 2: Normalize and generate metadata ===
-    logger.info(f"Normalizing filenames and generating metadata for {snapshot_id}")
-    # 1. Normalize filenames in the destination
-    renamed_files = normalize_directory_tree(Path(zfs_mount))
-    if renamed_files:
-        logger.info(f"Renamed {len(renamed_files)} files in {zfs_mount}")
-
-    # 2. Build manifest from filesystem
-    manifest = build_manifest_from_filesystem(
-        Path(zfs_mount), 
-        snapshot_info.user_id,
-        renamed_files
-    )
-    logger.info(f"Built manifest with {len(manifest.entries)} entries")
-
-    # 3. Generate metadata using timestamp from push log
-    manifest.generate_metadata(
-        snapshot_id=snapshot_id, 
-        user_id=snapshot_info.user_id,
-        timestamp=snapshot_info.timestamp
-    )
     
-    # 4. Write metadata to .dsg directory
-    snapshot_hash = write_dsg_metadata(
-        manifest,
-        snapshot_info,
-        snapshot_id,
-        zfs_mount,
-        prev_snapshot_id,
-        prev_snapshot_hash,
-        debug_metadata=verbose
-    )
-    logger.info(f"Wrote metadata for {snapshot_id}")
-
-    # === STEP 3: Create ZFS snapshot ===
-    logger.info(f"Creating ZFS snapshot {full_dataset}@{snapshot_id}")
-    
-    # Check if snapshot already exists
-    snapshot_exists = subprocess.run(
-        ["sudo", "zfs", "list", "-t", "snapshot", f"{full_dataset}@{snapshot_id}"],
-        capture_output=True
-    ).returncode == 0
-    
-    if snapshot_exists:
-        logger.warning(f"Snapshot {full_dataset}@{snapshot_id} already exists, destroying it first")
-        subprocess.run(["sudo", "zfs", "destroy", f"{full_dataset}@{snapshot_id}"], check=True)
-    
-    # Now create the snapshot
-    subprocess.run(["sudo", "zfs", "snapshot", f"{full_dataset}@{snapshot_id}"], check=True)
-
-    # === STEP 4: Basic Verification (probabilistic) ===
-    # Do basic verification randomly (as in original script)
-    if validation != "none" and (random.random() < VERIFY_PROB or num == max(get_sdir_numbers(bb_dir))):
-        logger.info(f"Performing verification for snapshot {snapshot_id}")
-        if verify_snapshot_with_validation(
-            bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation
-        ):
-            logger.info(f"Verification passed for {snapshot_id}")
-        else:
-            logger.error(f"Verification failed for {snapshot_id}")
-            raise typer.Exit(1)
-    
-    return snapshot_id, snapshot_hash
+    # === STEP 1: Pre-normalize the source snapshot ===
+    # Create a temporary directory with normalized paths
+    logger.info(f"Pre-normalizing source snapshot {snapshot_id}")
+    normalized_src = None
+    try:
+        # Create a normalized copy of the source
+        normalized_src = normalize_source(Path(src_dir), snapshot_id)
+        logger.info(f"Created normalized source at {normalized_src}")
+        
+        # Use the normalized source path for rsync
+        src = f"{normalized_src}/"
+        
+        # === STEP 2: Rsync data from normalized source ===
+        # Rsync with delete for exact copy
+        logger.info(f"Copying data from normalized source {src} to {zfs_mount}")
+        # Ensure we have write access to the destination
+        subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", zfs_mount], check=True)
+        subprocess.run(["rsync", "-a", "--delete", src, zfs_mount], check=True)
+        
+        # === STEP 3: Generate metadata (no need to normalize the target) ===
+        logger.info(f"Generating metadata for {snapshot_id}")
+        
+        # Build manifest from filesystem (no renaming needed since paths are already normalized)
+        manifest = build_manifest_from_filesystem(
+            Path(zfs_mount), 
+            snapshot_info.user_id,
+            set()  # No renamed files to track since normalization was done pre-rsync
+        )
+        logger.info(f"Built manifest with {len(manifest.entries)} entries")
+        
+        # Generate metadata using timestamp from push log
+        manifest.generate_metadata(
+            snapshot_id=snapshot_id, 
+            user_id=snapshot_info.user_id,
+            timestamp=snapshot_info.timestamp
+        )
+        
+        # Write metadata to .dsg directory
+        snapshot_hash = write_dsg_metadata(
+            manifest,
+            snapshot_info,
+            snapshot_id,
+            zfs_mount,
+            prev_snapshot_id,
+            prev_snapshot_hash,
+            debug_metadata=verbose
+        )
+        logger.info(f"Wrote metadata for {snapshot_id}")
+        
+        # === STEP 4: Create ZFS snapshot ===
+        logger.info(f"Creating ZFS snapshot {full_dataset}@{snapshot_id}")
+        
+        # Check if snapshot already exists
+        snapshot_exists = subprocess.run(
+            ["sudo", "zfs", "list", "-t", "snapshot", f"{full_dataset}@{snapshot_id}"],
+            capture_output=True
+        ).returncode == 0
+        
+        if snapshot_exists:
+            logger.warning(f"Snapshot {full_dataset}@{snapshot_id} already exists, destroying it first")
+            subprocess.run(["sudo", "zfs", "destroy", f"{full_dataset}@{snapshot_id}"], check=True)
+        
+        # Now create the snapshot
+        subprocess.run(["sudo", "zfs", "snapshot", f"{full_dataset}@{snapshot_id}"], check=True)
+        
+        # === STEP 5: Basic Verification (probabilistic) ===
+        # Do basic verification randomly (as in original script)
+        if validation != "none" and (random.random() < VERIFY_PROB or num == max(get_sdir_numbers(bb_dir))):
+            logger.info(f"Performing verification for snapshot {snapshot_id}")
+            if verify_snapshot_with_validation(
+                bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation
+            ):
+                logger.info(f"Verification passed for {snapshot_id}")
+            else:
+                logger.error(f"Verification failed for {snapshot_id}")
+                raise typer.Exit(1)
+        
+        return snapshot_id, snapshot_hash
+        
+    except Exception as e:
+        logger.error(f"Error processing snapshot {snapshot_id}: {e}")
+        # Re-raise the exception after logging it
+        raise
+        
+    finally:
+        # Clean up the temporary normalized source directory
+        if normalized_src:
+            logger.info(f"Cleaning up temporary normalized source directory {normalized_src}")
+            try:
+                cleanup_temp_dir(normalized_src)
+                logger.info(f"Successfully removed temporary directory {normalized_src}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temporary directory {normalized_src}: {cleanup_error}")
+                # Don't raise the cleanup error as it would mask the original error if there was one
 
 
 @app.command()
