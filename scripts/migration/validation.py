@@ -864,6 +864,10 @@ def verify_snapshot_with_validation(
         check_unique_files(repo, snapshots)
     ])
     
+    # Add file timestamp check
+    from scripts.migration.check_file_timestamps import check_file_timestamps
+    tests.append(check_file_timestamps(repo, snapshots, sample_size=10, max_dirs=100, max_depth=3))
+    
     # Evaluate test results
     passing = 0
     for test in tests:

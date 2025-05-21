@@ -362,6 +362,7 @@ def main(
                 check_archive_files, check_manifest_integrity, check_snapshot_chain,
                 check_push_log_consistency, check_unique_files
             )
+            from scripts.migration.check_file_timestamps import check_file_timestamps
             
             # Run the full suite of tests on all processed snapshots
             tests = [
@@ -372,7 +373,8 @@ def main(
                 check_manifest_integrity(bb, processed_snapshots),
                 check_snapshot_chain(bb, processed_snapshots, is_partial_chain=False),  # Not partial for full chain
                 check_push_log_consistency(bb, processed_snapshots),
-                check_unique_files(bb, processed_snapshots)
+                check_unique_files(bb, processed_snapshots),
+                check_file_timestamps(bb, processed_snapshots, sample_size=10, max_dirs=100, max_depth=3)  # Check timestamps
             ]
             
             # Calculate results
