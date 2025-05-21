@@ -52,6 +52,38 @@ def _has_unsafe_unicode(component: str) -> bool:
     return False
 
 
+def normalize_path(path: Path) -> tuple[Path, bool]:
+    """
+    Normalize a path to NFC form component by component.
+    
+    Args:
+        path: Path object to normalize
+        
+    Returns:
+        Tuple of (normalized_path, was_modified)
+    """
+    was_modified = False
+    
+    # Normalize each component individually
+    normalized_parts = []
+    for part in path.parts:
+        nfc_part = unicodedata.normalize("NFC", part) 
+        if part != nfc_part:
+            was_modified = True
+        normalized_parts.append(nfc_part)
+    
+    # Reassemble the path
+    if was_modified:
+        # Handle absolute paths
+        if path.is_absolute():
+            normalized_path = Path(*normalized_parts)
+        else:
+            normalized_path = Path(*normalized_parts)
+        return normalized_path, True
+    
+    return path, False
+
+
 def validate_path(path_str) -> tuple[bool, str]:
     """
     Validate a path string with:

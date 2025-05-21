@@ -1,15 +1,15 @@
-# tests/test_filename_validation.py
-
-# Author: PB & ChatGPT
+# Author: PB & Claude
 # Maintainer: PB
 # Original date: 2025.05.09
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
-# dsg/tests/test_filename_validation.py
+# tests/test_filename_validation.py
 
 import pytest
-from dsg.filename_validation import validate_path
+from pathlib import Path
+import unicodedata
+from dsg.filename_validation import validate_path, normalize_path
 
 test_cases = [
     ("normal_file.txt", True),
@@ -116,5 +116,86 @@ def test_path_length_limits():
     # Test valid lengths
     valid_path = "dir/" + ("x" * 200) + ".txt"  # Well under the 4096 byte limit
     assert validate_path(valid_path)[0]
+
+
+def test_normalize_path():
+    """Test path normalization with various encodings"""
+    
+    # Test case 1: Path with decomposed characters (NFD)
+    # 'ü' as 'u' + combining diaeresis
+    decomposed_u = "u" + "\u0308"
+    path_with_nfd = Path(f"folder/{decomposed_u}ber.txt")
+    normalized_path, was_modified = normalize_path(path_with_nfd)
+    
+    # Verify the path was normalized
+    assert was_modified is True
+    assert str(normalized_path) == f"folder/über.txt"
+    
+    # Test case 2: Path with composed characters (NFC)
+    path_with_nfc = Path("folder/über.txt")  # Already NFC
+    normalized_path, was_modified = normalize_path(path_with_nfc)
+    
+    # Verify no changes were made
+    assert was_modified is False
+    assert normalized_path == path_with_nfc
+    
+    # Test case 3: Path with multiple decomposed characters
+    decomposed_o = "o" + "\u0301"  # 'ó' as 'o' + combining acute accent
+    path_with_multiple_nfd = Path(f"kil{decomposed_o}metro/{decomposed_u}ber.txt")
+    normalized_path, was_modified = normalize_path(path_with_multiple_nfd)
+    
+    # Verify the path was normalized
+    assert was_modified is True
+    assert str(normalized_path) == "kilómetro/über.txt"
+    
+    # Test case 4: Path without diacritics
+    path_without_diacritics = Path("normal/path/file.txt")
+    normalized_path, was_modified = normalize_path(path_without_diacritics)
+    
+    # Verify no changes were made
+    assert was_modified is False
+    assert normalized_path == path_without_diacritics
+    
+    # Test case 5: Absolute path with decomposed characters
+    abs_path_with_nfd = Path(f"/root/kil{decomposed_o}metro/{decomposed_u}ber.txt")
+    normalized_path, was_modified = normalize_path(abs_path_with_nfd)
+    
+    # Verify the path was normalized while preserving absolute nature
+    assert was_modified is True
+    assert str(normalized_path) == "/root/kilómetro/über.txt"
+    assert normalized_path.is_absolute()
+
+
+def test_normalize_path_edge_cases():
+    """Test normalize_path with edge cases"""
+    
+    # Test empty path
+    empty_path = Path("")
+    normalized_path, was_modified = normalize_path(empty_path)
+    assert was_modified is False
+    assert normalized_path == empty_path
+    
+    # Test path with single component
+    single_component = Path("kilómetro")  # Already NFC
+    normalized_path, was_modified = normalize_path(single_component)
+    assert was_modified is False
+    assert normalized_path == single_component
+    
+    # Test root path
+    root_path = Path("/")
+    normalized_path, was_modified = normalize_path(root_path)
+    assert was_modified is False
+    assert normalized_path == root_path
+    assert normalized_path.is_absolute()
+    
+    # Test Windows path (if on a system that supports it)
+    if hasattr(Path, "drive"):
+        windows_path = Path("C:/Users/kiĺómétro")  # Partially decomposed
+        normalized_path, was_modified = normalize_path(windows_path)
+        
+        # Normalization should occur while preserving the drive
+        if was_modified:
+            assert normalized_path.drive == windows_path.drive
+            assert "kilómetro" in str(normalized_path)
 
 # done.
