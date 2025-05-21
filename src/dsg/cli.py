@@ -20,7 +20,7 @@ console = Console()
 # TODO: Consider organizing commands into groups:
 # 
 # 1. Core operations (main commands):
-#    - init: Initialize repository
+#    - checkout: Initialize/checkout repository
 #    - sync: Synchronize files  
 #    - status: Show sync status
 #    - list-files: Show file inventory
@@ -43,7 +43,7 @@ console = Console()
 #    - dsg history blame
 #    - dsg validate config
 # C. Mix: Keep core commands at top level, group others:
-#    - dsg init
+#    - dsg checkout
 #    - dsg sync
 #    - dsg status
 #    - dsg history blame
@@ -51,26 +51,71 @@ console = Console()
 
 
 @app.command()
-def init():  # pragma: no cover
-    """Initialize dsg metadata directory in the current directory.
-    
-    Creates the .dsg directory structure with:
-    - config.yml (with default settings)
-    - last-sync.json (empty)
-    - sync-messages.json (empty)
-    - tag-messages.json (empty)
-    - archive/ directory
-    
-    After initialization, edit .dsg/config.yml to configure your project settings.
+def checkout(
+    uri: str = typer.Argument(..., help="URI to repository (see examples below)"),
+    output_dir: Path = typer.Option(".", help="Directory to initialize locally"),
+    init_if_missing: bool = typer.Option(False, help="Initialize repository if it doesn't exist"),
+    passphrase: Optional[str] = typer.Option(None, help="Passphrase for IPFS encryption")
+):
     """
-    # TODO: Implement init command
-    # 1. Check if .dsg already exists (error if yes)
-    # 2. Create .dsg directory
-    # 3. Create config.yml with defaults (from ProjectConfig.minimal()?)
-    # 4. Create empty JSON files: last-sync.json, sync-messages.json, tag-messages.json
-    # 5. Create archive/ subdirectory
-    # 6. Exit with message: "Initialized .dsg directory. Please edit .dsg/config.yml to configure your project."
-    raise NotImplementedError("The init command has not been implemented yet")
+    Checkout the latest version from a remote repository.
+    
+    Creates a local copy of a remote repository when .dsg/ doesn't exist locally.
+    If --init-if-missing is specified and no .dsg/ exists locally AND no repository 
+    exists at host/repo_path/repo_name, will initialize a new repository at both locations.
+    
+    URI Format:
+    -----------
+    dsg+[transport]://[user@]host/repo_path/repo_name#type=repo_type
+    
+    - transport: Connection method (ssh, rclone, ipfs)
+    - user: Optional SSH username for remote access
+    - host: Hostname or IP (automatically uses local access if hostname matches current machine)
+    - repo_path: Path to repository parent directory
+    - repo_name: Name of the repository directory
+    - repo_type: Repository backend type (zfs, xfs) - not needed for rclone or IPFS
+    
+    Examples:
+    ---------
+    # Remote ZFS repository via SSH (or local if current hostname is scott)
+    dsg checkout dsg+ssh://scott/var/repos/zsd/BB#type=zfs
+    
+    # Remote XFS repository with specific username
+    dsg checkout dsg+ssh://alice@dataserver/projects/BB#type=xfs
+    
+    # Remote repository via rclone (gdrive must be configured in rclone.conf)
+    dsg checkout dsg+rclone://gdrive/projects/BB
+    
+    # Distributed repository via IPFS (passphrase stored in .dsg/config.yml)
+    dsg checkout dsg+ipfs://did:key:z6Mkhn3rpi3pxisaGDX9jABfdWoyH5cKENd2Pgv9q8fRwqxC/BB --passphrase mypassword
+    
+    Requirements:
+    -------------
+    - User configuration must exist (see config_manager.py for supported locations)
+      Example: ~/.config/dsg/dsg.yml
+    - For SSH transport to remote hosts, the hostname must be defined in ~/.ssh/config
+    - For rclone transport, the remote (gdrive) must be configured in rclone.conf
+    - For IPFS transport, data is encrypted and requires a passphrase
+    
+    Notes:
+    ------
+    Configuration coupling exists across all users of a repository:
+    - SSH repositories: UserConfig + ProjectConfig + remote hostname + ~/.ssh/config must align
+    - rclone repositories: UserConfig + ProjectConfig + rclone.conf remote names must align
+    This coupling ensures all team members can access the same repository with consistent configuration.
+    """
+    # TODO: Implement checkout command
+    # 1. Parse URI to extract transport, host, repo_path, repo_name, repo_type
+    # 2. Verify UserConfig exists and is valid
+    # 3. Check that no .dsg/ directory exists locally (error if exists)
+    # 4. Create temporary ProjectConfig from URI parameters
+    # 5. Test backend connection and determine if remote repo exists
+    # 6. If remote exists: download .dsg/ structure and inherit config
+    # 7. If remote missing and --init-if-missing: initialize both local and remote
+    # 8. Else: error about missing remote repository
+    # 9. For IPFS: handle passphrase and store in config
+    # 10. Sync files from remote to local (reuse sync logic)
+    raise NotImplementedError("The checkout command has not been implemented yet")
 
 
 @app.command(name="list-files")
