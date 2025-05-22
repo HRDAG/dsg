@@ -179,6 +179,8 @@ def sync(  # pragma: no cover
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview changes without syncing"),
     force: bool = typer.Option(False, "--force", help="Force sync even with conflicts"),
     message: Optional[str] = typer.Option(None, "-m", "--message", help="Sync message describing changes"),
+    # TODO: Add normalize option for sync command
+    # normalize: bool = typer.Option(False, "--normalize", help="Normalize invalid paths during sync"),
 ):
     """
     Synchronize local files with remote repository.
@@ -205,21 +207,70 @@ def sync(  # pragma: no cover
     # 3. Fetch remote manifest from backend.read_file('.dsg/last-sync.json')
     # 4. Load local manifest (current scan) and cache (.dsg/last-sync.json)
     # 5. Use ManifestMerger to determine sync states for each file
-    # 6. If --dry-run: display planned operations and exit
-    # 7. Check for conflicts:
+    # 6. TODO: Check for invalid paths and handle based on options:
+    #    - If invalid paths found and not --normalize: abort with error message
+    #    - If --normalize: attempt to normalize invalid paths before sync
+    #    - Show warning/error messages for paths that cannot be normalized
+    # 7. If --dry-run: display planned operations and exit
+    # 8. Check for conflicts:
     #    - If conflicts and not --force: write .dsg/conflicts.json and exit
     #    - If --continue: read .dsg/conflicts.json for resolutions
-    # 8. If no message provided, prompt user for sync message
-    # 9. Execute sync operations based on SyncState:
+    # 9. If no message provided, prompt user for sync message
+    # 10. Execute sync operations based on SyncState:
     #    - Upload: backend.copy_file() for local changes
     #    - Download: backend.read_file() and write locally
     #    - Delete: remove local files or mark for backend deletion
-    # 10. Generate sync-hash for merged manifest (TODO: add to Manifest class)
-    # 11. Update .dsg/last-sync.json locally and on backend
-    # 12. Archive old manifest in .dsg/archive/{timestamp}-{hash}.json.gz
-    # 13. Update .dsg/sync-messages.json with sync metadata and message
-    # 14. Verify local and remote .dsg/last-sync.json are identical
+    # 11. Generate sync-hash for merged manifest (TODO: add to Manifest class)
+    # 12. Update .dsg/last-sync.json locally and on backend
+    # 13. Archive old manifest in .dsg/archive/{timestamp}-{hash}.json.gz
+    # 14. Update .dsg/sync-messages.json with sync metadata and message
+    # 15. Verify local and remote .dsg/last-sync.json are identical
     raise NotImplementedError("The sync command has not been implemented yet")
+
+
+@app.command()
+def normalize(  # pragma: no cover
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview normalization without making changes"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed normalization information"),
+):
+    """
+    Normalize invalid file paths in the current project.
+    
+    Scans the project directory and normalizes paths that fail validation:
+    - Unicode NFD → NFC normalization
+    - TODO: Sanitize illegal characters (reserved names, control chars, etc.)
+    - TODO: Handle path length limits and other cross-platform issues
+    
+    With --dry-run: Shows what would be normalized without making changes
+    With --verbose: Shows detailed information about each normalization
+    
+    This command should be run before sync if there are path validation warnings.
+    
+    Examples:
+    - dsg normalize --dry-run     # Preview what would be normalized
+    - dsg normalize               # Actually normalize invalid paths
+    - dsg normalize -v            # Show detailed normalization results
+    """
+    # TODO: Implement normalize command
+    # 1. Scan current directory with normalize_paths=False to find invalid paths
+    # 2. For each invalid path found:
+    #    - Determine normalization strategy based on validation failure type:
+    #      - NFC normalization: use existing _normalize_path logic
+    #      - Illegal characters: sanitize or replace with safe alternatives
+    #      - Reserved names: add suffix or prefix to make valid
+    #      - Path length: truncate intelligently while preserving extensions
+    #    - If --dry-run: show what would be done
+    #    - Else: perform the normalization (rename files/directories)
+    # 3. Handle normalization conflicts:
+    #    - If normalized path already exists, use suffix (_1, _2, etc.)
+    #    - Warn about potential data loss or confusion
+    # 4. Update any DSG metadata that references the old paths
+    # 5. Display summary:
+    #    - Number of paths normalized
+    #    - Types of normalizations performed
+    #    - Any conflicts or issues encountered
+    # 6. Recommend running 'dsg status' to verify results
+    raise NotImplementedError("The normalize command has not been implemented yet")
 
 
 @app.command(name="exclude-once")

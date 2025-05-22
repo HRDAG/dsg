@@ -220,6 +220,9 @@ def _scan_directory_internal(
             continue
 
         if entry := Manifest.create_entry(full_path, root_path, normalize_paths):
+            # TODO: The create_entry method now validates paths and warns about invalid ones.
+            # Consider collecting validation warnings for reporting to CLI commands.
+            # This would be useful for 'dsg status' and 'dsg normalize --dry-run' commands.
             # Set user attribution if provided
             if user_id and hasattr(entry, "user") and not entry.user:
                 entry.user = user_id
@@ -233,12 +236,14 @@ def _scan_directory_internal(
             if compute_hashes and is_hashable_file:
                 try:
                     entry.hash = hash_file(full_path)
-                    logger.debug(f"  Computed hash for {str_path}: {entry.hash}")
+                    logger.debug(f"  Computed hash for {entry.path}: {entry.hash}")
                 except Exception as e:  # pragma: no cover
                     logger.error(f"Failed to compute hash for {str_path}: {e}")
 
-            entries[str_path] = entry
-            logger.debug("  Adding to manifest")
+            # Use entry.path as the key to ensure normalized paths in manifest
+            # entry.path will be NFC-normalized if normalize_paths=True
+            entries[entry.path] = entry
+            logger.debug(f"  Adding to manifest with path: {entry.path}")
 
     logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
     return ScanResult(manifest=Manifest(entries=entries), ignored=ignored)

@@ -223,34 +223,55 @@ class Manifest(BaseModel):
     def _normalize_path(full_path: Path, project_root: Path) -> tuple[Path, str, bool]:
         """
         Normalize a path to NFC form and rename the file if needed.
+        
+        Uses the same cross-platform approach as the migration scripts:
+        - Leverages filename_validation.normalize_path for proper component-wise normalization
+        - Handles the macOS filesystem issue where NFD/NFC paths may coexist
+        - Returns the appropriate path for manifest storage
 
         Args:
             full_path: The original file path
             project_root: The project root path
 
         Returns:
-            Tuple of (normalized_path, normalized_rel_path, was_normalized)
+            Tuple of (final_path, normalized_rel_path, was_logically_normalized)
         """
-        rel_path = str(full_path.relative_to(project_root))
-        path_parts = rel_path.split('/')
-        normalized_parts = [unicodedata.normalize("NFC", part) for part in path_parts]
-        normalized_path = '/'.join(normalized_parts)
-
-        # Check if normalization changed anything
-        if normalized_path == rel_path:
+        from dsg.filename_validation import normalize_path
+        
+        # Use the robust component-wise normalization from filename_validation
+        normalized_full_path, was_modified = normalize_path(full_path)
+        
+        if not was_modified:
+            # No normalization needed
+            rel_path = str(full_path.relative_to(project_root))
             return full_path, rel_path, False
-
-        # Normalize the path
+        
+        # Get the normalized relative path for manifest storage
+        normalized_rel_path = str(normalized_full_path.relative_to(project_root))
+        
+        # Check if we can/should rename the file
+        # Following migration script pattern: check if destination exists
+        if normalized_full_path.exists() and normalized_full_path != full_path:
+            # On some filesystems (like macOS HFS+/APFS), both NFD and NFC paths
+            # may refer to the same file. In this case, we don't need to rename,
+            # just use the NFC form in our manifests for consistency.
+            logger.info(f"Path {full_path} and {normalized_full_path} both exist - using NFC form for manifest")
+            return normalized_full_path, normalized_rel_path, True
+        
+        # Try to rename the file to the normalized form
         try:
-            new_full_path = project_root / normalized_path
             # Ensure parent directory exists
-            os.makedirs(os.path.dirname(str(new_full_path)), exist_ok=True)
+            os.makedirs(str(normalized_full_path.parent), exist_ok=True)
+            
             # Rename the file
-            full_path.rename(new_full_path)
-            logger.info(f"Renamed {full_path} to {new_full_path} for NFC normalization")
-            return new_full_path, normalized_path, True
+            full_path.rename(normalized_full_path)
+            logger.info(f"Renamed {full_path} to {normalized_full_path} for NFC normalization")
+            return normalized_full_path, normalized_rel_path, True
+            
         except Exception as e:
-            logger.error(f"Failed to rename {full_path} for normalization: {e}")
+            # If rename fails, fall back to original path but log the issue
+            logger.warning(f"Failed to rename {full_path} to {normalized_full_path}: {e}")
+            rel_path = str(full_path.relative_to(project_root))
             return full_path, rel_path, False
 
     @staticmethod
@@ -270,8 +291,14 @@ class Manifest(BaseModel):
 
             # Check if path needs normalization
             is_valid, message = validate_path(rel_path)
-            if not is_valid and "not NFC-normalized" in message:
-                full_path, rel_path, _ = Manifest._normalize_path(full_path, project_root)
+            if not is_valid:
+                if "not NFC-normalized" in message:
+                    full_path, rel_path, _ = Manifest._normalize_path(full_path, project_root)
+                else:
+                    # TODO: Handle other validation failures (illegal chars, reserved names, etc.)
+                    # Consider warning and potentially blocking manifest creation for invalid paths
+                    logger.warning(f"Invalid path in manifest: {rel_path} - {message}")
+                    # TODO: Add path sanitization for non-Unicode validation failures
 
         if full_path.is_symlink():
             return LinkRef._from_path(full_path, rel_path, project_root)

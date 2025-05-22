@@ -58,6 +58,7 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    │ status              Show sync status by comparing local files with last      │
    │                     sync.                                                    │
    │ sync                Synchronize local files with remote repository.          │
+   │ normalize           Normalize invalid file paths in the current project.     │
    │ exclude-once        Temporarily exclude a path from the current session.     │
    │ blame               Show modification history for a file.                    │
    │ snapmount           Mount snapshots for browsing historical data.            │
