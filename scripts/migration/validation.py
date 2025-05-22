@@ -70,7 +70,7 @@ def mount_snapshot(dataset: str, snapshot: str):
             subprocess.run(["sudo", "zfs", "destroy", "-r", clone], stderr=subprocess.DEVNULL)
 
 
-def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool) -> bool:
+def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool, source_path: str = None) -> bool:
     """
     Verify snapshot matches source with probabilistic sampling.
     
@@ -79,21 +79,25 @@ def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool) -> bool:
         dataset: ZFS dataset name
         num: Snapshot number
         verbose: Enable verbose output
+        source_path: Optional source path to compare against (defaults to bb_dir/s{num})
         
     Returns:
         True if verification passes, False otherwise
     """
     try:
+        # Use provided source_path or default to bb_dir/s{num}
+        comparison_source = source_path if source_path else f"{bb_dir}/s{num}"
+        
         with mount_snapshot(dataset, f"s{num}") as mountpoint:
             if verbose:
-                logger.debug(f"Verifying s{num}:\nSource: {bb_dir}/s{num}\nSnapshot: {mountpoint}")
-                subprocess.run(["ls", "-la", f"{bb_dir}/s{num}"])
+                logger.debug(f"Verifying s{num}:\nSource: {comparison_source}\nSnapshot: {mountpoint}")
+                subprocess.run(["ls", "-la", comparison_source])
                 subprocess.run(["ls", "-la", mountpoint])
 
             # Use diff with exclusion for .dsg directory only
             result = subprocess.run(
                 ["diff", "-rq", "--no-dereference", "--exclude=.dsg", 
-                 f"{bb_dir}/s{num}", mountpoint],
+                 comparison_source, mountpoint],
                 capture_output=True,
                 text=True
             )
@@ -103,7 +107,7 @@ def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool) -> bool:
                 # Run full diff with exclusion for .dsg directory
                 full_diff = subprocess.run(
                     ["diff", "-r", "--no-dereference", "--exclude=.dsg", 
-                     f"{bb_dir}/s{num}", mountpoint],
+                     comparison_source, mountpoint],
                     capture_output=True,
                     text=True
                 )
@@ -802,7 +806,8 @@ def verify_snapshot_with_validation(
     num: int, 
     snapshot_id: str,
     verbose: bool,
-    validation_level: str = "basic"  # Options: "none", "basic", "full"
+    validation_level: str = "basic",  # Options: "none", "basic", "full"
+    normalized_source_dir: str = None  # Optional normalized source directory
 ) -> bool:
     """
     Enhanced verification that combines data verification with metadata validation.
@@ -825,7 +830,7 @@ def verify_snapshot_with_validation(
         
     # Step 1: Data verification (existing verify_snapshot function)
     logger.info(f"Verifying data integrity for {snapshot_id}")
-    data_verified = verify_snapshot(bb_dir, dataset, num, verbose)
+    data_verified = verify_snapshot(bb_dir, dataset, num, verbose, normalized_source_dir)
     if not data_verified:
         logger.error(f"Data verification failed for {snapshot_id}")
         return False

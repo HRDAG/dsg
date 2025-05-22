@@ -134,7 +134,7 @@ def process_snapshot(
         if validation != "none" and (random.random() < VERIFY_PROB or num == max(get_sdir_numbers(bb_dir))):
             logger.info(f"Performing verification for snapshot {snapshot_id}")
             if verify_snapshot_with_validation(
-                bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation
+                bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation, normalized_src
             ):
                 logger.info(f"Verification passed for {snapshot_id}")
             else:
