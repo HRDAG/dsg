@@ -18,10 +18,10 @@ app = typer.Typer(help="DSG - Project data management tools")
 console = Console()
 
 # TODO: Consider organizing commands into groups:
-# 
+#
 # 1. Core operations (main commands):
 #    - checkout: Initialize/checkout repository
-#    - sync: Synchronize files  
+#    - sync: Synchronize files
 #    - status: Show sync status
 #    - list-files: Show file inventory
 #
@@ -51,71 +51,82 @@ console = Console()
 
 
 @app.command()
-def checkout(
-    uri: str = typer.Argument(..., help="URI to repository (see examples below)"),
-    output_dir: Path = typer.Option(".", help="Directory to initialize locally"),
-    init_if_missing: bool = typer.Option(False, help="Initialize repository if it doesn't exist"),
-    passphrase: Optional[str] = typer.Option(None, help="Passphrase for IPFS encryption")
+def init(
+    host: Optional[str] = typer.Option(None, help="Repository host (for SSH transport)"),
+    repo_path: Optional[str] = typer.Option(None, help="Repository path on host"),
+    repo_name: Optional[str] = typer.Option(None, help="Repository name"),
+    repo_type: Optional[str] = typer.Option(None, help="Repository type (zfs, xfs)"),
+    transport: str = typer.Option("ssh", help="Transport method (ssh, rclone, ipfs)"),
+    rclone_remote: Optional[str] = typer.Option(None, help="rclone remote name (for rclone transport)"),
+    ipfs_did: Optional[str] = typer.Option(None, help="IPFS DID (for IPFS transport)"),
+    interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values")
 ):
     """
-    Checkout the latest version from a remote repository.
-    
-    Creates a local copy of a remote repository when .dsg/ doesn't exist locally.
-    If --init-if-missing is specified and no .dsg/ exists locally AND no repository 
-    exists at host/repo_path/repo_name, will initialize a new repository at both locations.
-    
-    URI Format:
-    -----------
-    dsg+[transport]://[user@]host/repo_path/repo_name#type=repo_type
-    
-    - transport: Connection method (ssh, rclone, ipfs)
-    - user: Optional SSH username for remote access
-    - host: Hostname or IP (automatically uses local access if hostname matches current machine)
-    - repo_path: Path to repository parent directory
-    - repo_name: Name of the repository directory
-    - repo_type: Repository backend type (zfs, xfs) - not needed for rclone or IPFS
-    
+    Initialize project configuration for DSG repository.
+
+    Creates .dsgconfig.yml in the project root with repository connection details.
+    This file should be committed to version control so all team members can sync.
+
+    Transport Types:
+    ----------------
+    SSH (default): Connect to remote host via SSH
+    - Requires: --host, --repo-path, --repo-name, --repo-type
+    - Host must be defined in ~/.ssh/config for remote access
+    - Automatically uses local filesystem if host matches current machine
+
+    rclone: Connect to cloud storage via rclone
+    - Requires: --rclone-remote, --repo-path, --repo-name
+    - Remote must be configured in rclone.conf
+    - Repository type determined by rclone configuration
+
+    IPFS: Connect to distributed storage via IPFS
+    - Requires: --ipfs-did, --repo-name
+    - Data is encrypted and requires passphrase (stored in user config)
+    - DID must be a valid IPFS decentralized identifier
+
     Examples:
     ---------
-    # Remote ZFS repository via SSH (or local if current hostname is scott)
-    dsg checkout dsg+ssh://scott/var/repos/zsd/BB#type=zfs
-    
-    # Remote XFS repository with specific username
-    dsg checkout dsg+ssh://alice@dataserver/projects/BB#type=xfs
-    
-    # Remote repository via rclone (gdrive must be configured in rclone.conf)
-    dsg checkout dsg+rclone://gdrive/projects/BB
-    
-    # Distributed repository via IPFS (passphrase stored in .dsg/config.yml)
-    dsg checkout dsg+ipfs://did:key:z6Mkhn3rpi3pxisaGDX9jABfdWoyH5cKENd2Pgv9q8fRwqxC/BB --passphrase mypassword
-    
+    # SSH to remote ZFS repository
+    dsg init --host scott --repo-path /var/repos/zsd --repo-name BB --repo-type zfs
+
+    # rclone to Google Drive
+    dsg init --transport rclone --rclone-remote gdrive --repo-path projects --repo-name BB
+
+    # IPFS distributed repository
+    dsg init --transport ipfs --ipfs-did did:key:z6Mkhn3rpi3pxisaGDX9jABfdWoyH5cKENd2Pgv9q8fRwqxC --repo-name BB
+
+    # Interactive mode (prompts for missing values)
+    dsg init
+
     Requirements:
     -------------
-    - User configuration must exist (see config_manager.py for supported locations)
-      Example: ~/.config/dsg/dsg.yml
-    - For SSH transport to remote hosts, the hostname must be defined in ~/.ssh/config
-    - For rclone transport, the remote (gdrive) must be configured in rclone.conf
-    - For IPFS transport, data is encrypted and requires a passphrase
-    
-    Notes:
-    ------
-    Configuration coupling exists across all users of a repository:
-    - SSH repositories: UserConfig + ProjectConfig + remote hostname + ~/.ssh/config must align
-    - rclone repositories: UserConfig + ProjectConfig + rclone.conf remote names must align
-    This coupling ensures all team members can access the same repository with consistent configuration.
+    - User configuration must exist: ~/.config/dsg/dsg.yml
+    - No existing .dsgconfig.yml in current directory
+    - For SSH: hostname must be in ~/.ssh/config (for remote hosts)
+    - For rclone: remote must be configured in rclone.conf
+    - For IPFS: valid DID and passphrase in user config
+
+    Output:
+    -------
+    Creates .dsgconfig.yml with:
+    - Repository connection details
+    - Transport configuration
+    - Default project settings (data directories, ignore patterns)
+
+    After running init, commit .dsgconfig.yml to version control:
+    git add .dsgconfig.yml
+    git commit -m "Add DSG repository configuration"
     """
-    # TODO: Implement checkout command
-    # 1. Parse URI to extract transport, host, repo_path, repo_name, repo_type
+    # TODO: Implement init command
+    # 1. Check if .dsgconfig.yml already exists (error if yes)
     # 2. Verify UserConfig exists and is valid
-    # 3. Check that no .dsg/ directory exists locally (error if exists)
-    # 4. Create temporary ProjectConfig from URI parameters
-    # 5. Test backend connection and determine if remote repo exists
-    # 6. If remote exists: download .dsg/ structure and inherit config
-    # 7. If remote missing and --init-if-missing: initialize both local and remote
-    # 8. Else: error about missing remote repository
-    # 9. For IPFS: handle passphrase and store in config
-    # 10. Sync files from remote to local (reuse sync logic)
-    raise NotImplementedError("The checkout command has not been implemented yet")
+    # 3. If interactive mode and missing params, prompt for values
+    # 4. Validate transport-specific parameters
+    # 5. Test connection to repository (optional validation)
+    # 6. Create .dsgconfig.yml with provided configuration
+    # 7. Set up default project settings (data_dirs, ignore patterns)
+    # 8. Exit with instructions to commit the file
+    raise NotImplementedError("The init command has not been implemented yet")
 
 
 @app.command(name="list-files")
@@ -130,18 +141,18 @@ def list_files(
 ):
     """
     List all files in data directories with metadata.
-    
+
     Shows an inventory of all tracked files including:
     - Include/exclude status
-    - Last sync timestamp  
+    - Last sync timestamp
     - User who last modified
     - File size
-    
+
     With --verbose:
     - Additional file metadata (hash, user)
     - More detailed summary statistics
     - Full sync information
-    
+
     Similar to 'git ls-files' - shows the catalog of tracked files.
     """
     # TODO: Update to show sync metadata from .dsg/last-sync.json
@@ -187,7 +198,7 @@ def list_files(
         show_ignored=not no_ignored,
         verbose=verbose
     )
-    
+
     console.print(table)
     console.print(f"\n{format_file_count(result.manifest, result.ignored, verbose=verbose)}")
 
@@ -198,14 +209,14 @@ def status(  # pragma: no cover
 ):
     """
     Show sync status by comparing local files with last sync.
-    
+
     Compares current local state against .dsg/last-sync.json to show:
     - Added files (new since last sync)
-    - Modified files (changed since last sync) 
+    - Modified files (changed since last sync)
     - Deleted files (removed since last sync)
-    
+
     With --remote: Also compares with remote manifest
-    
+
     Similar to 'git status' - shows what would be synced.
     """
     # TODO: Implement status command
@@ -229,7 +240,7 @@ def sync(  # pragma: no cover
 ):
     """
     Synchronize local files with remote repository.
-    
+
     Process:
     1. Connect to backend specified in .dsg/config.yml
     2. Fetch remote manifest (.dsg/last-sync.json)
@@ -238,12 +249,12 @@ def sync(  # pragma: no cover
     5. Execute sync operations via backend
     6. Generate sync-hash for the merged manifest
     7. Update both local and remote .dsg/last-sync.json
-    
+
     With --continue: Resume after manually resolving conflicts
     With --dry-run: Show what would be done without actually syncing
     With --force: Overwrite conflicts (dangerous!)
     With --message: Provide sync message (will prompt if not provided)
-    
+
     If conflicts occur, writes to .dsg/conflicts.json for resolution.
     """
     # TODO: Implement sync command
@@ -324,16 +335,16 @@ def exclude_once(  # pragma: no cover
 ):
     """
     Temporarily exclude a path from the current session.
-    
+
     This exclusion only lasts for the current command session.
     For permanent exclusions, edit .dsg/config.yml directly.
-    
+
     Examples (default data_dirs are: input, output, frozen):
     - dsg exclude-once --path=input/temp-data.csv
     - dsg exclude-once --path=output/debug-logs/
     - dsg exclude-once --path="input/*.tmp"
     - dsg exclude-once --path=frozen/old-analysis/
-    
+
     Note: These exclusions are not persisted between commands.
     """
     # TODO: Implement exclude-once command
@@ -341,7 +352,7 @@ def exclude_once(  # pragma: no cover
     # 2. This exclusion should be picked up by subsequent operations (status, sync)
     # 3. Show confirmation that path is temporarily excluded
     # 4. Maybe show current list of temporary exclusions?
-    # 
+    #
     # Question: How do we pass temporary exclusions between commands?
     # - Environment variable?
     # - Temporary file in /tmp/?
@@ -355,15 +366,15 @@ def blame(  # pragma: no cover
 ):
     """
     Show modification history for a file.
-    
+
     Displays the complete history of users who have modified this file,
     including timestamps and sync messages (when available).
-    
+
     Examples:
     - dsg blame input/data.csv
     - dsg blame output/analysis/results.json
     - dsg blame frozen/2023-report.pdf
-    
+
     This command scans archived manifests to build a complete modification history.
     """
     # TODO: Implement blame command
@@ -393,16 +404,16 @@ def snapmount(  # pragma: no cover
 ):
     """
     Mount snapshots for browsing historical data.
-    
+
     Works across all backends (zfs, localhost, rclone, ipfs) with consistent interface.
     Returns the mount path where the snapshot can be accessed.
-    
+
     Examples:
     - dsg snapmount --list                                    # Show available snapshots
     - dsg snapmount --num=42                                 # Mount to /tmp/dsg-snap-42/
     - dsg snapmount --num=42 --mount-path=/data/snap42      # Mount to specific path
     - dsg snapmount --unmount --num=42                      # Unmount snapshot #42
-    
+
     For network backends (rclone, ipfs), this may download snapshot data on-demand.
     """
     # TODO: Implement snapmount command
@@ -437,14 +448,14 @@ def snapfetch(  # pragma: no cover
 ):
     """
     Fetch a single file from a snapshot.
-    
+
     Efficiently retrieves one file without mounting the entire snapshot.
     Useful for quick recovery of specific files.
-    
+
     Examples:
     - dsg snapfetch --num=42 --file=input/data.csv
     - dsg snapfetch --num=42 --file=output/report.pdf -o /tmp/old-report.pdf
-    
+
     If no output path specified, saves to current directory with .snap{num} suffix.
     """
     # TODO: Implement snapfetch command
@@ -467,19 +478,19 @@ def validate_config(  # pragma: no cover
 ):
     """
     Validate configuration files and optionally test backend connectivity.
-    
+
     Checks:
     1. User config: $HOME/.config/dsg/dsg.yml exists and is valid
     2. Project config: .dsg/config.yml exists and is valid
     3. All required fields are present
     4. Field values are properly formatted
     5. Referenced paths exist
-    
+
     With --check-backend: Also tests backend connectivity
     - SSH access for remote backends
     - API keys for cloud backends
     - Repository path accessibility
-    
+
     Examples:
     - dsg validate-config                    # Basic validation
     - dsg validate-config --check-backend    # Also test backend connection
@@ -517,12 +528,12 @@ def validate_file(  # pragma: no cover
 ):
     """
     Validate a file's hash against the manifest.
-    
+
     Computes the file's current hash and compares it with the hash
     stored in the manifest. Useful for checking file integrity.
-    
+
     Often used with mounted snapshots to verify historical data integrity.
-    
+
     Examples:
     - dsg validate-file input/data.csv
     - dsg validate-file /tmp/dsg-snap-42/input/data.csv --manifest=/tmp/dsg-snap-42/.dsg/last-sync.json
@@ -553,14 +564,14 @@ def validate_snapshot(  # pragma: no cover
 ):
     """
     Validate a single snapshot's integrity and optionally its file hashes.
-    
+
     Verifies:
     1. Snapshot metadata is valid
     2. Snapshot hash matches computed hash
     3. Previous snapshot reference exists (but doesn't validate it)
-    
+
     With --check-files: Also validates every file hash in the snapshot
-    
+
     Examples:
     - dsg validate-snapshot                    # Validate current snapshot
     - dsg validate-snapshot --num=42          # Validate specific snapshot
@@ -569,7 +580,7 @@ def validate_snapshot(  # pragma: no cover
     # TODO: Implement validate-snapshot command
     # TODO: Add snapshot fields to ManifestMetadata class:
     #       snapshot_id, snapshot_message, snapshot_previous, snapshot_hash
-    # 
+    #
     # 1. Load snapshot manifest:
     #    - If --num: load from .dsg/archive/s{num}.json.gz
     #    - Else: load from .dsg/last-sync.json
@@ -598,12 +609,12 @@ def validate_chain(  # pragma: no cover
 ):
     """
     Validate the entire snapshot chain integrity.
-    
+
     Walks backwards from the current snapshot (or --start) to the genesis (s1)
     verifying that each snapshot correctly references and hashes its predecessor.
-    
+
     With --deep: Also validates all file hashes in each snapshot (slow!)
-    
+
     Examples:
     - dsg validate-chain                           # Validate entire chain
     - dsg validate-chain --deep                    # Full validation (very slow)
