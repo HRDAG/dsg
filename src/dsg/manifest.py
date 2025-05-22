@@ -223,7 +223,7 @@ class Manifest(BaseModel):
     def _normalize_path(full_path: Path, project_root: Path) -> tuple[Path, str, bool]:
         """
         Normalize a path to NFC form and rename the file if needed.
-        
+
         Uses the same cross-platform approach as the migration scripts:
         - Leverages filename_validation.normalize_path for proper component-wise normalization
         - Handles the macOS filesystem issue where NFD/NFC paths may coexist
@@ -237,18 +237,18 @@ class Manifest(BaseModel):
             Tuple of (final_path, normalized_rel_path, was_logically_normalized)
         """
         from dsg.filename_validation import normalize_path
-        
+
         # Use the robust component-wise normalization from filename_validation
         normalized_full_path, was_modified = normalize_path(full_path)
-        
+
         if not was_modified:
             # No normalization needed
             rel_path = str(full_path.relative_to(project_root))
             return full_path, rel_path, False
-        
+
         # Get the normalized relative path for manifest storage
         normalized_rel_path = str(normalized_full_path.relative_to(project_root))
-        
+
         # Check if we can/should rename the file
         # Following migration script pattern: check if destination exists
         if normalized_full_path.exists() and normalized_full_path != full_path:
@@ -257,17 +257,17 @@ class Manifest(BaseModel):
             # just use the NFC form in our manifests for consistency.
             logger.info(f"Path {full_path} and {normalized_full_path} both exist - using NFC form for manifest")
             return normalized_full_path, normalized_rel_path, True
-        
+
         # Try to rename the file to the normalized form
         try:
             # Ensure parent directory exists
             os.makedirs(str(normalized_full_path.parent), exist_ok=True)
-            
+
             # Rename the file
             full_path.rename(normalized_full_path)
             logger.info(f"Renamed {full_path} to {normalized_full_path} for NFC normalization")
             return normalized_full_path, normalized_rel_path, True
-            
+
         except Exception as e:
             # If rename fails, fall back to original path but log the issue
             logger.warning(f"Failed to rename {full_path} to {normalized_full_path}: {e}")
