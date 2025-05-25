@@ -56,12 +56,13 @@ def list_directory(
             # Apply overrides to config
             for key, value in overrides.items():
                 if key == "ignored_paths":
-                    cfg.project.ignored_paths.update(value)
+                    cfg.project.project.ignore.paths.update(value)
                     # Update _ignored_exact to match
-                    cfg.project._ignored_exact.update(PurePosixPath(p) for p in value)
-                else:
-                    # For other properties, update directly
-                    getattr(cfg.project, key).update(value)
+                    cfg.project.project.ignore._ignored_exact.update(PurePosixPath(p) for p in value)
+                elif key == "ignored_names":
+                    cfg.project.project.ignore.names.update(value)
+                elif key == "ignored_suffixes":
+                    cfg.project.project.ignore.suffixes.update(value)
             
             return scan_directory(cfg)
             

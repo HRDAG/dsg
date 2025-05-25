@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typer.testing import CliRunner
 from rich.console import Console
+import tempfile
 
 from dsg.cli import app
 
@@ -14,6 +15,30 @@ def create_test_files(directory):
     """Create test files in the given directory."""
     # Use the directory directly, don't add 'list-files' subdirectory
     directory = Path(directory)
+    
+    # Create .dsgconfig.yml with minimal config that doesn't ignore .tmp files
+    config_content = """
+transport: ssh
+ssh:
+  host: localhost
+  path: /tmp/test
+  name: test-repo
+  type: xfs
+project:
+  data_dirs:
+    - input
+    - output
+    - frozen
+  ignore:
+    paths: []
+    names: []  # Don't ignore any names by default
+    suffixes: []  # Don't ignore .tmp files
+"""
+    (directory / ".dsgconfig.yml").write_text(config_content)
+    
+    # Create .dsg directory to satisfy backend validation
+    dsg_dir = directory / ".dsg"
+    dsg_dir.mkdir(exist_ok=True)
     
     # Create input directory (one of the default data directories)
     input_dir = directory / "input"
@@ -36,11 +61,24 @@ def create_test_files(directory):
 
 def test_list_files_basic():
     """Test basic file listing without options."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(app, ["list-files"])  # Use default path
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    # Create a temporary user config
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            # Set environment variable for user config
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(app, ["list-files"], env=env)  # Use default path
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Check that all expected columns are present
         assert "Status" in result.stdout
@@ -66,14 +104,26 @@ def test_list_files_basic():
 
 def test_list_files_ignored_names():
     """Test file listing with ignored names."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(
-            app, 
-            ["list-files", "--ignored-names", "ignored.tmp,file2.txt"]
-        )
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(
+                app, 
+                ["list-files", "--ignored-names", "ignored.tmp,file2.txt"],
+                env=env
+            )
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Check that all expected columns are present
         assert "Status" in result.stdout
@@ -101,14 +151,26 @@ def test_list_files_ignored_names():
 
 def test_list_files_ignored_suffixes():
     """Test file listing with ignored suffixes."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(
-            app, 
-            ["list-files", "--ignored-suffixes", ".tmp,.csv"]
-        )
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(
+                app, 
+                ["list-files", "--ignored-suffixes", ".tmp,.csv"],
+                env=env
+            )
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Check that all expected columns are present
         assert "Status" in result.stdout
@@ -138,14 +200,26 @@ def test_list_files_ignored_suffixes():
 
 def test_list_files_no_ignored():
     """Test file listing with --no-ignored flag."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(
-            app,
-            ["list-files", "--ignored-suffixes", ".tmp", "--no-ignored"]
-        )
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(
+                app,
+                ["list-files", "--ignored-suffixes", ".tmp", "--no-ignored"],
+                env=env
+            )
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Should not show excluded files
         assert "input/ignored.tmp" not in result.stdout
@@ -157,11 +231,22 @@ def test_list_files_no_ignored():
 
 def test_list_files_debug():
     """Test debug output."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(app, ["list-files", "--debug"])
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(app, ["list-files", "--debug"], env=env)
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Check debug information
         assert "Scanning directory:" in result.stdout
@@ -169,11 +254,22 @@ def test_list_files_debug():
 
 def test_list_files_symlinks():
     """Test handling of symlinks."""
-    with runner.isolated_filesystem() as td:
-        create_test_files(td)
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(app, ["list-files"])
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            create_test_files(td)
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(app, ["list-files"], env=env)
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
         
         # Check symlink representation
         assert "input/link.txt -> file1.txt" in result.stdout
@@ -187,9 +283,37 @@ def test_list_files_nonexistent_path():
 
 def test_list_files_empty_dir():
     """Test behavior with empty directory."""
-    with runner.isolated_filesystem() as td:
-        os.chdir(td)  # Change to test directory
-        result = runner.invoke(app, ["list-files"])
-        assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
-        assert "Included: 0 files" in result.stdout
-        assert "Excluded: 0 files" in result.stdout 
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            # Create minimal config but no data files
+            config_content = """
+transport: ssh
+ssh:
+  host: localhost
+  path: /tmp/test
+  name: test-repo
+  type: xfs
+project:
+  data_dirs:
+    - input
+  ignore:
+    paths: []
+"""
+            (Path(td) / ".dsgconfig.yml").write_text(config_content)
+            (Path(td) / ".dsg").mkdir(exist_ok=True)
+            
+            os.chdir(td)  # Change to test directory
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(app, ["list-files"], env=env)
+            assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
+            assert "Included: 0 files" in result.stdout
+            assert "Excluded: 0 files" in result.stdout 
