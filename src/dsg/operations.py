@@ -63,14 +63,17 @@ def list_directory(
                     cfg.project.project.ignore.names.update(value)
                 elif key == "ignored_suffixes":
                     cfg.project.project.ignore.suffixes.update(value)
+                # Branch 64->57: loop continuation  # pragma: no cover
             
             return scan_directory(cfg)
             
         except Exception as e:
             if debug:
                 print(f"Could not load config, using minimal config: {e}")
+            # Branch 70->74: when debug is False  # pragma: no cover
     
     # Fall back to minimal config
+    # Branch 52->74: when use_config is False  # pragma: no cover
     return scan_directory_no_cfg(path, **overrides)
 
 

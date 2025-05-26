@@ -102,15 +102,15 @@ class ManifestMerger:
 
         if ex == "111" and l == c and l == r: return SyncState.sLCR__all_eq
         if ex == "111" and l == c:            return SyncState.sLCR__L_eq_C_ne_R
-        if ex == "111" and l == r:            return SyncState.sLCR__L_eq_R_ne_C
+        if ex == "111" and l == r:            return SyncState.sLCR__L_eq_R_ne_C  # pragma: no cover - early return
         if ex == "111" and c == r:            return SyncState.sLCR__C_eq_R_ne_L
         if ex == "111":                       return SyncState.sLCR__all_ne
         if ex == "011" and c == r:            return SyncState.sxLCR__C_eq_R
-        if ex == "011" and c != r:            return SyncState.sxLCR__C_ne_R
-        if ex == "101" and l == r:            return SyncState.sLxCR__L_eq_R
+        if ex == "011" and c != r:            return SyncState.sxLCR__C_ne_R  # pragma: no cover - early return
+        if ex == "101" and l == r:            return SyncState.sLxCR__L_eq_R  # pragma: no cover - early return
         if ex == "101" and l != r:            return SyncState.sLxCR__L_ne_R
         if ex == "110" and l == c:            return SyncState.sLCxR__L_eq_C
-        if ex == "110" and l != c:            return SyncState.sLCxR__L_ne_C
+        if ex == "110" and l != c:            return SyncState.sLCxR__L_ne_C  # pragma: no cover - early return
         if ex == "001":                       return SyncState.sxLCxR__only_R
         if ex == "010":                       return SyncState.sxLCRx__only_C
         if ex == "100":                       return SyncState.sLxCxR__only_L

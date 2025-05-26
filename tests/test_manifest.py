@@ -12,6 +12,7 @@ from collections import OrderedDict
 import orjson
 import unicodedata
 from unittest.mock import patch
+from pathlib import Path
 
 from dsg.manifest import (
     FileRef,
@@ -792,3 +793,72 @@ class TestManifest:
         # Content should be accessible via the normalized path
         content = nfc_path.read_text()
         assert content == "test content 2"
+        
+    @pytest.mark.skipif(os.uname().sysname != "Darwin", reason="Test requires macOS filesystem behavior")
+    def test_both_nfd_and_nfc_paths_exist(self, test_project_dir, caplog):
+        """Test edge case when both NFD and NFC normalized paths exist on filesystem.
+        
+        This test is macOS-specific because only HFS+/APFS filesystems allow
+        both NFD and NFC paths to exist as separate files.
+        """
+        project_root = test_project_dir["root"]
+        
+        # Create NFC version first
+        nfc_name = "café.txt"
+        nfc_path = project_root / nfc_name
+        nfc_path.write_text("NFC content")
+        
+        # Create NFD version - on macOS this can be a different file
+        nfd_name = "cafe\u0301.txt"
+        nfd_path = project_root / nfd_name
+        
+        # Only create if it doesn't already exist
+        if not nfd_path.exists():
+            nfd_path.write_text("NFD content")
+        
+        # Clear any previous log messages
+        caplog.clear()
+        
+        # Create manifest entry from the NFD path with normalization
+        entry = Manifest.create_entry(nfd_path, project_root, normalize_paths=True)
+        
+        # Should use NFC form
+        assert entry.path == nfc_name
+        
+        # Check that the log message was generated (lines 258-259)
+        if nfd_path.exists() and nfc_path.exists() and nfd_path != nfc_path:
+            assert any("both exist - using NFC form" in record.message 
+                      for record in caplog.records)
+    
+    def test_non_unicode_validation_warning(self, test_project_dir):
+        """Test warning for non-Unicode validation failures (line 300)."""
+        project_root = test_project_dir["root"]
+        
+        # Create a file with a name that's valid on filesystem but invalid per our rules
+        invalid_name = "backup~"  # Trailing tilde is invalid
+        invalid_path = project_root / invalid_name
+        invalid_path.write_text("backup content")
+        
+        # Capture loguru warnings
+        from loguru import logger
+        import io
+        warning_buffer = io.StringIO()
+        
+        # Add a handler to capture warnings
+        handler_id = logger.add(warning_buffer, level="WARNING", format="{message}")
+        
+        try:
+            # Create manifest entry with normalization - should log warning
+            entry = Manifest.create_entry(invalid_path, project_root, normalize_paths=True)
+            
+            # Should still create the entry but with a warning
+            assert entry is not None
+            assert entry.path == invalid_name
+            
+            # Check for the warning message (line 300)
+            warning_output = warning_buffer.getvalue()
+            assert "Invalid path in manifest" in warning_output
+            assert "backup~" in warning_output
+        finally:
+            # Remove the handler
+            logger.remove(handler_id)

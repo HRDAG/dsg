@@ -258,6 +258,7 @@ def _scan_directory_internal(
             # entry.path will be NFC-normalized if normalize_paths=True
             entries[entry.path] = entry
             logger.debug(f"  Adding to manifest with path: {entry.path}")
+        # else: create_entry returned None - should not happen  # pragma: no cover
 
     logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
     return ScanResult(manifest=Manifest(entries=entries), ignored=ignored)

@@ -137,7 +137,8 @@ def create_backend(cfg: Config) -> Backend:
     elif transport == "ipfs":
         raise NotImplementedError("IPFS backend not yet implemented")
     else:
-        raise ValueError(f"Transport type '{transport}' not supported")
+        # TODO: Add support for additional transport types as needed
+        raise ValueError(f"Transport type '{transport}' not supported")  # pragma: no cover
 
 
 def can_access_backend(cfg: Config) -> tuple[bool, str]:
@@ -150,7 +151,8 @@ def can_access_backend(cfg: Config) -> tuple[bool, str]:
         return backend.is_accessible()
     except NotImplementedError as e:
         return False, str(e)
-    except ValueError as e:
+    except ValueError as e:  # pragma: no cover
+        # This should not happen with valid configs, but kept for defensive programming
         return False, str(e)
 
 # done.

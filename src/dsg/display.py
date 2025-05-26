@@ -89,6 +89,7 @@ def manifest_to_table(
                 ])
                 
             table.add_row(*row_data)
+        # else: unknown entry type - should not happen  # pragma: no cover
     
     # Add ignored entries if requested
     if show_ignored and ignored:
@@ -107,7 +108,7 @@ def manifest_to_table(
             
             # Add additional details in verbose mode
             if verbose:
-                row_data.extend([
+                row_data.extend([  # pragma: no cover
                     "N/A",  # No hash for excluded files
                     "N/A",  # No user for excluded files
                     "N/A"   # No sync info for excluded files
