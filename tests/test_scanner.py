@@ -26,7 +26,7 @@ from dsg.scanner import (
     ScanResult
 )
 from dsg.manifest import FileRef, LinkRef, Manifest
-from dsg.config_manager import Config, ProjectConfig
+from dsg.config_manager import Config, UserConfig, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
 
 
 @pytest.fixture
@@ -153,11 +153,20 @@ def ignore_rules():
 @pytest.fixture
 def project_config(test_project_structure):
     """Create a minimal ProjectConfig for testing"""
-    return ProjectConfig.minimal(
-        test_project_structure["root"],
-        repo_name="test_project",
-        data_dirs={"input", "output", "frozen"},
-        ignored_paths={"ignored/", "ignored_file.txt"}
+    return ProjectConfig(
+        transport="ssh",
+        ssh=SSHRepositoryConfig(
+            host="localhost",
+            path=test_project_structure["root"],
+            name="test_project",
+            type="xfs"
+        ),
+        project=ProjectSettings(
+            data_dirs={"input", "output", "frozen"},
+            ignore=IgnoreSettings(
+                paths={"ignored", "ignored_file.txt"}
+            )
+        )
     )
 
 
@@ -263,11 +272,12 @@ class TestScanDirectory:
     def test_basic_scan(self, test_project_structure, project_config):
         project_root = test_project_structure["root"]
 
-        config = Config(
+        user_config = UserConfig(
             user_name="Test User",
-            user_id="test@example.com",
-            default_host="localhost",
-            default_project_path="/var/repos/dgs",
+            user_id="test@example.com"
+        )
+        config = Config(
+            user=user_config,
             project=project_config,
             project_root=project_root
         )

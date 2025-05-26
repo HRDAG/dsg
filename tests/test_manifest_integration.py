@@ -13,7 +13,7 @@ import yaml
 from pathlib import Path
 
 from dsg.backends import LocalhostBackend
-from dsg.config_manager import Config, ProjectConfig
+from dsg.config_manager import Config, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings, UserConfig
 from dsg.manifest import Manifest
 from dsg.manifest_merger import ManifestMerger, SyncState
 from dsg.scanner import scan_directory, scan_directory_no_cfg, compute_hashes_for_manifest
@@ -101,42 +101,60 @@ def temp_repo_setup(tmp_path, example_repo_path) -> dict:
     remote_backend = LocalhostBackend(remote_repo_path, "tmpx")
     
     # Create config objects for local and remote
-    local_project_config = ProjectConfig.minimal(
-        local_repo_path / "tmpx",
-        repo_name="tmpx",
-        host="localhost",
-        repo_path=remote_repo_path,
-        data_dirs=set(["input", "output", "frozen"]),
-        ignored_names=set([".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"]),
-        ignored_suffixes=set([".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"]),
-        ignored_paths=set(["tmpx/task1/input/some_credential_file.txt"])
+    local_project_config = ProjectConfig(
+        transport="ssh",
+        ssh=SSHRepositoryConfig(
+            host="localhost",
+            path=remote_repo_path,
+            name="tmpx",
+            type="xfs"
+        ),
+        project=ProjectSettings(
+            data_dirs={"input", "output", "frozen"},
+            ignore=IgnoreSettings(
+                names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
+                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
+                paths={"tmpx/task1/input/some_credential_file.txt"}
+            )
+        )
+    )
+    
+    local_user_config = UserConfig(
+        user_name="Test User",
+        user_id="test@example.com"
     )
     
     local_config = Config(
-        user_name="Test User",
-        user_id="test@example.com",
-        default_host="localhost",
-        default_project_path=str(remote_repo_path),
+        user=local_user_config,
         project=local_project_config,
         project_root=local_repo_path / "tmpx"
     )
     
-    remote_project_config = ProjectConfig.minimal(
-        remote_repo_path / "tmpx",
-        repo_name="tmpx",
-        host="localhost",
-        repo_path=remote_repo_path,
-        data_dirs=set(["input", "output", "frozen"]),
-        ignored_names=set([".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"]),
-        ignored_suffixes=set([".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"]),
-        ignored_paths=set(["tmpx/task1/input/some_credential_file.txt"])
+    remote_project_config = ProjectConfig(
+        transport="ssh",
+        ssh=SSHRepositoryConfig(
+            host="localhost",
+            path=remote_repo_path,
+            name="tmpx",
+            type="xfs"
+        ),
+        project=ProjectSettings(
+            data_dirs={"input", "output", "frozen"},
+            ignore=IgnoreSettings(
+                names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
+                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
+                paths={"tmpx/task1/input/some_credential_file.txt"}
+            )
+        )
+    )
+    
+    remote_user_config = UserConfig(
+        user_name="Test User",
+        user_id="test@example.com"
     )
     
     remote_config = Config(
-        user_name="Test User",
-        user_id="test@example.com",
-        default_host="localhost",
-        default_project_path=str(remote_repo_path),
+        user=remote_user_config,
         project=remote_project_config,
         project_root=remote_repo_path / "tmpx"
     )
