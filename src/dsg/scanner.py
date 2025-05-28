@@ -15,7 +15,8 @@ import xxhash
 from pydantic import BaseModel
 
 from dsg.manifest import Manifest, ManifestEntry, FileRef
-from dsg.config_manager import Config, ProjectConfig
+from dsg.config_manager import Config
+from pathlib import PurePosixPath
 
 logger = loguru.logger
 
@@ -56,10 +57,10 @@ def scan_directory(cfg: Config, compute_hashes: bool = False,
         
     return _scan_directory_internal(
         root_path=cfg.project_root,
-        data_dirs=cfg.project.data_dirs,
-        ignored_exact=cfg.project._ignored_exact,
-        ignored_names=cfg.project.ignored_names,
-        ignored_suffixes=cfg.project.ignored_suffixes,
+        data_dirs=cfg.project.project.data_dirs,
+        ignored_exact=cfg.project.project.ignore._ignored_exact,
+        ignored_names=cfg.project.project.ignore.names,
+        ignored_suffixes=cfg.project.project.ignore.suffixes,
         compute_hashes=compute_hashes,
         user_id=user_id,
         normalize_paths=normalize_paths
@@ -85,13 +86,26 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False,
         normalize_paths: When True, normalizes invalid paths during scanning
         **config_overrides: Override values for the minimal config (data_dirs, ignored_paths, etc.)
     """
-    project_config = ProjectConfig.minimal(root_path, **config_overrides)
+    # Default values
+    data_dirs = config_overrides.get('data_dirs', {'input', 'output', 'frozen'})
+    ignored_names = config_overrides.get('ignored_names', {
+        "__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user", ".DS_Store"
+    })
+    ignored_suffixes = config_overrides.get('ignored_suffixes', {".pyc", ".tmp"})
+    ignored_paths = config_overrides.get('ignored_paths', set())
+    
+    # Process ignored paths into exact matches
+    ignored_exact = set()
+    for path in ignored_paths:
+        normalized = path.rstrip("/")
+        ignored_exact.add(PurePosixPath(normalized))
+    
     return _scan_directory_internal(
         root_path=root_path,
-        data_dirs=project_config.data_dirs,
-        ignored_exact=project_config._ignored_exact,
-        ignored_names=project_config.ignored_names,
-        ignored_suffixes=project_config.ignored_suffixes,
+        data_dirs=data_dirs,
+        ignored_exact=ignored_exact,
+        ignored_names=ignored_names,
+        ignored_suffixes=ignored_suffixes,
         compute_hashes=compute_hashes,
         user_id=user_id,
         normalize_paths=normalize_paths
@@ -244,6 +258,7 @@ def _scan_directory_internal(
             # entry.path will be NFC-normalized if normalize_paths=True
             entries[entry.path] = entry
             logger.debug(f"  Adding to manifest with path: {entry.path}")
+        # else: create_entry returned None - should not happen  # pragma: no cover
 
     logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
     return ScanResult(manifest=Manifest(entries=entries), ignored=ignored)

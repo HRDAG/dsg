@@ -62,89 +62,126 @@ def test_parse_cli_overrides_with_ignored_paths():
     assert overrides["ignored_suffixes"] == {".bak", ".tmp"}
     assert overrides["ignored_paths"] == {"path1", "path2/subpath"}
 
-def test_list_directory_with_config_override_ignored_paths(test_data_directory, monkeypatch):
+def test_list_directory_with_config_override_ignored_paths(test_data_directory, tmp_path, monkeypatch):
     """Test list_directory with config and ignored_paths override."""
-    # Create a mock Config object with minimum required fields
-    mock_config = type('MockConfig', (), {
-        'project': type('MockProject', (), {
-            'ignored_names': set(),
-            'ignored_suffixes': set(),
-            'ignored_paths': set(),
-            '_ignored_exact': set()
-        })
-    })
+    project_root = test_data_directory["root"]
     
-    # Patch Config.load to return our mock config
-    monkeypatch.setattr(Config, "load", lambda path: mock_config)
+    # Create user config
+    user_config_dir = tmp_path / "userconfig"
+    user_config_dir.mkdir()
+    user_config_path = user_config_dir / "dsg.yml"
+    user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_config_dir))
     
-    # Create a real ScanResult to return
-    from dsg.scanner import ScanResult
-    mock_manifest = Manifest(entries={})
-    mock_result = ScanResult(manifest=mock_manifest, ignored=[])
-    monkeypatch.setattr("dsg.operations.scan_directory", lambda cfg: mock_result)
+    # Create project config that includes 'data' as a data directory
+    config_content = """
+transport: ssh
+ssh:
+  host: localhost
+  path: /tmp/test
+  name: test-repo
+  type: xfs
+project:
+  data_dirs:
+    - data
+  ignore:
+    paths: []  # Start with no ignored paths
+    names: []
+    suffixes: []
+"""
+    (project_root / ".dsgconfig.yml").write_text(config_content)
+    (project_root / ".dsg").mkdir(exist_ok=True)
     
-    # Call list_directory with ignored_paths
+    # First, list without overrides to see all files
+    result_no_overrides = list_directory(project_root)
+    assert "data/sample1.csv" not in result_no_overrides.ignored
+    assert "data/sample2.txt" not in result_no_overrides.ignored
+    
+    # Now list with ignored_paths override
     result = list_directory(
-        test_data_directory["root"], 
-        ignored_paths={"path1", "path2"}
+        project_root, 
+        ignored_paths={"data/sample1.csv", "data/sample2.txt"}
     )
     
-    # Verify ignored_paths was applied to config
-    assert mock_config.project.ignored_paths == {"path1", "path2"}
-    assert mock_config.project._ignored_exact == {PurePosixPath("path1"), PurePosixPath("path2")}
+    # Verify the paths were actually ignored in the scan results
+    assert "data/sample1.csv" in result.ignored
+    assert "data/sample2.txt" in result.ignored
 
-def test_list_directory_with_config_override_all(test_data_directory, monkeypatch):
+def test_list_directory_with_config_override_all(test_data_directory, tmp_path, monkeypatch):
     """Test list_directory with all config overrides."""
-    # Create a mock Config object with minimum required fields
-    mock_config = type('MockConfig', (), {
-        'project': type('MockProject', (), {
-            'ignored_names': set(),
-            'ignored_suffixes': set(),
-            'ignored_paths': set(),
-            '_ignored_exact': set()
-        })
-    })
+    # Create a real config setup
+    project_root = test_data_directory["root"]
     
-    # Patch Config.load to return our mock config
-    monkeypatch.setattr(Config, "load", lambda path: mock_config)
+    # Create user config
+    user_config_dir = tmp_path / "userconfig"
+    user_config_dir.mkdir()
+    user_config_path = user_config_dir / "dsg.yml"
+    user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_config_dir))
     
-    # Create a real ScanResult to return
-    from dsg.scanner import ScanResult
-    mock_manifest = Manifest(entries={})
-    mock_result = ScanResult(manifest=mock_manifest, ignored=[])
-    monkeypatch.setattr("dsg.operations.scan_directory", lambda cfg: mock_result)
+    # Create project config
+    config_content = """
+transport: ssh
+ssh:
+  host: localhost
+  path: /tmp/test
+  name: test-repo
+  type: xfs
+project:
+  data_dirs:
+    - data
+  ignore:
+    paths: []
+    names: []
+    suffixes: []
+"""
+    (project_root / ".dsgconfig.yml").write_text(config_content)
+    (project_root / ".dsg").mkdir(exist_ok=True)
     
     # Call list_directory with all overrides
     result = list_directory(
-        test_data_directory["root"], 
-        ignored_names={"name1.txt", "name2.txt"},
-        ignored_suffixes={".tmp", ".bak"},
-        ignored_paths={"path1", "path2"}
+        project_root,
+        ignored_names={"sample1.csv"},
+        ignored_suffixes={".txt"},
+        ignored_paths={"data/sample2.txt"}  # This will be redundant with .txt suffix
     )
     
-    # Verify all overrides were applied to config
-    assert mock_config.project.ignored_names == {"name1.txt", "name2.txt"}
-    assert mock_config.project.ignored_suffixes == {".tmp", ".bak"}
-    assert mock_config.project.ignored_paths == {"path1", "path2"}
-    assert mock_config.project._ignored_exact == {PurePosixPath("path1"), PurePosixPath("path2")}
+    # Verify files were ignored based on different rules
+    # sample1.csv should be ignored by name
+    assert "data/sample1.csv" in result.ignored
+    # sample2.txt should be ignored by suffix (and path)
+    assert "data/sample2.txt" in result.ignored
 
-def test_list_directory_with_debug(test_data_directory, monkeypatch, capsys):
+def test_list_directory_with_debug(test_data_directory, capsys):
     """Test list_directory with debug flag set."""
-    # Mock scan_directory_no_cfg to simulate config loading failure
-    from dsg.scanner import ScanResult
-    mock_manifest = Manifest(entries={})
-    mock_result = ScanResult(manifest=mock_manifest, ignored=[])
+    # Don't create a config file, so Config.load will fail
+    project_root = test_data_directory["root"]
     
-    # Make Config.load raise an exception
-    def mock_load_config(path):
-        raise ValueError("Config loading error for testing")
+    # Ensure no .dsgconfig.yml exists
+    config_file = project_root / ".dsgconfig.yml"
+    if config_file.exists():
+        config_file.unlink()
     
-    monkeypatch.setattr(Config, "load", mock_load_config)
-    monkeypatch.setattr("dsg.operations.scan_directory_no_cfg", lambda path, **kwargs: mock_result)
+    # Create an 'input' directory (one of the default data_dirs) with a file
+    input_dir = project_root / "input"
+    input_dir.mkdir(exist_ok=True)
+    (input_dir / "test.txt").write_text("test content")
     
     # Call list_directory with debug=True
-    result = list_directory(test_data_directory["root"], debug=True)
+    # This should fall back to scan_directory_no_cfg
+    result = list_directory(project_root, debug=True)
     
     # The function should fall back to scan_directory_no_cfg
     captured = capsys.readouterr()
-    assert "Config loading error for testing" in captured.out
+    assert "Could not load config" in captured.out
+    
+    # Verify we still got results using the minimal config
+    # Should find the file in the input directory
+    assert len(result.manifest.entries) > 0
+    assert "input/test.txt" in [str(p) for p in result.manifest.entries.keys()]

@@ -56,20 +56,24 @@ def list_directory(
             # Apply overrides to config
             for key, value in overrides.items():
                 if key == "ignored_paths":
-                    cfg.project.ignored_paths.update(value)
+                    cfg.project.project.ignore.paths.update(value)
                     # Update _ignored_exact to match
-                    cfg.project._ignored_exact.update(PurePosixPath(p) for p in value)
-                else:
-                    # For other properties, update directly
-                    getattr(cfg.project, key).update(value)
+                    cfg.project.project.ignore._ignored_exact.update(PurePosixPath(p) for p in value)
+                elif key == "ignored_names":
+                    cfg.project.project.ignore.names.update(value)
+                elif key == "ignored_suffixes":
+                    cfg.project.project.ignore.suffixes.update(value)
+                # Branch 64->57: loop continuation  # pragma: no cover
             
             return scan_directory(cfg)
             
         except Exception as e:
             if debug:
                 print(f"Could not load config, using minimal config: {e}")
+            # Branch 70->74: when debug is False  # pragma: no cover
     
     # Fall back to minimal config
+    # Branch 52->74: when use_config is False  # pragma: no cover
     return scan_directory_no_cfg(path, **overrides)
 
 

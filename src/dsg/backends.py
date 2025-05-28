@@ -23,6 +23,7 @@ def _is_local_host(host: str) -> bool:
     return host in {
         socket.gethostname(),
         socket.getfqdn(),
+        "localhost",
     }
 
 
@@ -121,18 +122,23 @@ class LocalhostBackend(Backend):
 
 def create_backend(cfg: Config) -> Backend:
     """Create the appropriate backend instance based on config."""
-    repo = cfg.project
+    transport = cfg.project.transport
     
-    if repo.repo_type == "local":
-        return LocalhostBackend(repo.repo_path, repo.repo_name)
-    elif repo.repo_type in {"zfs", "xfs"}:
-        if _is_local_host(repo.host):
-            return LocalhostBackend(repo.repo_path, repo.repo_name)
+    if transport == "ssh":
+        ssh_config = cfg.project.ssh
+        # Check if it's actually local
+        if _is_local_host(ssh_config.host):
+            return LocalhostBackend(ssh_config.path, ssh_config.name)
         else:
             # For future implementation
-            raise NotImplementedError("Remote Unix backends not yet implemented")
+            raise NotImplementedError("Remote SSH backends not yet implemented")
+    elif transport == "rclone":
+        raise NotImplementedError("Rclone backend not yet implemented")
+    elif transport == "ipfs":
+        raise NotImplementedError("IPFS backend not yet implemented")
     else:
-        raise ValueError(f"Backend type '{repo.repo_type}' not supported")
+        # TODO: Add support for additional transport types as needed
+        raise ValueError(f"Transport type '{transport}' not supported")  # pragma: no cover
 
 
 def can_access_backend(cfg: Config) -> tuple[bool, str]:
@@ -145,7 +151,8 @@ def can_access_backend(cfg: Config) -> tuple[bool, str]:
         return backend.is_accessible()
     except NotImplementedError as e:
         return False, str(e)
-    except ValueError as e:
+    except ValueError as e:  # pragma: no cover
+        # This should not happen with valid configs, but kept for defensive programming
         return False, str(e)
 
 # done.

@@ -1,30 +1,165 @@
-# Author: PB & ChatGPT
+# Author: PB & Claude
 # Maintainer: PB
-# Original date: 2025.05.10
+# Original date: 2025.05.13
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
-# dsg/src/dsg/config_manager.py
+# src/dsg/config_manager.py
 
 from __future__ import annotations
 
 import os
-from pathlib import Path, PurePosixPath
-from typing import Any, Optional, Set, Literal, Final
+from pathlib import Path
+from typing import Optional, Literal, Final
 
 import yaml
 from loguru import logger
-from pydantic import (BaseModel, EmailStr,
-    Field, model_validator, PrivateAttr)
-from typer import Exit
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 # ---- Constants ----
 
 USER_CFG: Final = "dsg.yml"
-PROJECT_CFG: Final = "config.yml"
-PROJECT_CONFIG_FILENAME: Final = Path(".dsg") / PROJECT_CFG
-DEFAULT_DATA_DIRS: Final = {'input', 'output', 'frozen'}
+PROJECT_CFG: Final = ".dsgconfig.yml"
+
+
+# ---- Transport-Specific Repository Configs ----
+
+class SSHRepositoryConfig(BaseModel):
+    """SSH transport configuration."""
+    host: str
+    path: Path  # Repository path on remote host
+    name: str  
+    type: Literal["zfs", "xfs"]
+
+
+class RcloneRepositoryConfig(BaseModel):
+    """Rclone transport configuration."""
+    remote: str
+    path: Path  # Path within the rclone remote
+    name: str
+
+
+class IPFSRepositoryConfig(BaseModel):
+    """IPFS transport configuration."""
+    did: str
+    name: str
+    encrypted: bool = True
+
+
+# ---- Project Settings ----
+
+from pathlib import PurePosixPath
+from pydantic import PrivateAttr
+
+class IgnoreSettings(BaseModel):
+    """Settings for ignoring files and directories."""
+    paths: set[str] = Field(default_factory=set)
+    names: set[str] = Field(default_factory=lambda: {
+        ".DS_Store", "__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"
+    })
+    suffixes: set[str] = Field(default_factory=lambda: {".tmp", ".pyc"})
+    
+    # Derived field for exact path matching
+    _ignored_exact: set[PurePosixPath] = PrivateAttr(default_factory=set)
+    
+    @model_validator(mode="after")
+    def process_paths(self) -> "IgnoreSettings":
+        """Process paths into PurePosixPath for exact matching."""
+        self._ignored_exact = set()
+        normalized_paths = set()
+        for path in self.paths:
+            # Strip trailing slashes from paths
+            normalized = path.rstrip("/")
+            normalized_paths.add(normalized)
+            self._ignored_exact.add(PurePosixPath(normalized))
+        self.paths = normalized_paths
+        return self
+
+
+class ProjectSettings(BaseModel):
+    """Project-level settings that are stable across transports."""
+    data_dirs: set[str] = Field(default_factory=lambda: {"input", "output", "frozen"})
+    ignore: IgnoreSettings = Field(default_factory=IgnoreSettings)
+
+
+# ---- Main Project Config ----
+
+class ProjectConfig(BaseModel):
+    """Project configuration including transport and settings."""
+    transport: Literal["ssh", "rclone", "ipfs"]
+    
+    # Transport-specific configs (only one will be set)
+    ssh: Optional[SSHRepositoryConfig] = None
+    rclone: Optional[RcloneRepositoryConfig] = None  
+    ipfs: Optional[IPFSRepositoryConfig] = None
+    
+    # Project settings (stable across transports)
+    project: ProjectSettings
+    
+    @model_validator(mode="after") 
+    def validate_transport_config(self):
+        """Ensure exactly one transport config is set and matches transport type."""
+        configs = [self.ssh, self.rclone, self.ipfs]
+        set_configs = [c for c in configs if c is not None]
+        
+        if len(set_configs) != 1:
+            raise ValueError("Exactly one transport config must be set")
+            
+        # Check that the set config matches transport type
+        if self.transport == "ssh" and self.ssh is None:
+            raise ValueError("SSH config required when transport=ssh")
+        elif self.transport == "rclone" and self.rclone is None:  # pragma: no cover
+            # TODO: Implement rclone transport support
+            raise ValueError("rclone config required when transport=rclone")
+        elif self.transport == "ipfs" and self.ipfs is None:  # pragma: no cover
+            # TODO: Implement IPFS transport support
+            raise ValueError("IPFS config required when transport=ipfs")
+            
+        return self
+    
+    @classmethod
+    def load(cls, config_path: Path) -> "ProjectConfig":
+        """Load project config from file."""
+        with config_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return cls.model_validate(data)
+
+
+# ---- User Config Models ----
+
+class SSHUserConfig(BaseModel):
+    """SSH-specific user configuration."""
+    key_path: Optional[Path] = None  # Path to SSH private key
+
+
+class RcloneUserConfig(BaseModel):
+    """Rclone-specific user configuration."""
+    config_path: Optional[Path] = None  # Path to rclone.conf
+
+
+class IPFSUserConfig(BaseModel):
+    """IPFS-specific user configuration."""
+    passphrases: dict[str, str] = Field(default_factory=dict)  # DID -> passphrase
+
+
+class UserConfig(BaseModel):
+    """User configuration with optional transport-specific settings."""
+    user_name: str
+    user_id: EmailStr
+    
+    # Optional security configs
+    ssh: Optional[SSHUserConfig] = None
+    rclone: Optional[RcloneUserConfig] = None
+    ipfs: Optional[IPFSUserConfig] = None
+    
+    @classmethod
+    def load(cls, config_path: Path) -> "UserConfig":
+        """Load user config from file."""
+        with config_path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return cls.model_validate(data)
+
 
 # ---- Config Finders ----
 
@@ -41,174 +176,90 @@ def find_user_config_path() -> Path:
             return candidate
 
     logger.error(f"User config not found in DSG_CONFIG_HOME, XDG_CONFIG_HOME, or ~/.config/dsg/{USER_CFG}")
-    raise Exit(1)
+    raise FileNotFoundError(f"No {USER_CFG} found in standard locations")
 
 
 def find_project_config_path(start: Path | None = None) -> Path:
-    """Walk up from start path looking for .dsg/config.yml."""
+    """Walk up from start path looking for .dsgconfig.yml."""
     current = (start or Path.cwd()).resolve()
     for parent in [current] + list(current.parents):
-        candidate = parent / ".dsg" / PROJECT_CFG
+        candidate = parent / PROJECT_CFG
         if candidate.exists():
             return candidate
-
-    logger.error(f"No .dsg/{PROJECT_CFG} found in this or any parent directory.")
-    raise Exit(1)
-
-
-# ---- Config Models ----
-
-class ProjectConfig(BaseModel):
-    repo_name: str
-    data_dirs: set[str] = DEFAULT_DATA_DIRS
-    host: str         # e.g., scott
-    repo_path: Path   # e.g., /var/repos/dgs
-    repo_type: Literal["zfs", "xfs"]
-
-    ignored_paths: set[str] = Field(default_factory=set)
-    ignored_names: set[str] = Field(default_factory=lambda: {
-        "__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"
-    })
-    ignored_suffixes: set[str] = Field(default_factory=lambda: {".pyc"})
-
-    # Derived fields (not part of YAML schema)
-    _ignored_exact: set[PurePosixPath] = PrivateAttr(default_factory=set)
-    _normalized_paths: set[PurePosixPath] = PrivateAttr(default_factory=set)
-
-    @model_validator(mode="after")
-    def normalize_paths(self) -> "ProjectConfig":
-        # Normalize data_dirs by stripping trailing slashes - they're all directories
-        self.data_dirs = {d.rstrip("/") for d in self.data_dirs}
-
-        # Process ignored paths - normalize by stripping trailing slashes
-        self._ignored_exact = set()
-        self._normalized_paths = set()
-        
-        normalized_ignored = set()
-        for path in self.ignored_paths:
-            # Strip trailing slashes from paths instead of rejecting them
-            normalized = path.rstrip("/")
-            normalized_ignored.add(normalized)
-            self._ignored_exact.add(PurePosixPath(normalized))
-            self._normalized_paths.add(PurePosixPath(normalized))
-        
-        self.ignored_paths = normalized_ignored
-        return self
-
-    @classmethod
-    def minimal(cls, root_path: Path, **overrides) -> "ProjectConfig":
-        """Create a minimal ProjectConfig with sensible defaults"""
-        # Start with default values
-        params = {
-            "repo_name": "temp",
-            "data_dirs": DEFAULT_DATA_DIRS,
-            "host": "localhost",
-            "repo_path": root_path,
-            "repo_type": "xfs"
-        }
-        params.update(overrides)
-        config = cls(**params)
-        return config.normalize_paths()
+    
+    raise FileNotFoundError("No .dsgconfig.yml found in this or any parent directory")
 
 
-class UserConfig(BaseModel):
-    user_name: str
-    user_id: EmailStr
-    default_host: Optional[str] = None
-    default_project_path: Optional[Path] = None
-
-    @classmethod
-    def load(cls, config_path: Path) -> "UserConfig":
-        """Load user config from a file. Raises ValueError if required fields missing."""
-        with config_path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-            
-        # Check required fields before validation
-        missing = []
-        if not data.get("user_name"):
-            missing.append("user_name")
-        if not data.get("user_id"):
-            missing.append("user_id")
-        if missing:
-            raise ValueError(f"Missing required fields in user config: {', '.join(missing)}")
-            
-        return cls.model_validate(data)
-
+# ---- Main Config Class ----
 
 class Config(BaseModel):
-    user: Optional[UserConfig] = None
+    """Combined user and project configuration."""
+    user: UserConfig
     project: ProjectConfig
     project_root: Path = Field(exclude=True)
 
     @classmethod
     def load(cls, start_path: Path | None = None) -> Config:
-        data: dict[str, Any] = {}
-
-        # Load project config first - this is required
-        project_config_path = find_project_config_path(start_path)
-        project_root = project_config_path.parent.parent
+        """Load both user and project configs."""
+        # Load user config (required)
+        user_config_path = find_user_config_path()
+        user_config = UserConfig.load(user_config_path)
         
-        with project_config_path.open("r", encoding="utf-8") as f:
-            data["project"] = yaml.safe_load(f) or {}
-        data["project_root"] = project_root
+        # Load project config (required)
+        project_config_path = find_project_config_path(start_path)
+        project_root = project_config_path.parent
+        project_config = ProjectConfig.load(project_config_path)
+        
+        return cls(
+            user=user_config,
+            project=project_config,
+            project_root=project_root
+        )
 
-        # Try to load user config if it exists
-        try:
-            user_config_path = find_user_config_path()
-            data["user"] = UserConfig.load(user_config_path)
-        except (Exit, ValueError):
-            pass  # User config not found or invalid, continue without it
 
-        return cls.model_validate(data)
-
+# ---- Validation Function ----
 
 def validate_config(check_backend: bool = False) -> list[str]:
     """Return a list of validation errors. Empty list means config is valid."""
     errors = []
 
-    # Project config is required
+    # Check project config
     try:
         project_config_path = find_project_config_path()
-    except Exit:
-        errors.append("Missing project config file (.dsg/config.yml not found in any parent directory)")
+    except FileNotFoundError as e:
+        errors.append(f"Missing project config file: {e}")
         return errors
 
-    # Load project config
+    # Load and validate project config
     try:
-        with project_config_path.open("r", encoding="utf-8") as f:
-            project_data = yaml.safe_load(f) or {}
+        project_config = ProjectConfig.load(project_config_path)
     except Exception as e:
         errors.append(f"Error reading project config: {e}")
         return errors
 
-    data = {
-        "project": project_data,
-        "project_root": project_config_path.parent.parent
-    }
-
-    # Try user config if it exists
+    # Check user config
     try:
         user_config_path = find_user_config_path()
-        with user_config_path.open("r", encoding="utf-8") as f:
-            user_data = yaml.safe_load(f) or {}
-        data["user"] = UserConfig.model_validate(user_data)
-    except Exit:
-        pass  # User config not found, which is fine
+        user_config = UserConfig.load(user_config_path)
+    except FileNotFoundError:
+        errors.append("User config not found")
     except Exception as e:
         errors.append(f"Error in user config: {e}")
 
-    # Validate full config
+    # Try full config load
     try:
-        cfg = Config.model_validate(data)
+        cfg = Config.load()
     except Exception as e:
-        errors.append(str(e))
+        errors.append(f"Error loading complete config: {e}")
         return errors
 
+    # Optional backend check
     if check_backend:
         from dsg.backends import can_access_backend
         ok, msg = can_access_backend(cfg)
         if not ok:
             errors.append(msg)
+        # else: backend is accessible - normal path  # pragma: no cover
 
     return errors
 

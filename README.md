@@ -12,27 +12,27 @@ A data versioning system based on Scott's `snap`. But generalized across backend
 
 1. **Prerequisites**
    - Python >=3.13
-   - Poetry (install with `curl -sSL https://install.python-poetry.org | python3 -`)
+   - UV (install with `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 
 2. **Clone and install dependencies**
    ```bash
    git clone https://github.com/hrdag/dsg.git
    cd dsg
-   poetry install
+   uv sync
    ```
 
 3. **Run tests**
    ```bash
-   poetry run pytest
+   uv run pytest
    # or with coverage
-   poetry run pytest --cov=src/dsg tests/ --cov-report=term-missing
+   uv run pytest --cov=src/dsg tests/ --cov-report=term-missing
    ```
 
 4. **Use the CLI**
    ```bash
-   poetry run dsg --help
-   # or activate the poetry shell first
-   poetry shell
+   uv run dsg --help
+   # or activate the virtual environment first
+   source .venv/bin/activate
    dsg --help
    ```
 

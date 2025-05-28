@@ -9,6 +9,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+htmlcov/
 .Python
 build/
 develop-eggs/
@@ -167,4 +168,5 @@ cython_debug/
 output
 
 **/.claude/settings.local.json
+tmp/
 CLAUDE.md

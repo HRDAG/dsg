@@ -1,17 +1,21 @@
-# Author: PB & ChatGPT
+# Author: PB & Claude
 # Maintainer: PB
 # Original date: 2025.05.10
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
-# dsg/tests/test_backends.py
+# tests/test_backends.py
 
 import pytest
 import socket
 import subprocess
 import os
 from pathlib import Path
-from dsg.config_manager import Config, ProjectConfig
+from dsg.config_manager import (
+    Config, ProjectConfig, UserConfig,
+    SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
+    SSHUserConfig
+)
 from dsg.backends import (
     can_access_backend, 
     _is_local_host, 
@@ -25,19 +29,36 @@ from unittest.mock import patch, MagicMock
 @pytest.fixture
 def base_config(tmp_path):
     """Create standard config for backend testing"""
-    project = ProjectConfig(
-        repo_name="KO",
-        repo_type="zfs",
+    ssh_config = SSHRepositoryConfig(
         host=socket.gethostname(),
-        repo_path=tmp_path,
-        data_dirs={"input/", "output/", "frozen/"},
-        ignored_paths={"graphs/"}
+        path=tmp_path,
+        name="KO",
+        type="zfs"
     )
-    cfg = Config(
+    ignore_settings = IgnoreSettings(
+        paths={"graphs/"},
+        names=set(),
+        suffixes=set()
+    )
+    project_settings = ProjectSettings(
+        data_dirs={"input", "output", "frozen"},
+        ignore=ignore_settings
+    )
+    project = ProjectConfig(
+        transport="ssh",
+        ssh=ssh_config,
+        project=project_settings
+    )
+    
+    user_ssh = SSHUserConfig()
+    user = UserConfig(
         user_name="Clayton Chiclitz",
         user_id="clayton@yoyodyne.net",
-        default_host="localhost",
-        default_project_path="/var/repos/dgs",
+        ssh=user_ssh
+    )
+    
+    cfg = Config(
+        user=user,
         project=project,
         project_root=tmp_path
     )
@@ -55,8 +76,21 @@ def local_repo_setup(tmp_path):
     test_file = repo_dir / "test_file.txt"
     test_file.write_text("This is a test file")
     
-    config_file = dsg_dir / "config.yml"
-    config_file.write_text("repo_name: test_repo\nrepo_type: local")
+    # Create new-style config file in repo root
+    config_file = repo_dir / ".dsgconfig.yml"
+    config_file.write_text("""
+transport: ssh
+ssh:
+  host: localhost
+  path: /tmp/test
+  name: test_repo
+  type: local
+project:
+  data_dirs:
+    - input
+  ignore:
+    paths: []
+""")
     
     return {
         "repo_path": tmp_path,
@@ -105,44 +139,46 @@ def test_backend_access_local_success(base_config, tmp_path):
 
 def test_backend_access_unsupported_type(base_config):
     """Verify proper error for unsupported backend types"""
-    base_config.project.repo_type = "s3"
+    # In the new design, unsupported types are caught at config validation
+    # This test now verifies transport types not yet implemented
+    base_config.project.transport = "ipfs"  # IPFS backend not implemented
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "not supported" in msg
+    assert "not supported" in msg or "not yet implemented" in msg
 
 
 def test_remote_backend_valid(base_config):
     """Test remote backend path (currently not implemented)"""
-    base_config.project.host = "remote-host"
+    base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "Remote Unix backends not yet implemented" in msg
+    assert "not yet implemented" in msg
 
 
 def test_remote_backend_invalid(base_config):
     """Test remote backend with invalid repo (currently not implemented)"""
-    base_config.project.host = "remote-host"
+    base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "Remote Unix backends not yet implemented" in msg
+    assert "not yet implemented" in msg
 
 
 def test_remote_backend_ssh_error(base_config):
     """Test remote backend with SSH error (currently not implemented)"""
-    base_config.project.host = "remote-host"
+    base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "Remote Unix backends not yet implemented" in msg
+    assert "not yet implemented" in msg
 
 
 def test_localhost_backend_creation(base_config):
     """Test creating a localhost backend from configuration"""
-    base_config.project.repo_type = "local"
+    base_config.project.ssh.type = "local"
     backend = create_backend(base_config)
     
     assert isinstance(backend, LocalhostBackend)
-    assert backend.repo_path == base_config.project.repo_path
-    assert backend.repo_name == base_config.project.repo_name
+    assert backend.repo_path == base_config.project.ssh.path
+    assert backend.repo_name == base_config.project.ssh.name
 
 
 def test_localhost_backend_is_accessible(local_repo_setup):
@@ -237,7 +273,9 @@ def test_localhost_backend_copy_file(local_repo_setup, tmp_path):
 
 def test_create_backend_local_type(base_config):
     """Test explicit local backend creation"""
-    base_config.project.repo_type = "local"
+    # In new design, 'local' is not a valid type - use 'xfs' with localhost
+    base_config.project.ssh.type = "xfs"
+    base_config.project.ssh.host = socket.gethostname()
     backend = create_backend(base_config)
     assert isinstance(backend, LocalhostBackend)
 
@@ -251,15 +289,16 @@ def test_create_backend_local_host(base_config):
 
 def test_create_backend_remote_host(base_config):
     """Test remote host backend creation (not implemented)"""
-    base_config.project.host = "remote-host"
+    base_config.project.ssh.host = "remote-host"
     with pytest.raises(NotImplementedError):
         create_backend(base_config)
 
 
 def test_create_backend_unsupported_type(base_config):
     """Test unsupported backend type handling"""
-    base_config.project.repo_type = "s3"
-    with pytest.raises(ValueError):
+    # Change transport to something not implemented
+    base_config.project.transport = "rclone"
+    with pytest.raises(NotImplementedError, match="Rclone backend not yet implemented"):
         create_backend(base_config)
 
 # done.
