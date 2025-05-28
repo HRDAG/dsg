@@ -5,19 +5,22 @@ This module contains functions for handling filesystem operations during migrati
 including filename normalization and directory tree traversal.
 """
 
+# Python 3.13+ - use built-in generics (list[str], dict[str, Any], etc.)
 import os
 import json
 import unicodedata
 import tempfile
 import subprocess
+import time
 from pathlib import Path
-from typing import Any, Dict, Set, Tuple, Optional
+from typing import Any, Optional
 
 from loguru import logger
 from src.dsg.filename_validation import validate_path, normalize_path
+from scripts.migration.migration_logger import MigrationLogger
 
 
-def read_json_file(file_path: Path) -> Dict[str, Any]:
+def read_json_file(file_path: Path) -> dict[str, Any]:
     """
     Read and parse a JSON file.
     
@@ -31,7 +34,7 @@ def read_json_file(file_path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
-def write_json_file(file_path: Path, data: Dict[str, Any]) -> None:
+def write_json_file(file_path: Path, data: dict[str, Any]) -> None:
     """
     Write data to a JSON file.
     
@@ -46,7 +49,7 @@ def write_json_file(file_path: Path, data: Dict[str, Any]) -> None:
         json.dump(data, f, indent=2)
 
 
-def normalize_filename(path: Path) -> Tuple[Path, bool]:
+def normalize_filename(path: Path) -> tuple[Path, bool]:
     """
     Normalize a path to NFC form component by component. If the path changes, rename the file.
     
@@ -89,21 +92,29 @@ def normalize_filename(path: Path) -> Tuple[Path, bool]:
         return path, False
 
 
-def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
+def normalize_directory_tree(base_path: Path, 
+                           migration_logger: Optional[MigrationLogger] = None) -> set[tuple[str, str]]:
     """
     Normalize all filenames and directories in a directory tree.
     
     Uses os.walk with topdown=True to process directories before their contents,
     modifying dirnames in-place to ensure proper traversal after renames.
     
+    Also removes files with invalid names that cannot be normalized.
+    
     Args:
         base_path: Base directory to start normalization from
+        migration_logger: Optional MigrationLogger instance for detailed logging
         
     Returns: 
-        Set of (original_relative_path, normalized_relative_path) tuples
+        set of (original_relative_path, normalized_relative_path) tuples
         for files and directories that were renamed
     """
     renamed_paths = set()
+    removed_paths = []
+    
+    # Track current snapshot for logging
+    current_snapshot = base_path.name if base_path.name.startswith('s') else None
     
     # os.walk with topdown=True lets us modify dirnames in-place
     for root, dirnames, filenames in os.walk(str(base_path), topdown=True):
@@ -116,6 +127,77 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
             # Skip hidden directories
             if dirname.startswith('.'):
                 continue
+            
+            # Check if it's a broken symlink
+            if dir_path.is_symlink() and not dir_path.exists():
+                logger.warning(f"Broken directory symlink found: {dir_path} -> {os.readlink(dir_path)}")
+                # Remove from dirnames to prevent traversal
+                dirnames.remove(dirname)
+                try:
+                    subprocess.run(["sudo", "rm", "-f", str(dir_path)], check=True)
+                    removed_paths.append(str(dir_path.relative_to(base_path)))
+                    logger.info(f"Removed broken directory symlink: {dir_path}")
+                    
+                    # Log to migration logger
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "remove_broken_symlink",
+                            path=str(dir_path.relative_to(base_path)),
+                            target=str(os.readlink(dir_path)),
+                            reason="broken_symlink",
+                            snapshot=current_snapshot,
+                            status="success"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to remove broken directory symlink {dir_path}: {e}")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="remove_broken_symlink",
+                            path=str(dir_path.relative_to(base_path)),
+                            error=str(e),
+                            snapshot=current_snapshot
+                        )
+                continue
+            
+            # First check if the directory name is valid
+            is_valid, validation_msg = validate_path(dirname)
+            if not is_valid:
+                # Check if the only issue is NFC normalization
+                if "is not NFC-normalized" in validation_msg:
+                    # Don't remove - let it be normalized below
+                    logger.debug(f"Directory '{dirname}' needs NFC normalization")
+                else:
+                    logger.warning(f"Invalid directory name '{dirname}' in {root_path}: {validation_msg}")
+                    # Remove invalid directory from traversal
+                    dirnames.remove(dirname)
+                    # Try to remove the directory
+                    try:
+                        invalid_dir = root_path / dirname
+                        subprocess.run(["sudo", "rm", "-rf", str(invalid_dir)], check=True)
+                        removed_paths.append(str(invalid_dir.relative_to(base_path)))
+                        logger.info(f"Removed invalid directory: {invalid_dir}")
+                        
+                        # Log to migration logger
+                        if migration_logger:
+                            migration_logger.log_operation(
+                                "remove_invalid_directory",
+                                path=str(invalid_dir.relative_to(base_path)),
+                                reason=validation_msg,
+                                snapshot=current_snapshot,
+                                status="success"
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to remove invalid directory {invalid_dir}: {e}")
+                        if migration_logger:
+                            migration_logger.log_operation(
+                                "error",
+                                action="remove_invalid_directory",
+                                path=str(invalid_dir.relative_to(base_path)),
+                                error=str(e),
+                                snapshot=current_snapshot
+                            )
+                    continue
                 
             # Normalize the directory name component-wise
             normalized_name, was_modified = normalize_path(Path(dirname))
@@ -139,9 +221,21 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
                 # Don't rename if destination exists
                 if new_path.exists():
                     logger.warning(f"Cannot rename {old_path} to {new_path}: destination already exists")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="normalize_directory",
+                            old_path=str(old_path.relative_to(base_path)),
+                            new_path=str(new_path.relative_to(base_path)),
+                            error="destination_exists",
+                            snapshot=current_snapshot
+                        )
                     continue
                 
                 try:
+                    # Detect Unicode form before normalization
+                    old_form = "NFD" if unicodedata.normalize('NFD', dirname) == dirname else "NFC"
+                    
                     # Rename the directory 
                     old_path.rename(new_path)
                     logger.info(f"Renamed directory {old_path} to {new_path}")
@@ -155,8 +249,28 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
                     new_rel = str(new_path.relative_to(base_path))
                     renamed_paths.add((old_rel, new_rel))
                     
+                    # Log to migration logger
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "normalize_directory",
+                            old_path=old_rel,
+                            new_path=new_rel,
+                            unicode_form={"old": old_form, "new": "NFC"},
+                            snapshot=current_snapshot,
+                            status="success"
+                        )
+                    
                 except Exception as e:
                     logger.error(f"Failed to rename directory {old_path} to {new_path}: {e}")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="normalize_directory",
+                            old_path=str(old_path.relative_to(base_path)),
+                            new_path=str(new_path.relative_to(base_path)),
+                            error=str(e),
+                            snapshot=current_snapshot
+                        )
         
         # Now process files in the current directory
         for filename in filenames:
@@ -165,6 +279,73 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
             # Skip hidden files
             if filename.startswith('.'):
                 continue
+            
+            # Check if it's a broken symlink
+            if file_path.is_symlink() and not file_path.exists():
+                logger.warning(f"Broken symlink found: {file_path} -> {os.readlink(file_path)}")
+                try:
+                    subprocess.run(["sudo", "rm", "-f", str(file_path)], check=True)
+                    removed_paths.append(str(file_path.relative_to(base_path)))
+                    logger.info(f"Removed broken symlink: {file_path}")
+                    
+                    # Log to migration logger
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "remove_broken_symlink",
+                            path=str(file_path.relative_to(base_path)),
+                            target=str(os.readlink(file_path)),
+                            reason="broken_symlink",
+                            snapshot=current_snapshot,
+                            status="success"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to remove broken symlink {file_path}: {e}")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="remove_broken_symlink",
+                            path=str(file_path.relative_to(base_path)),
+                            error=str(e),
+                            snapshot=current_snapshot
+                        )
+                continue
+            
+            # First check if the filename is valid
+            is_valid, validation_msg = validate_path(filename)
+            if not is_valid:
+                # Check if the only issue is NFC normalization
+                if "is not NFC-normalized" in validation_msg:
+                    # Don't remove - let it be normalized below
+                    logger.debug(f"File '{filename}' needs NFC normalization")
+                else:
+                    logger.warning(f"Invalid filename '{filename}' in {root_path}: {validation_msg}")
+                    # Remove invalid file
+                    try:
+                        invalid_file = root_path / filename
+                        subprocess.run(["sudo", "rm", "-f", str(invalid_file)], check=True)
+                        removed_paths.append(str(invalid_file.relative_to(base_path)))
+                        logger.info(f"Removed invalid file: {invalid_file}")
+                        
+                        # Log to migration logger
+                        if migration_logger:
+                            migration_logger.log_operation(
+                                "remove_invalid_file",
+                                path=str(invalid_file.relative_to(base_path)),
+                                reason=validation_msg,
+                                snapshot=current_snapshot,
+                                status="success"
+                            )
+                    except Exception as e:
+                        logger.error(f"Failed to remove invalid file {invalid_file}: {e}")
+                        if migration_logger:
+                            migration_logger.log_operation(
+                                "error",
+                                action="remove_invalid_file",
+                                path=str(invalid_file.relative_to(base_path)),
+                                error=str(e),
+                                snapshot=current_snapshot
+                            )
+                    continue
                 
             # Normalize the filename component-wise
             normalized_name, was_modified = normalize_path(Path(filename))
@@ -188,9 +369,21 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
                 # Don't rename if destination exists
                 if new_path.exists():
                     logger.warning(f"Cannot rename {old_path} to {new_path}: destination already exists")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="normalize_file",
+                            old_path=str(old_path.relative_to(base_path)),
+                            new_path=str(new_path.relative_to(base_path)),
+                            error="destination_exists",
+                            snapshot=current_snapshot
+                        )
                     continue
                 
                 try:
+                    # Detect Unicode form before normalization
+                    old_form = "NFD" if unicodedata.normalize('NFD', filename) == filename else "NFC"
+                    
                     # Rename the file
                     old_path.rename(new_path)
                     logger.info(f"Renamed file {old_path} to {new_path}")
@@ -201,8 +394,46 @@ def normalize_directory_tree(base_path: Path) -> Set[Tuple[str, str]]:
                     new_rel = str(new_path.relative_to(base_path))
                     renamed_paths.add((old_rel, new_rel))
                     
+                    # Log to migration logger
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "normalize_file",
+                            old_path=old_rel,
+                            new_path=new_rel,
+                            unicode_form={"old": old_form, "new": "NFC"},
+                            snapshot=current_snapshot,
+                            status="success"
+                        )
+                    
                 except Exception as e:
                     logger.error(f"Failed to rename file {old_path} to {new_path}: {e}")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="normalize_file",
+                            old_path=str(old_path.relative_to(base_path)),
+                            new_path=str(new_path.relative_to(base_path)),
+                            error=str(e),
+                            snapshot=current_snapshot
+                        )
+    
+    # Log summary of removed paths
+    if removed_paths:
+        logger.warning(f"Removed {len(removed_paths)} files/directories with invalid names")
+        # Write removed paths to a manifest file in log directory
+        log_dir = Path.home() / "tmp/log"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = log_dir / f"removed-invalid-{base_path.name}-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        try:
+            with open(manifest_path, 'w') as f:
+                f.write("# Files and directories removed due to invalid names\n")
+                f.write(f"# Base path: {base_path}\n")
+                f.write(f"# Removal time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                for path in sorted(removed_paths):
+                    f.write(f"{path}\n")
+            logger.info(f"Wrote manifest of removed files to: {manifest_path}")
+        except Exception as e:
+            logger.error(f"Failed to write removal manifest: {e}")
     
     return renamed_paths
 
