@@ -139,7 +139,7 @@ def verify_normalization(normalized_dir):
 def test_normalize_directory_tree(test_directory):
     """Test if normalize_directory_tree correctly normalizes paths in a directory."""
     # Apply normalize_directory_tree to the test directory
-    renamed_paths = normalize_directory_tree(test_directory)
+    renamed_paths, removed_count = normalize_directory_tree(test_directory)
     
     # There should be some renamed paths
     assert len(renamed_paths) > 0, "No paths were renamed during normalization"

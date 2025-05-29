@@ -93,7 +93,7 @@ def normalize_filename(path: Path) -> tuple[Path, bool]:
 
 
 def normalize_directory_tree(base_path: Path, 
-                           migration_logger: Optional[MigrationLogger] = None) -> set[tuple[str, str]]:
+                           migration_logger: Optional[MigrationLogger] = None) -> tuple[set[tuple[str, str]], int]:
     """
     Normalize all filenames and directories in a directory tree.
     
@@ -107,8 +107,9 @@ def normalize_directory_tree(base_path: Path,
         migration_logger: Optional MigrationLogger instance for detailed logging
         
     Returns: 
-        set of (original_relative_path, normalized_relative_path) tuples
-        for files and directories that were renamed
+        Tuple of (renamed_paths, removed_count) where:
+        - renamed_paths: set of (original_relative_path, normalized_relative_path) tuples
+        - removed_count: number of files/directories removed due to invalid names
     """
     renamed_paths = set()
     removed_paths = []
@@ -128,37 +129,75 @@ def normalize_directory_tree(base_path: Path,
             if dirname.startswith('.'):
                 continue
             
-            # Check if it's a broken symlink
-            if dir_path.is_symlink() and not dir_path.exists():
-                logger.warning(f"Broken directory symlink found: {dir_path} -> {os.readlink(dir_path)}")
-                # Remove from dirnames to prevent traversal
-                dirnames.remove(dirname)
+            # Check if it's a symlink (broken or pointing outside repo)
+            if dir_path.is_symlink():
                 try:
-                    subprocess.run(["sudo", "rm", "-f", str(dir_path)], check=True)
-                    removed_paths.append(str(dir_path.relative_to(base_path)))
-                    logger.info(f"Removed broken directory symlink: {dir_path}")
-                    
-                    # Log to migration logger
-                    if migration_logger:
-                        migration_logger.log_operation(
-                            "remove_broken_symlink",
-                            path=str(dir_path.relative_to(base_path)),
-                            target=str(os.readlink(dir_path)),
-                            reason="broken_symlink",
-                            snapshot=current_snapshot,
-                            status="success"
+                    # Try to read the symlink target, use sudo if needed
+                    try:
+                        target = os.readlink(dir_path)
+                    except PermissionError:
+                        # Try with sudo
+                        result = subprocess.run(
+                            ["sudo", "readlink", str(dir_path)], 
+                            capture_output=True, 
+                            text=True, 
+                            check=True
                         )
+                        target = result.stdout.strip()
+                    remove_symlink = False
+                    reason = ""
+                    
+                    # Check if broken or inaccessible
+                    try:
+                        exists = dir_path.exists()
+                    except PermissionError:
+                        # If we can't even check if it exists, it's problematic
+                        remove_symlink = True
+                        reason = "inaccessible_symlink"
+                        logger.warning(f"Inaccessible directory symlink found: {dir_path} -> {target}")
+                    else:
+                        if not exists:
+                            remove_symlink = True
+                            reason = "broken_symlink"
+                            logger.warning(f"Broken directory symlink found: {dir_path} -> {target}")
+                    
+                    # Check if absolute path pointing outside repository
+                    if not remove_symlink and os.path.isabs(target):
+                        # Absolute symlinks should not point outside the repository
+                        if not target.startswith(str(base_path)):
+                            remove_symlink = True
+                            reason = "absolute_symlink_outside_repo"
+                            logger.warning(f"Absolute directory symlink pointing outside repo: {dir_path} -> {target}")
+                    
+                    if remove_symlink:
+                        # Remove from dirnames to prevent traversal
+                        dirnames.remove(dirname)
+                        subprocess.run(["sudo", "rm", "-f", str(dir_path)], check=True)
+                        removed_paths.append(str(dir_path.relative_to(base_path)))
+                        logger.info(f"Removed {reason}: {dir_path}")
+                        
+                        # Log to migration logger
+                        if migration_logger:
+                            migration_logger.log_operation(
+                                f"remove_{reason}",
+                                path=str(dir_path.relative_to(base_path)),
+                                target=target,
+                                reason=reason,
+                                snapshot=current_snapshot,
+                                status="success"
+                            )
+                        continue
                 except Exception as e:
-                    logger.error(f"Failed to remove broken directory symlink {dir_path}: {e}")
+                    logger.error(f"Failed to handle directory symlink {dir_path}: {e}")
                     if migration_logger:
                         migration_logger.log_operation(
                             "error",
-                            action="remove_broken_symlink",
+                            action="handle_directory_symlink",
                             path=str(dir_path.relative_to(base_path)),
                             error=str(e),
                             snapshot=current_snapshot
                         )
-                continue
+                    continue
             
             # First check if the directory name is valid
             is_valid, validation_msg = validate_path(dirname)
@@ -280,71 +319,109 @@ def normalize_directory_tree(base_path: Path,
             if filename.startswith('.'):
                 continue
             
-            # Check if it's a broken symlink
-            if file_path.is_symlink() and not file_path.exists():
-                logger.warning(f"Broken symlink found: {file_path} -> {os.readlink(file_path)}")
+            # First check if the filename is valid (including *)
+            is_valid, validation_msg = validate_path(filename)
+            if not is_valid and "is not NFC-normalized" not in validation_msg:
+                logger.warning(f"Invalid filename '{filename}' in {root_path}: {validation_msg}")
+                # Remove invalid file (even if it's a symlink)
                 try:
                     subprocess.run(["sudo", "rm", "-f", str(file_path)], check=True)
                     removed_paths.append(str(file_path.relative_to(base_path)))
-                    logger.info(f"Removed broken symlink: {file_path}")
+                    logger.info(f"Removed invalid file: {file_path}")
                     
                     # Log to migration logger
                     if migration_logger:
                         migration_logger.log_operation(
-                            "remove_broken_symlink",
+                            "remove_invalid_file",
                             path=str(file_path.relative_to(base_path)),
-                            target=str(os.readlink(file_path)),
-                            reason="broken_symlink",
+                            reason=validation_msg,
                             snapshot=current_snapshot,
                             status="success"
                         )
                 except Exception as e:
-                    logger.error(f"Failed to remove broken symlink {file_path}: {e}")
+                    logger.error(f"Failed to remove invalid file {file_path}: {e}")
                     if migration_logger:
                         migration_logger.log_operation(
                             "error",
-                            action="remove_broken_symlink",
+                            action="remove_invalid_file",
                             path=str(file_path.relative_to(base_path)),
                             error=str(e),
                             snapshot=current_snapshot
                         )
                 continue
             
-            # First check if the filename is valid
-            is_valid, validation_msg = validate_path(filename)
-            if not is_valid:
-                # Check if the only issue is NFC normalization
-                if "is not NFC-normalized" in validation_msg:
-                    # Don't remove - let it be normalized below
-                    logger.debug(f"File '{filename}' needs NFC normalization")
-                else:
-                    logger.warning(f"Invalid filename '{filename}' in {root_path}: {validation_msg}")
-                    # Remove invalid file
+            # Check if it's a symlink (broken or pointing outside repo)
+            if file_path.is_symlink():
+                try:
+                    # Try to read the symlink target, use sudo if needed
                     try:
-                        invalid_file = root_path / filename
-                        subprocess.run(["sudo", "rm", "-f", str(invalid_file)], check=True)
-                        removed_paths.append(str(invalid_file.relative_to(base_path)))
-                        logger.info(f"Removed invalid file: {invalid_file}")
+                        target = os.readlink(file_path)
+                    except PermissionError:
+                        # Try with sudo
+                        result = subprocess.run(
+                            ["sudo", "readlink", str(file_path)], 
+                            capture_output=True, 
+                            text=True, 
+                            check=True
+                        )
+                        target = result.stdout.strip()
+                    remove_symlink = False
+                    reason = ""
+                    
+                    # Check if broken or inaccessible
+                    try:
+                        exists = file_path.exists()
+                    except PermissionError:
+                        # If we can't even check if it exists, it's problematic
+                        remove_symlink = True
+                        reason = "inaccessible_symlink"
+                        logger.warning(f"Inaccessible symlink found: {file_path} -> {target}")
+                    else:
+                        if not exists:
+                            remove_symlink = True
+                            reason = "broken_symlink"
+                            logger.warning(f"Broken symlink found: {file_path} -> {target}")
+                    
+                    # Check if absolute path pointing outside repository
+                    if not remove_symlink and os.path.isabs(target):
+                        # Absolute symlinks should not point outside the repository
+                        # base_path might be a snapshot like /var/repos/btrsnap/PR-Km0-norm/s128
+                        # so we need to check against the repository root
+                        repo_root = base_path
+                        while repo_root.parent != repo_root and not repo_root.name.endswith('-norm'):
+                            repo_root = repo_root.parent
+                        
+                        if not target.startswith(str(repo_root)):
+                            remove_symlink = True
+                            reason = "absolute_symlink_outside_repo"
+                            logger.warning(f"Absolute symlink pointing outside repo: {file_path} -> {target}")
+                    
+                    if remove_symlink:
+                        subprocess.run(["sudo", "rm", "-f", str(file_path)], check=True)
+                        removed_paths.append(str(file_path.relative_to(base_path)))
+                        logger.info(f"Removed {reason}: {file_path}")
                         
                         # Log to migration logger
                         if migration_logger:
                             migration_logger.log_operation(
-                                "remove_invalid_file",
-                                path=str(invalid_file.relative_to(base_path)),
-                                reason=validation_msg,
+                                f"remove_{reason}",
+                                path=str(file_path.relative_to(base_path)),
+                                target=target,
+                                reason=reason,
                                 snapshot=current_snapshot,
                                 status="success"
                             )
-                    except Exception as e:
-                        logger.error(f"Failed to remove invalid file {invalid_file}: {e}")
-                        if migration_logger:
-                            migration_logger.log_operation(
-                                "error",
-                                action="remove_invalid_file",
-                                path=str(invalid_file.relative_to(base_path)),
-                                error=str(e),
-                                snapshot=current_snapshot
-                            )
+                        continue
+                except Exception as e:
+                    logger.error(f"Failed to handle symlink {file_path}: {e}")
+                    if migration_logger:
+                        migration_logger.log_operation(
+                            "error",
+                            action="handle_symlink",
+                            path=str(file_path.relative_to(base_path)),
+                            error=str(e),
+                            snapshot=current_snapshot
+                        )
                     continue
                 
             # Normalize the filename component-wise
@@ -418,24 +495,36 @@ def normalize_directory_tree(base_path: Path,
                         )
     
     # Log summary of removed paths
-    if removed_paths:
-        logger.warning(f"Removed {len(removed_paths)} files/directories with invalid names")
-        # Write removed paths to a manifest file in log directory
-        log_dir = Path.home() / "tmp/log"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = log_dir / f"removed-invalid-{base_path.name}-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+    removed_count = len(removed_paths)
+    if removed_count > 0:
+        logger.warning(f"Removed {removed_count} files/directories with invalid names")
+        
+        # Write removal count to norm directory for validation
         try:
-            with open(manifest_path, 'w') as f:
-                f.write("# Files and directories removed due to invalid names\n")
-                f.write(f"# Base path: {base_path}\n")
-                f.write(f"# Removal time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                for path in sorted(removed_paths):
-                    f.write(f"{path}\n")
-            logger.info(f"Wrote manifest of removed files to: {manifest_path}")
+            # Find the repository root (should be parent of snapshot directories)
+            repo_root = base_path
+            while repo_root.parent != repo_root and not any(
+                d.name.startswith('s') and d.name[1:].isdigit() 
+                for d in repo_root.iterdir() if d.is_dir()
+            ):
+                repo_root = repo_root.parent
+            
+            # If this is a snapshot directory, go up one level to repo root
+            if base_path.name.startswith('s') and base_path.name[1:].isdigit():
+                repo_root = base_path.parent
+            
+            count_file = repo_root / ".excluded-files-count"
+            
+            # Append snapshot-specific count (format: s72=312)
+            snapshot_name = base_path.name if base_path.name.startswith('s') else "unknown"
+            with open(count_file, 'a') as f:
+                f.write(f"{snapshot_name}={removed_count}\n")
+            logger.debug(f"Appended removal count: {snapshot_name}={removed_count}")
+            
         except Exception as e:
-            logger.error(f"Failed to write removal manifest: {e}")
+            logger.warning(f"Failed to update removal count file: {e}")
     
-    return renamed_paths
+    return renamed_paths, removed_count
 
 
 def normalize_source(src_path: Path, snapshot_id: str) -> Path:
@@ -474,7 +563,9 @@ def normalize_source(src_path: Path, snapshot_id: str) -> Path:
         
         # Normalize all paths in the temporary directory
         logger.info(f"Normalizing paths in {temp_dir}")
-        renamed_files = normalize_directory_tree(temp_dir)
+        renamed_files, removed_count = normalize_directory_tree(temp_dir)
+        if removed_count > 0:
+            logger.warning(f"Removed {removed_count} invalid files during normalization")
         
         # Log statistics
         logger.info(f"Normalized {len(renamed_files)} files/directories in temporary copy")
