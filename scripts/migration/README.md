@@ -1,58 +1,72 @@
 # DSG Migration Tools
 
-This module provides tools for migrating snapshots between filesystem types, with a focus on btrfs to ZFS migration.
+This module provides tools for the two-phase Unicode normalization and migration strategy.
 
 ## Overview
 
-The migration process involves:
+### Phase 1: BTRFS COW Normalization (COMPLETED)
+- Creates a parallel REPO-norm directory using BTRFS COW snapshots
+- Normalizes filenames from NFD to NFC in the copy, preserving originals
+- Removes files with illegal/invalid names (e.g., containing '*' or other invalid characters)
+- Removes symlinks pointing outside the repository or broken symlinks
+- COW snapshots are instant and space-efficient (only modified blocks use space)
+- Original repository remains completely untouched
 
-1. Copying data from the source to the destination
-2. Normalizing filenames to NFC form
-3. Generating manifests and metadata
-4. Creating snapshots
-5. Validating the migration
+### Phase 2: BTRFS to ZFS Migration (WRITTEN, NEEDS DEBUGGING)
+- Migrate normalized snapshots from BTRFS to ZFS
+- Generate manifests and sync metadata
+- Validate data integrity during transfer
+- Code complete but requires additional validation and debugging
 
-## Code Structure
+## Code Structure by Phase
 
-The migration tools are organized into several modules:
+### Phase 1 Scripts (COMPLETE)
 
-- `fs_utils.py`: Filesystem utilities for handling paths and directory traversal
-- `snapshot_info.py`: Utilities for parsing push logs and managing snapshot info
+- `phase1_normalize_cow.py`: Main normalization script using BTRFS COW
+- `phase1_validation.py`: Validation functions for Phase 1 normalization
+- `fs_utils.py`: Core filesystem utilities for path handling
+- `migration_logger.py`: Logging infrastructure for all migration operations
+- `cleanup_btrfs_repo.sh`: Shell script for BTRFS cleanup operations
+
+### Phase 2 Scripts (In Development)
+
+- `migrate.py`: Main orchestration for BTRFS to ZFS migration
 - `manifest_utils.py`: Functions for building and storing manifests
-- `validation.py`: Validation utilities to verify the migration
-- `migrate.py`: Main orchestration module
+- `manifest_utils_new.py`: Updated manifest utilities (experimental)
+- `snapshot_info.py`: Utilities for parsing push logs and managing snapshot info
+- `validation.py`: General validation utilities for migration
+- `build_sync_messages_new.py`: Build sync-messages in new format
+- `migrate_sync_messages.py`: Migrate sync-messages between formats
+
+### Debug Tools
+
+- `debug/update_sync_messages.py`: Update sync-messages format (may be used in Phase 2)
 
 ## Usage
 
+### Phase 1: Batch Normalization
+
 ```bash
-# Basic usage
-poetry run python scripts/b2z.py SV
+# Check status of all repositories
+uv run python scripts/batch_normalize.py status
 
-# Limiting to specific number of snapshots
-poetry run python scripts/b2z.py SV --limit=5
+# Run normalization (single worker)
+uv run python scripts/migration/phase1_normalize_cow.py /var/repos/btrsnap/SV
 
-# With verbose logging
-poetry run python scripts/b2z.py SV --verbose
-
-# With full validation
-poetry run python scripts/b2z.py SV --validation=full
+# Run batch normalization (multi-worker capable)
+uv run python scripts/batch_normalize.py normalize-all --verbose
 ```
 
-## Key Improvements
+### Phase 2: Migration (Future)
 
-1. **Modular Architecture**: Code is now organized into logical modules
-2. **Improved Debugging**: Added detailed debug logging for manifest metadata
-3. **Better Error Handling**: More consistent error handling throughout
-4. **Metadata Verification**: Enhanced validation to ensure metadata integrity
-5. **Default Placeholders**: Better handling of missing push log messages
+```bash
+# Basic migration
+uv run python scripts/migration/migrate.py SV
 
-## Message Handling Improvements
+# With options
+uv run python scripts/migration/migrate.py SV --limit=5 --verbose
+```
 
-The most significant fix addresses the manifest message handling issue:
-
-1. Added debug logging to verify messages are properly set and serialized
-2. Updated validation to correctly look for fields in the nested metadata structure
-3. Fixed default message handling to use a distinguishable placeholder ("--") instead of empty string
 
 ## Validation
 
@@ -72,23 +86,26 @@ The validation process includes:
 
 ## Common Issues and Solutions
 
-### Snapshot Chain Links
+### Unicode Normalization: NFD vs NFC
 
-Issue: `"Broken link in s2: expected s1, got None"`
+The core challenge of this migration has been handling Unicode normalization forms:
 
-Solution: The validation script now correctly looks for `snapshot_previous` in the nested metadata structure.
+**Issue**: macOS accepts filenames in NFD (decomposed) form (likely from Windows/Dropbox), while Linux typically uses NFC (composed) form. This causes:
+- Different byte representations for visually identical filenames
+- rsync and other tools seeing them as different files
+- Duplicate files appearing after transfers between systems
+- Manifest validation failures due to hash mismatches
 
-### Push Log Messages
+**Solution**: Phase 1 normalization converts all filenames to NFC form:
+- Uses BTRFS COW for efficient in-place updates
+- Preserves all metadata and timestamps
+- Handles edge cases like already-normalized names and conflicts
+- Validates normalization completeness before declaring success
 
-Issue: `"Message mismatch in s1: push log: 'message text', manifest: ''"`
-
-Solution:
-1. The validation script now looks for messages in the metadata structure
-2. Default messages use "--" instead of empty string for clarity
-3. Added debug logging to track message propagation
-
-### Missing Entries in sync-messages.json
-
-Issue: Entries from earlier snapshots missing in later ones
-
-Solution: Improved the sync-messages building logic to ensure completeness
+**Key Insights**:
+- `unicodedata.normalize('NFC', path)` is essential for consistent handling
+- Must check both source and destination forms to avoid conflicts
+- Symlink targets must also be normalized
+- Some filesystems (like ZFS) may auto-normalize, adding complexity
+- **Critical**: Normalization must happen component-by-component in a path
+- Directory renaming must be done consistently top-down or bottom-up to avoid breaking paths
