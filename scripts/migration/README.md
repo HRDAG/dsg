@@ -12,11 +12,13 @@ This module provides tools for the two-phase Unicode normalization and migration
 - COW snapshots are instant and space-efficient (only modified blocks use space)
 - Original repository remains completely untouched
 
-### Phase 2: BTRFS to ZFS Migration (WRITTEN, NEEDS DEBUGGING)
+### Phase 2: BTRFS to ZFS Migration (COMPLETED)
 - Migrate normalized snapshots from BTRFS to ZFS
 - Generate manifests and sync metadata
 - Validate data integrity during transfer
-- Code complete but requires additional validation and debugging
+- Handles permission issues with sudo access for restricted files
+- Supports parallel batch processing with atomic locking
+- Validates data integrity throughout the process
 
 ## Code Structure by Phase
 
@@ -28,11 +30,13 @@ This module provides tools for the two-phase Unicode normalization and migration
 - `migration_logger.py`: Logging infrastructure for all migration operations
 - `cleanup_btrfs_repo.sh`: Shell script for BTRFS cleanup operations
 
-### Phase 2 Scripts (In Development)
+### Phase 2 Scripts (COMPLETE)
 
 - `migrate.py`: Main orchestration for BTRFS to ZFS migration
 - `manifest_utils.py`: Functions for building and storing manifests
 - `manifest_utils_new.py`: Updated manifest utilities (experimental)
+- `validate_migration.py`: CLI for validating completed migrations
+- `run_migration_with_validation.sh`: End-to-end migration script
 - `snapshot_info.py`: Utilities for parsing push logs and managing snapshot info
 - `validation.py`: General validation utilities for migration
 - `build_sync_messages_new.py`: Build sync-messages in new format
@@ -57,14 +61,33 @@ uv run python scripts/migration/phase1_normalize_cow.py /var/repos/btrsnap/SV
 uv run python scripts/batch_normalize.py normalize-all --verbose
 ```
 
-### Phase 2: Migration (Future)
+### Phase 2: Migration (Production Ready)
 
+#### Single Repository Migration
 ```bash
-# Basic migration
-uv run python scripts/migration/migrate.py SV
+# Basic migration with validation
+scripts/migration/run_migration_with_validation.sh SV
 
-# With options
+# With snapshot limit
+scripts/migration/run_migration_with_validation.sh SV 5
+
+# Direct migration (without wrapper script)
 uv run python scripts/migration/migrate.py SV --limit=5 --verbose
+```
+
+#### Batch Migration (Recommended for Multiple Repositories)
+```bash
+# Run batch migration with multiple workers
+uv run python scripts/batch_migrate.py migrate-all --verbose
+
+# Check status of all repositories
+uv run python scripts/batch_migrate.py status
+
+# Clean up stale locks
+uv run python scripts/batch_migrate.py cleanup-locks
+
+# Dry run to see what would be migrated
+uv run python scripts/batch_migrate.py migrate-all --dry-run
 ```
 
 
@@ -80,9 +103,11 @@ The validation process includes:
 
 ## Notes on File Structure
 
-- `/var/repos/btrsnap/{repo}/s{num}` - Source btrfs snapshots
+- `/var/repos/btrsnap/{repo}/s{num}` - Original BTRFS snapshots (unnormalized)
+- `/var/repos/btrsnap/{repo}-norm/s{num}` - Normalized BTRFS snapshots (Phase 1 output)
 - `/var/repos/zsd/{repo}/.zfs/snapshot/s{num}` - Destination ZFS snapshots
 - `/var/repos/zsd/{repo}/.dsg` - DSG metadata directory
+- `/tmp/dsg-migration-locks/{repo}.lock` - Lock files for parallel processing
 
 ## Common Issues and Solutions
 
@@ -110,9 +135,18 @@ The core challenge of this migration has been handling Unicode normalization for
 - **Critical**: Normalization must happen component-by-component in a path
 - Directory renaming must be done consistently top-down or bottom-up to avoid breaking paths
 
-## Phase 2 Testing Status
+## Phase 2 Production Status
 
-### Test Suite Progress (as of 2025-05-29)
+### Migration Capabilities (as of 2025-05-29)
+
+Phase 2 migration is now production-ready with:
+- **Batch Processing**: Multiple repositories can be migrated in parallel
+- **Permission Handling**: Sudo access for restricted files (push logs)
+- **Atomic Locking**: Prevents worker conflicts in `/tmp/dsg-migration-locks/`
+- **Comprehensive Validation**: Automatic validation after each migration
+- **Consistent Exclusions**: Unified handling of metadata and system files
+
+### Test Suite Progress
 
 Phase 2 migration code has comprehensive unit tests covering:
 
@@ -139,8 +173,10 @@ Phase 2 migration code has comprehensive unit tests covering:
   - Push log discovery in repository structure
   - Default fallbacks when push logs missing
 
-**🚧 In Progress:**
+**✅ Additional Completed:**
 - `test_migration_validation.py` - Tests validation utilities
+- Production validation of multiple repositories
+- Batch migration with parallel workers
 
 **Key Testing Notes:**
 - Tests use real filesystem operations where practical (not mocked)
@@ -153,8 +189,14 @@ Phase 2 migration code has comprehensive unit tests covering:
 - Removed missing `check_file_timestamps` imports
 - Fixed undefined `verbose` variable scope in validation functions
 - Moved `datetime` import to proper location
+- Fixed permission issues with sudo access for push.log files
+- Fixed import paths with proper PYTHONPATH setting
+- Unified exclusion patterns across all components
+- Implemented atomic locking for parallel processing
 
-**Next Steps:**
-- Complete validation tests
-- Run full test suite
-- Integration testing with sample data
+**Production Deployment:**
+- ✅ All unit tests passing
+- ✅ Integration tests validated
+- ✅ Successfully migrated multiple production repositories
+- ✅ Parallel batch processing operational
+- ✅ Data integrity verified through comprehensive validation
