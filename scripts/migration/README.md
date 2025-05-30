@@ -20,6 +20,15 @@ This module provides tools for the two-phase Unicode normalization and migration
 - Supports parallel batch processing with atomic locking
 - Validates data integrity throughout the process
 
+### Phase 3: Tag Migration (COMPLETED)
+- Migrate version tag symlinks from btrsnap repositories to structured JSON
+- Convert symlinks (e.g., `v1.0 -> s42/`) to `tag-messages.json` format
+- Preserve original timestamps from snapshot metadata
+- Handle complex version patterns (v1, v1.0, v1.01, v2-description)
+- Auto-generate migration completion tag with major version bump
+- Consistent field naming with sync-messages.json (`created_at`, not `timestamp`)
+- Support for descriptive tags (e.g., v2-records-ohchr)
+
 ## Code Structure by Phase
 
 ### Phase 1 Scripts (COMPLETE)
@@ -41,6 +50,11 @@ This module provides tools for the two-phase Unicode normalization and migration
 - `validation.py`: General validation utilities for migration
 - `build_sync_messages_new.py`: Build sync-messages in new format
 - `migrate_sync_messages.py`: Migrate sync-messages between formats
+
+### Phase 3 Scripts (COMPLETE)
+
+- `phase3_migration.py`: Main script for tag symlink migration
+- `run_phase3_all.sh`: Batch script to run Phase 3 on all ZFS repositories
 
 ### Debug Tools
 
@@ -90,6 +104,32 @@ uv run python scripts/batch_migrate.py cleanup-locks
 uv run python scripts/batch_migrate.py migrate-all --dry-run
 ```
 
+### Phase 3: Tag Migration (Production Ready)
+
+#### Single Repository Tag Migration
+```bash
+# Migrate tags for a specific repository
+uv run python scripts/migration/phase3_migration.py SV
+
+# Dry run to preview what would be created
+uv run python scripts/migration/phase3_migration.py SV --dry-run
+
+# Verbose mode for debugging
+uv run python scripts/migration/phase3_migration.py SV --verbose
+```
+
+#### Batch Tag Migration (Recommended for All Repositories)
+```bash
+# Migrate tags for all repositories in /var/repos/zsd
+./scripts/run_phase3_all.sh
+
+# Dry run to preview all migrations
+./scripts/run_phase3_all.sh --dry-run
+
+# Check results
+cat /var/repos/zsd/SV/.dsg/tag-messages.json
+```
+
 
 ## Validation
 
@@ -107,7 +147,12 @@ The validation process includes:
 - `/var/repos/btrsnap/{repo}-norm/s{num}` - Normalized BTRFS snapshots (Phase 1 output)
 - `/var/repos/zsd/{repo}/.zfs/snapshot/s{num}` - Destination ZFS snapshots
 - `/var/repos/zsd/{repo}/.dsg` - DSG metadata directory
+  - `last-sync.json` - Current manifest + metadata
+  - `sync-messages.json` - All snapshot metadata
+  - `tag-messages.json` - Version tag metadata (Phase 3 output)
+  - `archive/` - Previous manifests
 - `/tmp/dsg-migration-locks/{repo}.lock` - Lock files for parallel processing
+- `$HOME/tmp/log/` - Migration log files
 
 ## Common Issues and Solutions
 
@@ -135,9 +180,9 @@ The core challenge of this migration has been handling Unicode normalization for
 - **Critical**: Normalization must happen component-by-component in a path
 - Directory renaming must be done consistently top-down or bottom-up to avoid breaking paths
 
-## Phase 2 Production Status
+## Production Status
 
-### Migration Capabilities (as of 2025-05-29)
+### Phase 2 Migration Capabilities (as of 2025-05-29)
 
 Phase 2 migration is now production-ready with:
 - **Batch Processing**: Multiple repositories can be migrated in parallel
@@ -145,6 +190,17 @@ Phase 2 migration is now production-ready with:
 - **Atomic Locking**: Prevents worker conflicts in `/tmp/dsg-migration-locks/`
 - **Comprehensive Validation**: Automatic validation after each migration
 - **Consistent Exclusions**: Unified handling of metadata and system files
+
+### Phase 3 Tag Migration Capabilities (as of 2025-05-30)
+
+Phase 3 tag migration is now production-ready with:
+- **Version Pattern Support**: Handles v1, v1.0, v1.01, v2-description patterns
+- **Timestamp Preservation**: Uses original snapshot timestamps in LA timezone
+- **Auto-Generated Migration Tag**: Creates version bump tag marking completion
+- **Descriptive Tag Support**: Extracts descriptions from v2-records-ohchr style tags
+- **Batch Processing**: Single script processes all ZFS repositories
+- **Comprehensive Logging**: Logs to `$HOME/tmp/log/phase3-{repo}-{timestamp}.log`
+- **Dry Run Support**: Preview mode for safe testing
 
 ### Test Suite Progress
 
@@ -194,9 +250,31 @@ Phase 2 migration code has comprehensive unit tests covering:
 - Unified exclusion patterns across all components
 - Implemented atomic locking for parallel processing
 
-**Production Deployment:**
+**Phase 2 Production Deployment:**
 - ✅ All unit tests passing
 - ✅ Integration tests validated
 - ✅ Successfully migrated multiple production repositories
 - ✅ Parallel batch processing operational
 - ✅ Data integrity verified through comprehensive validation
+
+### Phase 3 Test Suite (as of 2025-05-30)
+
+Phase 3 tag migration has comprehensive unit tests covering:
+
+**✅ Completed Tests:**
+- `test_phase3_migration.py` - Tests tag symlink migration functionality
+  - Symlink scanning with trailing slash handling
+  - Version parsing for all edge cases (v1, v1.0, v1.01, v2-description)
+  - Tag entry building with timestamp preservation
+  - Migration tag generation with version bumping
+  - Validation of tag-messages.json format
+  - Loading both old and new sync-messages.json formats
+  - Edge cases (missing snapshots, duplicate tags, missing fields)
+
+**Phase 3 Production Deployment:**
+- ✅ All 14 unit tests passing
+- ✅ Handles all real-world version patterns found in production
+- ✅ Preserves original timestamps from snapshot metadata
+- ✅ Creates timezone-aware timestamps (LA time, no fractional seconds)
+- ✅ Field naming consistent with sync-messages.json (`created_at`)
+- ✅ Batch processing script ready for production use
