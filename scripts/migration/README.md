@@ -56,6 +56,11 @@ This module provides tools for the two-phase Unicode normalization and migration
 - `phase3_migration.py`: Main script for tag symlink migration
 - `run_phase3_all.sh`: Batch script to run Phase 3 on all ZFS repositories
 
+### Cleanup Scripts
+
+- `set_readonly.py`: Set all files to read-only and verify ZFS snapshots (final cleanup)
+- `set_readonly_all.sh`: Batch script to run read-only setup on all repositories
+
 ### Debug Tools
 
 - `debug/update_sync_messages.py`: Update sync-messages format (may be used in Phase 2)
@@ -129,6 +134,40 @@ uv run python scripts/migration/phase3_migration.py SV --verbose
 # Check results
 cat /var/repos/zsd/SV/.dsg/tag-messages.json
 ```
+
+### Final Cleanup: Set Read-Only
+
+**Note**: These scripts require sudo privileges for chmod operations and ZFS commands.
+
+#### Single Repository Cleanup
+```bash
+# Set specific repository files to read-only and verify snapshots
+uv run python scripts/migration/set_readonly.py SV
+
+# Dry run to preview changes
+uv run python scripts/migration/set_readonly.py SV --dry-run
+
+# Only set files to read-only (skip ZFS snapshot verification)
+uv run python scripts/migration/set_readonly.py SV --files-only
+
+# Only verify ZFS snapshots exist (skip setting files to read-only)
+uv run python scripts/migration/set_readonly.py SV --snapshots-only
+```
+
+#### Batch Cleanup (Recommended for All Repositories)
+```bash
+# Set all repository files to read-only and verify snapshots
+./scripts/set_readonly_all.sh
+
+# Dry run to preview all changes
+./scripts/set_readonly_all.sh --dry-run
+```
+
+#### What the Cleanup Does
+- **Files**: Sets all files to read-only permissions (chmod 444)
+- **Directories**: Sets directories to readable/executable (chmod 755)
+- **ZFS Snapshots**: Verifies snapshots exist (snapshots are inherently read-only)
+- **Logging**: Detailed logs saved to `$HOME/tmp/log/readonly-{repo}-{timestamp}.log`
 
 
 ## Validation
