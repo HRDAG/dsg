@@ -997,8 +997,10 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
     
     table = Table(title=f"DSG Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
-    table.add_column("Last Snapshot", style="yellow", no_wrap=True)
+    table.add_column("HEAD", style="yellow", no_wrap=True)
     table.add_column("Timestamp", style="green", no_wrap=True)
+    table.add_column("Size", style="blue", no_wrap=True)
+    table.add_column("Files", style="magenta", no_wrap=True, justify="right")
     
     for repo in repos:
         # Format timestamp
@@ -1017,10 +1019,18 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
         else:
             snapshot_style = snapshot_id
         
+        # Get repository size from ZFS
+        size_str = repo.size or "Unknown"
+        
+        # Get file count from manifest
+        files_str = str(repo.file_count) if repo.file_count is not None else "Unknown"
+        
         table.add_row(
             repo.name,
             snapshot_style,
-            timestamp_str
+            timestamp_str,
+            size_str,
+            files_str
         )
     
     console.print(table)

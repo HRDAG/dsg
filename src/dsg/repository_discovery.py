@@ -31,6 +31,8 @@ class RepositoryInfo:
     message: Optional[str] = None
     status: str = "active"  # active, error, uninitialized
     error_message: Optional[str] = None
+    file_count: Optional[int] = None
+    size: Optional[str] = None
 
 
 class BaseRepositoryDiscovery(ABC):
@@ -63,7 +65,8 @@ class BaseRepositoryDiscovery(ABC):
         return fallback_name
 
     def _create_repo_info_from_manifest(self, repo_name: str, manifest_data: dict[str, any],
-                                      is_working_dir: bool = False) -> RepositoryInfo:
+                                      is_working_dir: bool = False, host: Optional[str] = None, 
+                                      repo_path: Optional[Path] = None) -> RepositoryInfo:
         """Create RepositoryInfo from parsed manifest JSON data."""
         # TODO: note that this is python3.13 so that should be dict not Dict in type hint
         metadata = manifest_data.get("metadata", {})
@@ -72,13 +75,24 @@ class BaseRepositoryDiscovery(ABC):
         if is_working_dir and not message:
             message = "Working directory"
 
+        # Count files in manifest entries
+        entries = manifest_data.get("entries", {})
+        file_count = len(entries) if entries else 0
+
+        # Get ZFS size if repository path is provided
+        size = None
+        if repo_path:
+            size = self._get_zfs_size(host, repo_path)
+
         return RepositoryInfo(
             name=repo_name,
             snapshot_id=metadata.get("snapshot_id"),
             timestamp=self._parse_timestamp(metadata.get("created_at")),
             user=metadata.get("created_by"),
             message=message,
-            status="active"
+            status="active",
+            file_count=file_count,
+            size=size
         )
 
     def _try_read_manifest_files(self, dsg_dir: Path) -> Optional[RepositoryInfo]:
@@ -102,6 +116,34 @@ class BaseRepositoryDiscovery(ABC):
             return data, True  # Is working directory
 
         return None
+
+    def _get_zfs_size(self, host: Optional[str], repo_path: Path) -> Optional[str]:
+        """Get ZFS dataset size for a repository using REFER.
+        
+        Args:
+            host: SSH hostname, or None for local
+            repo_path: Full path to repository
+            
+        Returns:
+            Human-readable size string like "1.2G" or None if not ZFS or error
+        """
+        try:
+            if host:
+                # Remote ZFS REFER query via SSH
+                cmd = ["ssh", host, f"zfs list -H -o refer {repo_path}"]
+            else:
+                # Local ZFS REFER query
+                cmd = ["zfs", "list", "-H", "-o", "refer", str(repo_path)]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+                        
+            return None
+            
+        except (subprocess.TimeoutExpired, Exception):
+            return None
 
 
 class LocalRepositoryDiscovery(BaseRepositoryDiscovery):
@@ -150,7 +192,8 @@ class LocalRepositoryDiscovery(BaseRepositoryDiscovery):
 
                 if manifest_result:
                     manifest_data, is_working_dir = manifest_result
-                    return self._create_repo_info_from_manifest(repo_name, manifest_data, is_working_dir)
+                    return self._create_repo_info_from_manifest(repo_name, manifest_data, is_working_dir, 
+                                                              host=None, repo_path=repo_dir)
 
                 # Has .dsgconfig but no sync data
                 return RepositoryInfo(name=repo_name, status="uninitialized")
@@ -243,7 +286,8 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
                 if metadata:
                     # Determine if this was manifest.json (working directory)
                     # We can't easily tell from SSH output, so assume it's synced data
-                    return self._create_repo_info_from_manifest(repo_name, data, is_working_dir=False)
+                    return self._create_repo_info_from_manifest(repo_name, data, is_working_dir=False,
+                                                              host=host, repo_path=repo_dir)
 
             return RepositoryInfo(name=repo_name, status="uninitialized")
 
