@@ -45,8 +45,8 @@ def build_manifest_from_filesystem(
             compute_hashes=True,
             user_id=user_id,
             data_dirs={"*"},  # Include all directories
-            # Additional ignore patterns for .zfs internals
-            ignored_paths={".zfs/snapshot"},
+            # Additional ignore patterns for metadata and system directories
+            ignored_paths={".zfs/snapshot", ".snap", "HEAD", "lost+found"},
             normalize_paths=True  # Always normalize paths during migration
         )
         
@@ -77,16 +77,16 @@ def build_manifest_from_filesystem(
         renamed_dict = dict(renamed_files or set())
         
         for path in base_path.rglob('*'):
-            # Skip .dsg directory if it exists
-            if '.dsg' in path.parts:
+            # Skip metadata and system directories
+            if any(part in path.parts for part in ['.dsg', '.snap', '.zfs', 'HEAD', 'lost+found']):
                 continue
                 
-            # Skip hidden files and directories
-            if any(part.startswith('.') and part != '.zfs' for part in path.parts):
+            # Skip hidden files and directories (except explicitly allowed ones)
+            if any(part.startswith('.') and part not in {'.zfs'} for part in path.parts):
                 continue
                 
-            # Skip .zfs in path parts after the first occurrence
-            if '.zfs' in path.parts[1:]:
+            # Skip trash directories
+            if any('.Trash-' in part for part in path.parts):
                 continue
                 
             if not (path.is_file() or path.is_symlink()):
@@ -113,6 +113,10 @@ def build_manifest_from_filesystem(
                 
                 # Add the entry to our collection
                 entries[rel_path] = entry
+            except PermissionError as perm_err:
+                # Skip files we can't read (permission issues)
+                logger.warning(f"Permission denied for {rel_path}, skipping: {perm_err}")
+                continue
             except Exception as create_err:
                 # For symlinks, handle based on error type
                 if path.is_symlink():

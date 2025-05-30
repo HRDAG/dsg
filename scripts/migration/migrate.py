@@ -77,7 +77,10 @@ def process_snapshot(
         logger.info(f"Copying data from normalized source {src} to {zfs_mount}")
         # Ensure we have write access to the destination
         subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", zfs_mount], check=True)
-        subprocess.run(["rsync", "-a", "--delete", src, zfs_mount], check=True)
+        subprocess.run(["rsync", "-a", "--delete", 
+                       "--exclude=.snap", "--exclude=.zfs", "--exclude=HEAD", 
+                       "--exclude=lost+found", "--exclude=.Trash-*",
+                       src, zfs_mount], check=True)
         
         # === STEP 3: Generate metadata (no need to normalize the target) ===
         logger.info(f"Generating metadata for {snapshot_id}")
@@ -178,7 +181,7 @@ def main(
             raise typer.Exit(1)
             
         # Initialize paths
-        bb_dir = f"{BTRSNAP_BASE}/{bb}"
+        bb_dir = f"{BTRSNAP_BASE}/{bb}-norm"
         assert Path(bb_dir).exists(), f"Directory {bb_dir} does not exist"
 
         # Set repo variable for use throughout the code
@@ -241,7 +244,10 @@ def main(
             snapshot_id = f"s{num}"
             if snapshot_id not in snapshots_info:
                 individual_push_log = Path(bb_dir) / f"s{num}" / ".snap/push.log"
-                if individual_push_log.exists():
+                # Check if file exists using sudo since it may have restricted permissions
+                file_check = subprocess.run(["sudo", "test", "-f", str(individual_push_log)], 
+                                          capture_output=True)
+                if file_check.returncode == 0:
                     individual_snapshots = parse_push_log(individual_push_log, bb)
                     if snapshot_id in individual_snapshots:
                         snapshots_info[snapshot_id] = individual_snapshots[snapshot_id]
@@ -267,10 +273,17 @@ def main(
             else:
                 # Check specific push log for this snapshot as a last resort
                 push_log_path = Path(bb_dir) / snapshot_id / ".snap/push.log"
-                if push_log_path.exists():
-                    # Try to extract message directly from push log
-                    with open(push_log_path, "r") as f:
-                        for line in f:
+                # Check if file exists using sudo since it may have restricted permissions
+                file_check = subprocess.run(["sudo", "test", "-f", str(push_log_path)], 
+                                          capture_output=True)
+                if file_check.returncode == 0:
+                    # Try to extract message directly from push log using sudo
+                    try:
+                        result = subprocess.run(["sudo", "cat", str(push_log_path)], 
+                                              capture_output=True, text=True, check=True)
+                        content = result.stdout
+                        
+                        for line in content.splitlines():
                             line = line.strip()
                             if f"{repo}/s{num}" in line:
                                 parts = line.split(" | ")
@@ -309,6 +322,8 @@ def main(
                                     # Important: Store in snapshots_info for validation
                                     snapshots_info[snapshot_id] = snapshot_info
                                     break
+                    except subprocess.CalledProcessError as e:
+                        logger.warning(f"Failed to read push log {push_log_path} with sudo: {e}")
                 
                 # If we still don't have snapshot info, create default
                 if not locals().get('snapshot_info'):

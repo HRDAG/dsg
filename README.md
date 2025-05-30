@@ -79,7 +79,7 @@ A data versioning system based on Scott's `snap`. But generalized across backend
 Not implemented yet! hang on.
 
 ## A few decisions
-* see `pyproject.toml` for project depdendencies
+* see `pyproject.toml` for project dependencies (managed with UV)
 * data objects to be shared will be pydantic classes for validation
 * we strive for 100% test coverage with pytest
 * integration tests are crucial! There are some here and more in [dsg-dummies](https://github.com/HRDAG/dsg-dummies)

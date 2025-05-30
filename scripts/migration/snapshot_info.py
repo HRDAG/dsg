@@ -7,6 +7,7 @@ from push logs and other sources.
 
 import re
 import datetime
+import subprocess
 from pathlib import Path
 from typing import Dict, Optional
 from dataclasses import dataclass
@@ -61,12 +62,23 @@ def parse_push_log(path: Path, repo: str) -> Dict[str, SnapshotInfo]:
     
     snapshots = {}
     
-    if not path.exists():
+    # Check if file exists using sudo since it may have restricted permissions
+    file_check = subprocess.run(["sudo", "test", "-f", str(path)], 
+                               capture_output=True)
+    if file_check.returncode != 0:
         logger.warning(f"Push log not found: {path}")
         return snapshots
     
-    with open(path, "r") as f:
-        for line in f:
+    try:
+        # Use sudo to read the file since it may have restricted permissions
+        result = subprocess.run(["sudo", "cat", str(path)], 
+                              capture_output=True, text=True, check=True)
+        content = result.stdout
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to read push log {path}: {e}")
+        return snapshots
+    
+    for line in content.splitlines():
             line = line.strip()
             match = pattern.match(line)
             if match:
@@ -123,15 +135,21 @@ def find_push_log(base_dir: Path, s_numbers: list[int]) -> Optional[Path]:
     Returns:
         Path to the push.log file, or None if not found
     """
+    def file_exists_sudo(path: Path) -> bool:
+        """Check if file exists using sudo since it may have restricted permissions."""
+        result = subprocess.run(["sudo", "test", "-f", str(path)], 
+                              capture_output=True)
+        return result.returncode == 0
+    
     # First try s1 which usually has the push log
     push_log_path = base_dir / "s1" / ".snap/push.log"
-    if push_log_path.exists():
+    if file_exists_sudo(push_log_path):
         return push_log_path
     
     # Otherwise try each snapshot directory
     for num in s_numbers:
         test_path = base_dir / f"s{num}" / ".snap/push.log"
-        if test_path.exists():
+        if file_exists_sudo(test_path):
             return test_path
     
     logger.warning(f"No push.log found in {base_dir}")

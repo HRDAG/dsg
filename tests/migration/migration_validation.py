@@ -117,7 +117,13 @@ def validate_file_transfer(source_repo: Path, target_repo: Path, repo_name: str)
             # Compare files in last snapshot with current ZFS state
             source_files = set()
             for path in source_snap.rglob('*'):
-                if path.is_file() and not path.parts[-1].startswith('.'):
+                if (path.is_file() and 
+                    not path.parts[-1].startswith('.') and 
+                    '.snap' not in path.parts and
+                    '.zfs' not in path.parts and
+                    'HEAD' not in path.parts and
+                    'lost+found' not in path.parts and
+                    not any('.Trash-' in part for part in path.parts)):
                     rel_path = path.relative_to(source_snap)
                     source_files.add(str(rel_path))
             
@@ -388,7 +394,10 @@ def validate_file_contents(source_repo: Path, target_repo: Path, repo_name: str,
             if (path.is_file() and 
                 not path.parts[-1].startswith('.') and 
                 '.snap' not in path.parts and
-                'HEAD' not in path.parts):
+                '.zfs' not in path.parts and
+                'HEAD' not in path.parts and
+                'lost+found' not in path.parts and
+                not any('.Trash-' in part for part in path.parts)):
                 source_files.append(path)
         
         # Sample or check all

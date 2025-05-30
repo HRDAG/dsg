@@ -94,9 +94,11 @@ def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool, source_p
                 subprocess.run(["ls", "-la", comparison_source])
                 subprocess.run(["ls", "-la", mountpoint])
 
-            # Use diff with exclusion for .dsg directory only
+            # Use diff with exclusion for metadata directories (match rsync exclusions)
             result = subprocess.run(
-                ["diff", "-rq", "--no-dereference", "--exclude=.dsg", 
+                ["diff", "-rq", "--no-dereference", 
+                 "--exclude=.dsg", "--exclude=.snap", "--exclude=.zfs", 
+                 "--exclude=HEAD", "--exclude=lost+found", "--exclude=.Trash-*",
                  comparison_source, mountpoint],
                 capture_output=True,
                 text=True
@@ -104,9 +106,11 @@ def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool, source_p
 
             if result.returncode != 0:
                 logger.warning(f"Snapshot s{num} verification failed!")
-                # Run full diff with exclusion for .dsg directory
+                # Run full diff with exclusion for metadata directories (match rsync exclusions)
                 full_diff = subprocess.run(
-                    ["diff", "-r", "--no-dereference", "--exclude=.dsg", 
+                    ["diff", "-r", "--no-dereference", 
+                     "--exclude=.dsg", "--exclude=.snap", "--exclude=.zfs", 
+                     "--exclude=HEAD", "--exclude=lost+found", "--exclude=.Trash-*",
                      comparison_source, mountpoint],
                     capture_output=True,
                     text=True
@@ -115,7 +119,7 @@ def verify_snapshot(bb_dir: str, dataset: str, num: int, verbose: bool, source_p
                     logger.warning(line)
                 return False
             else:
-                logger.info(f"Snapshot s{num} verification passed (ignoring .dsg directory)")
+                logger.info(f"Snapshot s{num} verification passed (ignoring metadata directories)")
             return True
     except subprocess.CalledProcessError as e:
         logger.error(f"Verification error for s{num}: {e.stderr if e.stderr else str(e)}")
