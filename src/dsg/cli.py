@@ -153,7 +153,9 @@ def init(
 
 
 @app.command(name="list-repos")
-def list_repos():
+def list_repos(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show additional details")
+):
     """
     List all available DSG repositories.
 
@@ -181,18 +183,17 @@ def list_repos():
         host = config.default_host
         project_path = config.default_project_path
         
-        # Determine if host is local and list repositories
-        if is_local_host(host):
-            repos = _list_local_repositories(project_path)
-        else:
-            repos = _list_remote_repositories(host, project_path)
+        # Use new repository discovery
+        from dsg.repository_discovery import RepositoryDiscovery
+        discovery = RepositoryDiscovery()
+        repos = discovery.list_repositories(host, project_path)
         
         # Display results
         if not repos:
             console.print(f"No DSG repositories found at {host}:{project_path}")
             return
             
-        _display_repositories(repos, host, project_path)
+        _display_repositories_new(repos, host, project_path, verbose)
         
     except FileNotFoundError as e:
         console.print(f"[red]Config error: {e}[/red]")
@@ -987,6 +988,58 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
         console.print(f"[red]Error connecting to {host}: {e}[/red]")
         
     return repos
+
+
+def _display_repositories_new(repos: list, host: str, project_path: Path, verbose: bool = False) -> None:
+    """Display repositories using new RepositoryInfo objects."""
+    from rich.table import Table
+    from dsg.repository_discovery import RepositoryInfo
+    
+    table = Table(title=f"DSG Repositories at {host}:{project_path}")
+    table.add_column("Repository", style="cyan", no_wrap=True)
+    table.add_column("Last Snapshot", style="yellow", no_wrap=True)
+    table.add_column("Timestamp", style="green", no_wrap=True)
+    
+    for repo in repos:
+        # Format timestamp
+        timestamp_str = "Unknown"
+        if repo.timestamp:
+            timestamp_str = repo.timestamp.strftime("%Y-%m-%d %H:%M")
+        
+        # Color-code snapshot status
+        snapshot_id = repo.snapshot_id or "None"
+        if snapshot_id.startswith("s") and snapshot_id[1:].isdigit():
+            snapshot_style = f"[green]{snapshot_id}[/green]"
+        elif snapshot_id == "Working":
+            snapshot_style = f"[yellow]{snapshot_id}[/yellow]"
+        elif snapshot_id in ("None", "Error"):
+            snapshot_style = f"[red]{snapshot_id}[/red]"
+        else:
+            snapshot_style = snapshot_id
+        
+        table.add_row(
+            repo.name,
+            snapshot_style,
+            timestamp_str
+        )
+    
+    console.print(table)
+    
+    # Show summary
+    total = len(repos)
+    active = sum(1 for r in repos if r.status == "active")
+    errors = sum(1 for r in repos if r.status == "error")
+    uninitialized = sum(1 for r in repos if r.status == "uninitialized")
+    
+    parts = [f"Found {total} repositories"]
+    if active:
+        parts.append(f"{active} active")
+    if uninitialized:
+        parts.append(f"{uninitialized} uninitialized")
+    if errors:
+        parts.append(f"[red]{errors} with errors[/red]")
+    
+    console.print(" - ".join(parts))
 
 
 def _display_repositories(repos: list[dict], host: str, project_path: Path) -> None:
