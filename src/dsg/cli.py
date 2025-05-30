@@ -13,9 +13,32 @@ from rich.console import Console
 
 from dsg.operations import list_directory, parse_cli_overrides
 from dsg.display import manifest_to_table, format_file_count
+from dsg.config_manager import load_repository_discovery_config
+from dsg.host_utils import is_local_host
 
 app = typer.Typer(help="DSG - Project data management tools")
 console = Console()
+
+# Repository Discovery and Resolution Patterns:
+#
+# --list-repos command (special case - no specific repo needed):
+# - Lists all repositories at $host:$default_project_path/*
+# - If host is local: filesystem directory listing
+# - If host is remote: connect via SSH and list directories
+# - Filter directories for presence of .dsg/ subdirectory
+# - Only directories with .dsg/ are valid DSG repositories
+# - Host parsing/local detection is the first implementation task
+#
+# All other commands (require specific repository):
+# - Repository resolution order:
+#   1. --repo argument (explicit repo name) → $host:$default_project_path/$repo_name
+#   2. .dsgconfig.yml in current/parent directories (auto-detect)
+#   3. User config defaults (default_host/default_project_path)
+#   4. System config defaults (/etc/hrdag/dsg.yml fallback)
+#   5. Error if no repository found
+#
+# Repository location pattern: All repos are at $host:$default_project_path/$repo_name
+# Example: repo "BB" is at $host:$default_project_path/BB
 
 # TODO: Consider organizing commands into groups:
 #
@@ -129,9 +152,60 @@ def init(
     raise NotImplementedError("The init command has not been implemented yet")
 
 
+@app.command(name="list-repos")
+def list_repos():
+    """
+    List all available DSG repositories.
+
+    Discovers repositories by listing directories at $host:$default_project_path/*
+    and filtering for those containing a .dsg/ subdirectory.
+
+    For local hosts: performs filesystem directory listing
+    For remote hosts: connects via SSH to list directories
+
+    Shows repository name, host, and basic status information.
+    """
+    try:
+        # Load config to get default_host and default_project_path
+        config = load_repository_discovery_config()
+        
+        # Validate required fields
+        if not config.default_host:
+            console.print("[red]Error: default_host not configured. Please set it in your config file.[/red]")
+            raise typer.Exit(1)
+            
+        if not config.default_project_path:
+            console.print("[red]Error: default_project_path not configured. Please set it in your config file.[/red]")
+            raise typer.Exit(1)
+        
+        host = config.default_host
+        project_path = config.default_project_path
+        
+        # Determine if host is local and list repositories
+        if is_local_host(host):
+            repos = _list_local_repositories(project_path)
+        else:
+            repos = _list_remote_repositories(host, project_path)
+        
+        # Display results
+        if not repos:
+            console.print(f"No DSG repositories found at {host}:{project_path}")
+            return
+            
+        _display_repositories(repos, host, project_path)
+        
+    except FileNotFoundError as e:
+        console.print(f"[red]Config error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error listing repositories: {e}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command(name="list-files")
 def list_files(
     path: str = typer.Argument(".", help="Directory to scan"),
+    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
     ignored_names: Optional[str] = typer.Option(None, help="Comma-separated list of filenames to ignore"),
     ignored_suffixes: Optional[str] = typer.Option(None, help="Comma-separated list of file suffixes to ignore"),
     ignored_paths: Optional[str] = typer.Option(None, help="Comma-separated list of exact paths to ignore"),
@@ -205,6 +279,7 @@ def list_files(
 
 @app.command()
 def status(  # pragma: no cover
+    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
     remote: bool = typer.Option(False, "--remote", help="Also compare with remote manifest"),
 ):
     """
@@ -361,8 +436,52 @@ def exclude_once(  # pragma: no cover
 
 
 @app.command()
+def log(  # pragma: no cover
+    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
+    limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Limit number of snapshots to show"),
+    since: Optional[str] = typer.Option(None, "--since", help="Show snapshots since date (YYYY-MM-DD)"),
+    author: Optional[str] = typer.Option(None, "--author", help="Filter by author/user"),
+):
+    """
+    Show snapshot history for the repository.
+
+    Displays the chronological history of snapshots including:
+    - Snapshot ID and timestamp
+    - Author/user who created the snapshot
+    - Sync message
+    - Number of files changed
+
+    Examples:
+    - dsg log                           # Show all snapshots
+    - dsg log --limit=10                # Show last 10 snapshots  
+    - dsg log --since=2023-01-01        # Show snapshots since date
+    - dsg log --author=alice            # Show snapshots by alice
+    - dsg log --repo=BB                 # Show snapshots for BB repository
+
+    Similar to 'git log' - shows the history of repository changes.
+    """
+    # TODO: Implement log command
+    # 1. Resolve repository (--repo arg or auto-detect)
+    # 2. Load current snapshot from .dsg/last-sync.json  
+    # 3. Walk backwards through snapshot chain using .dsg/archive/
+    # 4. For each snapshot in chain:
+    #    - Extract metadata: snapshot_id, timestamp, user, message
+    #    - Count changed files (compare with previous snapshot)
+    #    - Apply filters: --since date, --author name
+    # 5. Display as rich.table:
+    #    - Snapshot | Date | Author | Message | Files Changed
+    # 6. Respect --limit for number of snapshots shown
+    # 7. Handle edge cases:
+    #    - No snapshots (new repository)
+    #    - Corrupted archive files
+    #    - Invalid date formats in --since
+    raise NotImplementedError("The log command has not been implemented yet")
+
+
+@app.command()
 def blame(  # pragma: no cover
     file: str = typer.Argument(..., help="File path to show modification history"),
+    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
 ):
     """
     Show modification history for a file.
@@ -646,6 +765,157 @@ def validate_chain(  # pragma: no cover
     #    - Cache loaded snapshots to avoid re-reading
     #    - Show progress bar for --deep validation
     raise NotImplementedError("The validate-chain command has not been implemented yet")
+
+
+# ---- Helper Functions ----
+
+def _list_local_repositories(project_path: Path) -> list[dict]:
+    """List DSG repositories on local filesystem.
+    
+    Args:
+        project_path: Path to search for repositories
+        
+    Returns:
+        List of repository info dicts with 'name' and 'status' keys
+    """
+    import subprocess
+    from pathlib import Path
+    
+    repos = []
+    
+    try:
+        if not project_path.exists():
+            return []
+            
+        if not project_path.is_dir():
+            return []
+            
+        # List all directories in project_path
+        for item in project_path.iterdir():
+            if not item.is_dir():
+                continue
+                
+            # Check if it has a .dsg subdirectory
+            dsg_dir = item / ".dsg"
+            if dsg_dir.exists() and dsg_dir.is_dir():
+                status = "Available"
+                try:
+                    # Try to determine if it's accessible
+                    if (dsg_dir / "manifest.json").exists():
+                        status = "Active"
+                except (PermissionError, OSError):
+                    status = "Error"
+                    
+                repos.append({
+                    "name": item.name,
+                    "status": status
+                })
+                
+    except (PermissionError, OSError) as e:
+        console.print(f"[yellow]Warning: Cannot access {project_path}: {e}[/yellow]")
+        
+    return repos
+
+
+def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
+    """List DSG repositories on remote host via SSH.
+    
+    Args:
+        host: Remote hostname
+        project_path: Path on remote host to search
+        
+    Returns:
+        List of repository info dicts with 'name' and 'status' keys
+    """
+    import subprocess
+    
+    repos = []
+    
+    try:
+        # SSH command to find directories with .dsg subdirectories
+        ssh_cmd = [
+            "ssh", host,
+            f"find {project_path} -maxdepth 2 -name .dsg -type d 2>/dev/null"
+        ]
+        
+        result = subprocess.run(
+            ssh_cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            console.print(f"[yellow]Warning: SSH to {host} failed: {result.stderr}[/yellow]")
+            return []
+            
+        # Parse the output to get repository names
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
+                
+            # Extract repo name from path like "/var/repos/zsd/repo1/.dsg"
+            dsg_path = Path(line)
+            repo_name = dsg_path.parent.name
+            
+            # Check if manifest exists to determine status
+            manifest_cmd = [
+                "ssh", host,
+                f"test -f {dsg_path}/manifest.json && echo 'Active' || echo 'Available'"
+            ]
+            
+            status_result = subprocess.run(
+                manifest_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            status = status_result.stdout.strip() if status_result.returncode == 0 else "Available"
+            
+            repos.append({
+                "name": repo_name,
+                "status": status
+            })
+            
+    except subprocess.TimeoutExpired:
+        console.print(f"[red]Error: SSH connection to {host} timed out[/red]")
+    except Exception as e:
+        console.print(f"[red]Error connecting to {host}: {e}[/red]")
+        
+    return repos
+
+
+def _display_repositories(repos: list[dict], host: str, project_path: Path) -> None:
+    """Display repository list in a formatted table.
+    
+    Args:
+        repos: List of repository info dicts
+        host: Host name where repositories are located
+        project_path: Base path where repositories are stored
+    """
+    from rich.table import Table
+    
+    table = Table(title=f"DSG Repositories at {host}:{project_path}")
+    table.add_column("Repository", style="cyan", no_wrap=True)
+    table.add_column("Status", style="magenta")
+    table.add_column("Path", style="blue")
+    
+    for repo in repos:
+        # Color-code status
+        status = repo["status"]
+        if status == "Active":
+            status_style = "[green]Active[/green]"
+        elif status == "Available":
+            status_style = "[yellow]Available[/yellow]"
+        else:
+            status_style = "[red]Error[/red]"
+            
+        full_path = f"{project_path}/{repo['name']}"
+        table.add_row(repo["name"], status_style, full_path)
+    
+    console.print(table)
+    console.print(f"\nFound {len(repos)} repositories")
 
 
 def main():  # pragma: no cover - entry point

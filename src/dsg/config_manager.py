@@ -22,6 +22,12 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 USER_CFG: Final = "dsg.yml"
 PROJECT_CFG: Final = ".dsgconfig.yml"
 
+# Personal fields that should NOT appear in system config
+PERSONAL_FIELDS: Final[frozenset[str]] = frozenset({
+    "user_name",
+    "user_id",
+})
+
 
 # ---- Transport-Specific Repository Configs ----
 
@@ -148,6 +154,10 @@ class UserConfig(BaseModel):
     user_name: str
     user_id: EmailStr
     
+    # Optional default repository settings  
+    default_host: Optional[str] = None
+    default_project_path: Optional[Path] = None
+    
     # Optional security configs
     ssh: Optional[SSHUserConfig] = None
     rclone: Optional[RcloneUserConfig] = None
@@ -161,22 +171,129 @@ class UserConfig(BaseModel):
         return cls.model_validate(data)
 
 
+class RepositoryDiscoveryConfig(BaseModel):
+    """Configuration for repository discovery operations."""
+    default_host: Optional[str] = None
+    default_project_path: Optional[Path] = None
+
+
 # ---- Config Finders ----
 
-def find_user_config_path() -> Path:
-    """Locate the user config file from common locations."""
+def _validate_system_config(config_data: dict, config_path: Path) -> dict:
+    """Validate system config and remove personal fields with error logging.
+    
+    Args:
+        config_data: Raw config data from system config file
+        config_path: Path to the config file for error reporting
+        
+    Returns:
+        Cleaned config data with personal fields removed
+        
+    Raises:
+        ValueError: If personal fields are found in system config
+    """
+    if not str(config_path).startswith("/etc/dsg/"):
+        # Only validate system configs
+        return config_data
+        
+    found_personal_fields = PERSONAL_FIELDS.intersection(config_data.keys())
+    if found_personal_fields:
+        fields_str = ", ".join(sorted(found_personal_fields))
+        logger.error(
+            f"System config {config_path} contains personal fields: {fields_str}. "
+            f"These fields should only be in user configs, not system defaults."
+        )
+        raise ValueError(
+            f"System config contains personal fields: {fields_str}"
+        )
+    
+    return config_data
+
+
+def load_merged_user_config() -> UserConfig:
+    """Load and merge user config from all locations (system defaults + user overrides)."""
+    # Config file search order (later configs override earlier ones)
     candidates = [
-        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,
-        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,
-        Path.home() / ".config" / "dsg" / USER_CFG,
+        Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
+        Path.home() / ".config" / "dsg" / USER_CFG,  # User config
+        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
+        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
     ]
-
+    
+    merged_data = {}
+    found_configs = []
+    
     for candidate in candidates:
-        if candidate.exists():
-            return candidate
+        if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
+            try:
+                with candidate.open("r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                
+                # Validate system config for personal fields
+                data = _validate_system_config(data, candidate)
+                
+                merged_data.update(data)  # Later configs override earlier ones
+                found_configs.append(str(candidate))
+                logger.debug(f"Loaded config from {candidate}")
+            except Exception as e:
+                logger.warning(f"Failed to load config from {candidate}: {e}")
+    
+    if not found_configs:
+        logger.error(f"No user config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
+        raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
+    
+    logger.debug(f"Merged config from: {', '.join(found_configs)}")
+    return UserConfig.model_validate(merged_data)
 
-    logger.error(f"User config not found in DSG_CONFIG_HOME, XDG_CONFIG_HOME, or ~/.config/dsg/{USER_CFG}")
-    raise FileNotFoundError(f"No {USER_CFG} found in standard locations")
+
+def load_repository_discovery_config() -> RepositoryDiscoveryConfig:
+    """Load configuration for repository discovery operations.
+    
+    This loads only the fields needed for repository discovery (default_host,
+    default_project_path) without requiring personal user fields.
+    
+    Returns:
+        RepositoryDiscoveryConfig with host and path information
+        
+    Raises:
+        FileNotFoundError: If no config files are found
+    """
+    # Config file search order (later configs override earlier ones)
+    candidates = [
+        Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
+        Path.home() / ".config" / "dsg" / USER_CFG,  # User config
+        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
+        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
+    ]
+    
+    merged_data = {}
+    found_configs = []
+    
+    for candidate in candidates:
+        if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
+            try:
+                with candidate.open("r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                
+                # Validate system config for personal fields
+                data = _validate_system_config(data, candidate)
+                
+                # Only extract repository discovery fields
+                discovery_fields = {
+                    key: value for key, value in data.items()
+                    if key in {"default_host", "default_project_path"}
+                }
+                
+                merged_data.update(discovery_fields)  # Later configs override earlier ones
+                found_configs.append(str(candidate))
+            except Exception as e:
+                logger.warning(f"Failed to load config from {candidate}: {e}")
+    
+    if not found_configs:
+        logger.error(f"No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
+        raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
+    
+    return RepositoryDiscoveryConfig.model_validate(merged_data)
 
 
 def find_project_config_path(start: Path | None = None) -> Path:
@@ -201,9 +318,8 @@ class Config(BaseModel):
     @classmethod
     def load(cls, start_path: Path | None = None) -> Config:
         """Load both user and project configs."""
-        # Load user config (required)
-        user_config_path = find_user_config_path()
-        user_config = UserConfig.load(user_config_path)
+        # Load merged user config (system defaults + user overrides)
+        user_config = load_merged_user_config()
         
         # Load project config (required)
         project_config_path = find_project_config_path(start_path)
@@ -239,8 +355,7 @@ def validate_config(check_backend: bool = False) -> list[str]:
 
     # Check user config
     try:
-        user_config_path = find_user_config_path()
-        user_config = UserConfig.load(user_config_path)
+        user_config = load_merged_user_config()
     except FileNotFoundError:
         errors.append("User config not found")
     except Exception as e:

@@ -25,7 +25,7 @@ from dsg.config_manager import (
     SSHRepositoryConfig, RcloneRepositoryConfig, IPFSRepositoryConfig,
     ProjectSettings, IgnoreSettings,
     SSHUserConfig, RcloneUserConfig, IPFSUserConfig,
-    find_user_config_path, find_project_config_path,
+    load_merged_user_config, find_project_config_path,
     validate_config
 )
 
@@ -532,24 +532,22 @@ user_id: test@example.com
 def test_validate_config_missing_user_config(basic_project_config_redesigned):
     """Test config validation when user config is missing."""
     import os
+    from unittest.mock import patch
     
     old_cwd = os.getcwd()
-    old_env = os.environ.get("DSG_CONFIG_HOME")
     
     try:
-        # Point to non-existent directory for user config
-        os.environ["DSG_CONFIG_HOME"] = str(basic_project_config_redesigned["repo_dir"] / "nonexistent")
-        os.chdir(basic_project_config_redesigned["repo_dir"])
-        
-        errors = validate_config(check_backend=False)
-        assert len(errors) >= 1
-        assert any("User config not found" in error for error in errors)
+        # Mock config loading to fail
+        with patch('dsg.config_manager.load_merged_user_config') as mock_load_user:
+            mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
+            
+            os.chdir(basic_project_config_redesigned["repo_dir"])
+            
+            errors = validate_config(check_backend=False)
+            assert len(errors) >= 1
+            assert any("User config not found" in error for error in errors)
     finally:
         os.chdir(old_cwd)
-        if old_env is None:
-            os.environ.pop("DSG_CONFIG_HOME", None)
-        else:
-            os.environ["DSG_CONFIG_HOME"] = old_env
 
 
 # done.

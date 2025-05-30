@@ -316,4 +316,121 @@ project:
             result = runner.invoke(app, ["list-files"], env=env)
             assert result.exit_code == 0, f"Command failed with output:\n{result.stdout}"
             assert "Included: 0 files" in result.stdout
-            assert "Excluded: 0 files" in result.stdout 
+            assert "Excluded: 0 files" in result.stdout
+
+
+def test_list_repos_missing_config():
+    """Test list-repos command fails gracefully when config is missing."""
+    from unittest.mock import patch
+    
+    # Mock the config loading to raise FileNotFoundError
+    with patch('dsg.cli.load_repository_discovery_config') as mock_load:
+        mock_load.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
+        
+        result = runner.invoke(app, ["list-repos"])
+        assert result.exit_code == 1
+        assert "Config error:" in result.stdout
+
+
+def test_list_repos_missing_default_host():
+    """Test list-repos command fails when default_host is not configured."""
+    from unittest.mock import patch, MagicMock
+    from dsg.config_manager import RepositoryDiscoveryConfig
+    
+    # Mock config with missing default_host
+    mock_config = RepositoryDiscoveryConfig(
+        default_host=None,
+        default_project_path=Path("/tmp/test")
+    )
+    
+    with patch('dsg.cli.load_repository_discovery_config') as mock_load:
+        mock_load.return_value = mock_config
+        
+        result = runner.invoke(app, ["list-repos"])
+        assert result.exit_code == 1
+        assert "default_host not configured" in result.stdout
+
+
+def test_list_repos_missing_default_project_path():
+    """Test list-repos command fails when default_project_path is not configured."""
+    from unittest.mock import patch
+    from dsg.config_manager import RepositoryDiscoveryConfig
+    
+    # Mock config with missing default_project_path
+    mock_config = RepositoryDiscoveryConfig(
+        default_host="localhost",
+        default_project_path=None
+    )
+    
+    with patch('dsg.cli.load_repository_discovery_config') as mock_load:
+        mock_load.return_value = mock_config
+        
+        result = runner.invoke(app, ["list-repos"])
+        assert result.exit_code == 1
+        assert "default_project_path not configured" in result.stdout
+
+
+def test_list_repos_local_empty_directory():
+    """Test list-repos command with empty local directory."""
+    from unittest.mock import patch
+    from dsg.config_manager import RepositoryDiscoveryConfig
+    
+    with tempfile.TemporaryDirectory() as td:
+        # Create empty project directory
+        project_dir = Path(td) / "projects"
+        project_dir.mkdir()
+        
+        # Mock config pointing to empty directory
+        mock_config = RepositoryDiscoveryConfig(
+            default_host="localhost",
+            default_project_path=project_dir
+        )
+        
+        with patch('dsg.cli.load_repository_discovery_config') as mock_load:
+            mock_load.return_value = mock_config
+            
+            result = runner.invoke(app, ["list-repos"])
+            assert result.exit_code == 0
+            assert "No DSG repositories found" in result.stdout
+
+
+def test_list_repos_local_with_valid_repos():
+    """Test list-repos command finding valid local repositories."""
+    from unittest.mock import patch
+    from dsg.config_manager import RepositoryDiscoveryConfig
+    
+    with tempfile.TemporaryDirectory() as td:
+        # Create project directory with test repositories
+        project_dir = Path(td) / "projects"
+        project_dir.mkdir()
+        
+        # Create valid DSG repository
+        repo1_dir = project_dir / "repo1"
+        repo1_dir.mkdir()
+        (repo1_dir / ".dsg").mkdir()
+        (repo1_dir / ".dsg" / "manifest.json").write_text("{}")
+        
+        # Create another valid DSG repository (without manifest - should be "Available")
+        repo2_dir = project_dir / "repo2"
+        repo2_dir.mkdir()
+        (repo2_dir / ".dsg").mkdir()
+        
+        # Create directory without .dsg (should be ignored)
+        not_repo_dir = project_dir / "not-a-repo"
+        not_repo_dir.mkdir()
+        
+        # Mock config pointing to project directory
+        mock_config = RepositoryDiscoveryConfig(
+            default_host="localhost",
+            default_project_path=project_dir
+        )
+        
+        with patch('dsg.cli.load_repository_discovery_config') as mock_load:
+            mock_load.return_value = mock_config
+            
+            result = runner.invoke(app, ["list-repos"])
+            assert result.exit_code == 0
+            assert "repo1" in result.stdout
+            assert "repo2" in result.stdout
+            assert "not-a-repo" not in result.stdout
+            assert "Found 2 repositories" in result.stdout 

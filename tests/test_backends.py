@@ -18,11 +18,11 @@ from dsg.config_manager import (
 )
 from dsg.backends import (
     can_access_backend, 
-    _is_local_host, 
     create_backend, 
     Backend, 
     LocalhostBackend
 )
+from dsg.host_utils import is_local_host
 from unittest.mock import patch, MagicMock
 
 
@@ -107,9 +107,9 @@ def test_is_local_host():
     hostname = socket.gethostname()
     fqdn = socket.getfqdn()
     
-    assert _is_local_host(hostname)
-    assert _is_local_host(fqdn)
-    assert not _is_local_host("some-other-host.example.com")
+    assert is_local_host(hostname)
+    assert is_local_host(fqdn)
+    assert not is_local_host("some-other-host.example.com")
 
 
 def test_backend_access_local_repo_dir_missing(base_config):

@@ -14,17 +14,11 @@ from pathlib import Path
 from typing import Literal, Tuple, BinaryIO, Optional
 
 from dsg.config_manager import Config
+from dsg.host_utils import is_local_host
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include "s3", "dropbox", etc.
 
 
-def _is_local_host(host: str) -> bool:
-    """Return True if the current machine is the target host."""
-    return host in {
-        socket.gethostname(),
-        socket.getfqdn(),
-        "localhost",
-    }
 
 
 class Backend(ABC):
@@ -127,7 +121,7 @@ def create_backend(cfg: Config) -> Backend:
     if transport == "ssh":
         ssh_config = cfg.project.ssh
         # Check if it's actually local
-        if _is_local_host(ssh_config.host):
+        if is_local_host(ssh_config.host):
             return LocalhostBackend(ssh_config.path, ssh_config.name)
         else:
             # For future implementation
