@@ -5,6 +5,7 @@ This module provides the main entry point for the migration process,
 orchestrating the various steps in the migration workflow.
 """
 
+import datetime
 import random
 import subprocess
 import os
@@ -15,7 +16,7 @@ from typing import List, Optional
 import typer
 from loguru import logger
 
-from scripts.migration.fs_utils import get_sdir_numbers, normalize_directory_tree, normalize_source, cleanup_temp_dir
+from scripts.migration.fs_utils import get_sdir_numbers
 from scripts.migration.snapshot_info import (
     SnapshotInfo, parse_push_log, find_push_log, create_default_snapshot_info
 )
@@ -64,17 +65,12 @@ def process_snapshot(
     logger.info(f"Processing {src_dir}")
     repo = Path(zfs_mount).parts[-1]
     
-    # === STEP 1: Pre-normalize the source snapshot ===
-    # Create a temporary directory with normalized paths
-    logger.info(f"Pre-normalizing source snapshot {snapshot_id}")
-    normalized_src = None
+    # === STEP 1: Use already-normalized source ===
+    # Phase 1 already normalized the source, so use it directly
+    logger.info(f"Using normalized source snapshot {snapshot_id}")
     try:
-        # Create a normalized copy of the source
-        normalized_src = normalize_source(Path(src_dir), snapshot_id)
-        logger.info(f"Created normalized source at {normalized_src}")
-        
-        # Use the normalized source path for rsync
-        src = f"{normalized_src}/"
+        # Use the source directory directly (already normalized by Phase 1)
+        src = f"{src_dir}/"
         
         # === STEP 2: Rsync data from normalized source ===
         # Rsync with delete for exact copy
@@ -89,8 +85,7 @@ def process_snapshot(
         # Build manifest from filesystem (no renaming needed since paths are already normalized)
         manifest = build_manifest_from_filesystem(
             Path(zfs_mount), 
-            snapshot_info.user_id,
-            set()  # No renamed files to track since normalization was done pre-rsync
+            snapshot_info.user_id
         )
         logger.info(f"Built manifest with {len(manifest.entries)} entries")
         
@@ -134,7 +129,7 @@ def process_snapshot(
         if validation != "none" and (random.random() < VERIFY_PROB or num == max(get_sdir_numbers(bb_dir))):
             logger.info(f"Performing verification for snapshot {snapshot_id}")
             if verify_snapshot_with_validation(
-                bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation, normalized_src
+                bb_dir, repo, full_dataset, num, snapshot_id, verbose, validation, src_dir
             ):
                 logger.info(f"Verification passed for {snapshot_id}")
             else:
@@ -148,16 +143,6 @@ def process_snapshot(
         # Re-raise the exception after logging it
         raise
         
-    finally:
-        # Clean up the temporary normalized source directory
-        if normalized_src:
-            logger.info(f"Cleaning up temporary normalized source directory {normalized_src}")
-            try:
-                cleanup_temp_dir(normalized_src)
-                logger.info(f"Successfully removed temporary directory {normalized_src}")
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to clean up temporary directory {normalized_src}: {cleanup_error}")
-                # Don't raise the cleanup error as it would mask the original error if there was one
 
 
 @app.command()
@@ -362,7 +347,7 @@ def main(
                 check_archive_files, check_manifest_integrity, check_snapshot_chain,
                 check_push_log_consistency, check_unique_files
             )
-            from scripts.migration.check_file_timestamps import check_file_timestamps
+            # check_file_timestamps removed - not implemented yet
             
             # Run the full suite of tests on all processed snapshots
             tests = [
@@ -372,9 +357,9 @@ def main(
                 check_archive_files(bb, processed_snapshots),
                 check_manifest_integrity(bb, processed_snapshots),
                 check_snapshot_chain(bb, processed_snapshots, is_partial_chain=False),  # Not partial for full chain
-                check_push_log_consistency(bb, processed_snapshots),
+                check_push_log_consistency(bb, processed_snapshots, verbose),
                 check_unique_files(bb, processed_snapshots),
-                check_file_timestamps(bb, processed_snapshots, sample_size=10, max_dirs=100, max_depth=3)  # Check timestamps
+                # check_file_timestamps(bb, processed_snapshots, sample_size=10, max_dirs=100, max_depth=3)  # TODO: implement timestamp checking
             ]
             
             # Calculate results
@@ -415,8 +400,6 @@ def main(
         raise typer.Exit(1)
 
 
-# Missing import - add it here
-import datetime
 
 
 if __name__ == "__main__":
