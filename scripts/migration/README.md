@@ -109,3 +109,52 @@ The core challenge of this migration has been handling Unicode normalization for
 - Some filesystems (like ZFS) may auto-normalize, adding complexity
 - **Critical**: Normalization must happen component-by-component in a path
 - Directory renaming must be done consistently top-down or bottom-up to avoid breaking paths
+
+## Phase 2 Testing Status
+
+### Test Suite Progress (as of 2025-05-29)
+
+Phase 2 migration code has comprehensive unit tests covering:
+
+**✅ Completed Tests:**
+- `test_manifest_generation.py` - Tests manifest building from filesystem
+  - Unicode filename handling (NFC/NFD)
+  - Symlink processing
+  - File metadata extraction
+  - Integration with scanner module
+  
+- `test_rsync_operations.py` - Tests actual rsync behavior (requires `rsync` installed)
+  - Basic copy operations with `-a` flag
+  - `--delete` flag behavior (used in migration)
+  - Trailing slash semantics (critical for rsync)
+  - Unicode filename preservation
+  - Symlink handling
+  - Permission and timestamp preservation
+  - Error scenarios and recovery
+  
+- `test_snapshot_info.py` - Tests push log parsing and snapshot metadata
+  - Parse old pipe-delimited push.log format
+  - Timezone conversion (UTC → LA timezone)
+  - Empty message handling ("--" for missing)
+  - Push log discovery in repository structure
+  - Default fallbacks when push logs missing
+
+**🚧 In Progress:**
+- `test_migration_validation.py` - Tests validation utilities
+
+**Key Testing Notes:**
+- Tests use real filesystem operations where practical (not mocked)
+- rsync tests validate actual rsync behavior to catch subtle edge cases
+- Push log tests validate reading old format for migration to new JSON format
+- All tests include Unicode edge cases critical for normalization work
+- Tests cover error scenarios and recovery paths
+
+**Code Issues Fixed:**
+- Removed missing `check_file_timestamps` imports
+- Fixed undefined `verbose` variable scope in validation functions
+- Moved `datetime` import to proper location
+
+**Next Steps:**
+- Complete validation tests
+- Run full test suite
+- Integration testing with sample data

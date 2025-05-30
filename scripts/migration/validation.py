@@ -644,7 +644,7 @@ def check_snapshot_chain(repo: str, snapshots: List[str], is_partial_chain: bool
     return result
 
 
-def check_push_log_consistency(repo: str, snapshots: List[str]) -> ValidationResult:
+def check_push_log_consistency(repo: str, snapshots: List[str], verbose: bool = False) -> ValidationResult:
     """
     Check if snapshot messages match push log entries.
     
@@ -865,13 +865,13 @@ def verify_snapshot_with_validation(
     # Always run these regardless of snapshot position
     tests.extend([
         check_manifest_integrity(repo, snapshots),
-        check_push_log_consistency(repo, snapshots),
+        check_push_log_consistency(repo, snapshots, verbose),
         check_unique_files(repo, snapshots)
     ])
     
     # Add file timestamp check
-    from scripts.migration.check_file_timestamps import check_file_timestamps
-    tests.append(check_file_timestamps(repo, snapshots, sample_size=10, max_dirs=100, max_depth=3))
+    # check_file_timestamps not implemented yet
+    # tests.append(check_file_timestamps(repo, snapshots, sample_size=10, max_dirs=100, max_depth=3))
     
     # Evaluate test results
     passing = 0

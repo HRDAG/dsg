@@ -103,8 +103,12 @@ def test_phase2_migration_integration(tmp_path):
     # For now, we'll simulate the key migration steps
     _simulate_migration(source_repo, target_repo)
     
-    # 3. Validate the migration
-    results = run_all_validations(source_repo, target_repo, "test-repo", sample_files=None)
+    # 3. Validate the migration (skip ZFS-specific checks for integration test)
+    from unittest.mock import patch
+    with patch('subprocess.run') as mock_run:
+        # Mock ZFS commands to return "not ZFS" so validation uses directory mode
+        mock_run.return_value.returncode = 1  # ZFS commands fail = not ZFS
+        results = run_all_validations(source_repo, target_repo, "test-repo", sample_files=None)
     
     # 4. Print summary (useful for debugging)
     if not all(r[0] for r in results.values()):
