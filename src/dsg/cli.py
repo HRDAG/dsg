@@ -769,16 +769,40 @@ def validate_chain(  # pragma: no cover
 
 # ---- Helper Functions ----
 
+def _truncate_message(message: str) -> str:
+    """Truncate commit message using git's convention.
+    
+    Shows the first line (subject) truncated to 50 characters with "..." if longer.
+    This follows git's standard for displaying commit messages in list views.
+    
+    Args:
+        message: The commit/sync message to truncate
+        
+    Returns:
+        Truncated message string
+    """
+    if not message:
+        return ""
+        
+    # Get first line only (subject line)
+    first_line = message.split('\n')[0].strip()
+    
+    # Truncate to 50 characters with ellipsis if longer
+    if len(first_line) > 50:
+        return first_line[:47] + "..."
+    
+    return first_line
+
 def _list_local_repositories(project_path: Path) -> list[dict]:
-    """List DSG repositories on local filesystem.
+    """List DSG repositories on local filesystem with snapshot information.
     
     Args:
         project_path: Path to search for repositories
         
     Returns:
-        List of repository info dicts with 'name' and 'status' keys
+        List of repository info dicts with snapshot metadata
     """
-    import subprocess
+    import orjson
     from pathlib import Path
     
     repos = []
@@ -798,18 +822,52 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
             # Check if it has a .dsg subdirectory
             dsg_dir = item / ".dsg"
             if dsg_dir.exists() and dsg_dir.is_dir():
-                status = "Available"
+                repo_info = {"name": item.name}
+                
                 try:
-                    # Try to determine if it's accessible
-                    if (dsg_dir / "manifest.json").exists():
-                        status = "Active"
-                except (PermissionError, OSError):
-                    status = "Error"
+                    # Try to read last-sync.json for snapshot info
+                    last_sync_file = dsg_dir / "last-sync.json"
+                    if last_sync_file.exists():
+                        data = orjson.loads(last_sync_file.read_bytes())
+                        metadata = data.get("metadata", {})
+                        
+                        repo_info.update({
+                            "snapshot": metadata.get("snapshot_id", "Unknown"),
+                            "timestamp": metadata.get("created_at", "Unknown"),
+                            "user": metadata.get("created_by", "Unknown"),
+                            "message": _truncate_message(metadata.get("snapshot_message", "No message"))
+                        })
+                    else:
+                        # No last-sync.json, try manifest.json
+                        manifest_file = dsg_dir / "manifest.json"
+                        if manifest_file.exists():
+                            data = orjson.loads(manifest_file.read_bytes())
+                            metadata = data.get("metadata", {})
+                            
+                            repo_info.update({
+                                "snapshot": metadata.get("snapshot_id", "Working"),
+                                "timestamp": metadata.get("created_at", "Unknown"),
+                                "user": metadata.get("created_by", "Unknown"),
+                                "message": "Working directory"
+                            })
+                        else:
+                            # No manifest files found
+                            repo_info.update({
+                                "snapshot": "None",
+                                "timestamp": "Unknown",
+                                "user": "Unknown",
+                                "message": "Not initialized"
+                            })
+                            
+                except (PermissionError, OSError, orjson.JSONDecodeError) as e:
+                    repo_info.update({
+                        "snapshot": "Error",
+                        "timestamp": "Unknown",
+                        "user": "Unknown",
+                        "message": f"Read error: {str(e)[:30]}..."
+                    })
                     
-                repos.append({
-                    "name": item.name,
-                    "status": status
-                })
+                repos.append(repo_info)
                 
     except (PermissionError, OSError) as e:
         console.print(f"[yellow]Warning: Cannot access {project_path}: {e}[/yellow]")
@@ -818,16 +876,17 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
 
 
 def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
-    """List DSG repositories on remote host via SSH.
+    """List DSG repositories on remote host via SSH with snapshot information.
     
     Args:
         host: Remote hostname
         project_path: Path on remote host to search
         
     Returns:
-        List of repository info dicts with 'name' and 'status' keys
+        List of repository info dicts with snapshot metadata
     """
     import subprocess
+    import orjson
     
     repos = []
     
@@ -849,7 +908,7 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
             console.print(f"[yellow]Warning: SSH to {host} failed: {result.stderr}[/yellow]")
             return []
             
-        # Parse the output to get repository names
+        # Parse the output to get repository names and metadata
         for line in result.stdout.strip().split('\n'):
             if not line:
                 continue
@@ -857,26 +916,70 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
             # Extract repo name from path like "/var/repos/zsd/repo1/.dsg"
             dsg_path = Path(line)
             repo_name = dsg_path.parent.name
+            repo_info = {"name": repo_name}
             
-            # Check if manifest exists to determine status
-            manifest_cmd = [
-                "ssh", host,
-                f"test -f {dsg_path}/manifest.json && echo 'Active' || echo 'Available'"
-            ]
-            
-            status_result = subprocess.run(
-                manifest_cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            status = status_result.stdout.strip() if status_result.returncode == 0 else "Available"
-            
-            repos.append({
-                "name": repo_name,
-                "status": status
-            })
+            try:
+                # Try to read last-sync.json via SSH
+                read_cmd = [
+                    "ssh", host,
+                    f"cat {dsg_path}/last-sync.json 2>/dev/null || cat {dsg_path}/manifest.json 2>/dev/null || echo '{{}}'"
+                ]
+                
+                read_result = subprocess.run(
+                    read_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if read_result.returncode == 0 and read_result.stdout.strip():
+                    try:
+                        data = orjson.loads(read_result.stdout.strip())
+                        metadata = data.get("metadata", {})
+                        
+                        # Check if this came from last-sync.json or manifest.json
+                        has_snapshot_id = metadata.get("snapshot_id") is not None
+                        
+                        repo_info.update({
+                            "snapshot": metadata.get("snapshot_id", "Working" if has_snapshot_id else "None"),
+                            "timestamp": metadata.get("created_at", "Unknown"),
+                            "user": metadata.get("created_by", "Unknown"),
+                            "message": _truncate_message(
+                                metadata.get("snapshot_message", 
+                                "Working directory" if has_snapshot_id else "Not initialized")
+                            )
+                        })
+                    except orjson.JSONDecodeError:
+                        repo_info.update({
+                            "snapshot": "None",
+                            "timestamp": "Unknown", 
+                            "user": "Unknown",
+                            "message": "Not initialized"
+                        })
+                else:
+                    repo_info.update({
+                        "snapshot": "Error",
+                        "timestamp": "Unknown",
+                        "user": "Unknown", 
+                        "message": "SSH read failed"
+                    })
+                    
+            except subprocess.TimeoutExpired:
+                repo_info.update({
+                    "snapshot": "Error",
+                    "timestamp": "Unknown",
+                    "user": "Unknown",
+                    "message": "SSH timeout"
+                })
+            except Exception as e:
+                repo_info.update({
+                    "snapshot": "Error", 
+                    "timestamp": "Unknown",
+                    "user": "Unknown",
+                    "message": f"Error: {str(e)[:20]}..."
+                })
+                
+            repos.append(repo_info)
             
     except subprocess.TimeoutExpired:
         console.print(f"[red]Error: SSH connection to {host} timed out[/red]")
@@ -887,10 +990,10 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
 
 
 def _display_repositories(repos: list[dict], host: str, project_path: Path) -> None:
-    """Display repository list in a formatted table.
+    """Display repository list in a formatted table with snapshot information.
     
     Args:
-        repos: List of repository info dicts
+        repos: List of repository info dicts with snapshot metadata
         host: Host name where repositories are located
         project_path: Base path where repositories are stored
     """
@@ -898,21 +1001,40 @@ def _display_repositories(repos: list[dict], host: str, project_path: Path) -> N
     
     table = Table(title=f"DSG Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
-    table.add_column("Status", style="magenta")
-    table.add_column("Path", style="blue")
+    table.add_column("Last Snapshot", style="yellow", no_wrap=True)
+    table.add_column("Timestamp", style="green", no_wrap=True)
+    table.add_column("User", style="blue", no_wrap=True)
     
     for repo in repos:
-        # Color-code status
-        status = repo["status"]
-        if status == "Active":
-            status_style = "[green]Active[/green]"
-        elif status == "Available":
-            status_style = "[yellow]Available[/yellow]"
+        # Format timestamp for display (remove timezone info for brevity)
+        timestamp = repo.get("timestamp", "Unknown")
+        if timestamp != "Unknown" and "T" in timestamp:
+            # Convert ISO format to more readable format
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                timestamp = dt.strftime("%Y-%m-%d %H:%M")
+            except (ValueError, AttributeError):
+                # Keep original if parsing fails
+                pass
+        
+        # Color-code snapshot status
+        snapshot = repo.get("snapshot", "Unknown")
+        if snapshot.startswith("s") and snapshot[1:].isdigit():
+            snapshot_style = f"[green]{snapshot}[/green]"
+        elif snapshot == "Working":
+            snapshot_style = f"[yellow]{snapshot}[/yellow]" 
+        elif snapshot in ("None", "Error"):
+            snapshot_style = f"[red]{snapshot}[/red]"
         else:
-            status_style = "[red]Error[/red]"
+            snapshot_style = f"[white]{snapshot}[/white]"
             
-        full_path = f"{project_path}/{repo['name']}"
-        table.add_row(repo["name"], status_style, full_path)
+        table.add_row(
+            repo["name"], 
+            snapshot_style,
+            timestamp,
+            repo.get("user", "Unknown")
+        )
     
     console.print(table)
     console.print(f"\nFound {len(repos)} repositories")

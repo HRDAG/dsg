@@ -6,7 +6,7 @@ import re
 import sys
 
 # Get the CLI help output
-result = subprocess.run(['poetry', 'run', 'dsg', '--help'], 
+result = subprocess.run(['uv', 'run', 'dsg', '--help'], 
                       capture_output=True, text=True)
 cli_help = result.stdout
 

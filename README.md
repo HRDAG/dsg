@@ -52,14 +52,15 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    │ --help                        Show this message and exit.                    │
    ╰──────────────────────────────────────────────────────────────────────────────╯
    ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-   │ init                Initialize dsg metadata directory in the current         │
-   │                     directory.                                               │
+   │ init                Initialize project configuration for DSG repository.     │
+   │ list-repos          List all available DSG repositories.                     │
    │ list-files          List all files in data directories with metadata.        │
    │ status              Show sync status by comparing local files with last      │
    │                     sync.                                                    │
    │ sync                Synchronize local files with remote repository.          │
    │ normalize           Normalize invalid file paths in the current project.     │
    │ exclude-once        Temporarily exclude a path from the current session.     │
+   │ log                 Show snapshot history for the repository.                │
    │ blame               Show modification history for a file.                    │
    │ snapmount           Mount snapshots for browsing historical data.            │
    │ snapfetch           Fetch a single file from a snapshot.                     │
