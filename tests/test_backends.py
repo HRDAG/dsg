@@ -306,4 +306,112 @@ def test_create_backend_unsupported_type(base_config):
     with pytest.raises(NotImplementedError, match="Rclone backend not yet implemented"):
         create_backend(base_config)
 
+def test_localhost_backend_clone_basic(tmp_path):
+    """Test basic clone functionality with manifest-driven file copying"""
+    from collections import OrderedDict
+    from dsg.manifest import Manifest
+    
+    # Create source repository with test files
+    source_repo = tmp_path / "source" / "test_repo"
+    source_dsg = source_repo / ".dsg"
+    source_dsg.mkdir(parents=True)
+    
+    # Create test files
+    test_file1 = source_repo / "file1.txt"
+    test_file1.write_text("Content of file 1")
+    
+    test_file2 = source_repo / "subdir" / "file2.csv"
+    test_file2.parent.mkdir(parents=True)
+    test_file2.write_text("id,name\n1,test\n")
+    
+    # Create manifest
+    entries = OrderedDict()
+    entries["file1.txt"] = Manifest.create_entry(test_file1, source_repo)
+    entries["subdir/file2.csv"] = Manifest.create_entry(test_file2, source_repo)
+    
+    manifest = Manifest(entries=entries)
+    manifest.generate_metadata(snapshot_id="test_snapshot", user_id="test@example.com")
+    
+    # Write last-sync.json
+    last_sync_path = source_dsg / "last-sync.json"
+    manifest.to_json(last_sync_path, include_metadata=True)
+    
+    # Create destination directory
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    # Test clone
+    backend = LocalhostBackend(source_repo.parent, source_repo.name)
+    backend.clone(dest_repo)
+    
+    # Verify .dsg directory was copied
+    assert (dest_repo / ".dsg").exists()
+    assert (dest_repo / ".dsg" / "last-sync.json").exists()
+    
+    # Verify manifest files were copied
+    assert (dest_repo / "file1.txt").exists()
+    assert (dest_repo / "subdir" / "file2.csv").exists()
+    
+    # Verify file contents match
+    assert (dest_repo / "file1.txt").read_text() == "Content of file 1"
+    assert (dest_repo / "subdir" / "file2.csv").read_text() == "id,name\n1,test\n"
+
+
+def test_localhost_backend_clone_no_manifest(tmp_path):
+    """Test clone with repository that has .dsg but no last-sync.json"""
+    # Create source repository with only .dsg directory (no manifest)
+    source_repo = tmp_path / "source" / "test_repo"
+    source_dsg = source_repo / ".dsg"
+    source_dsg.mkdir(parents=True)
+    
+    # Create destination directory
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    # Test clone - should succeed but only copy .dsg
+    backend = LocalhostBackend(source_repo.parent, source_repo.name)
+    backend.clone(dest_repo)
+    
+    # Verify .dsg directory was copied
+    assert (dest_repo / ".dsg").exists()
+    # Verify no last-sync.json exists
+    assert not (dest_repo / ".dsg" / "last-sync.json").exists()
+
+
+def test_localhost_backend_clone_errors(tmp_path):
+    """Test clone error conditions"""
+    # Create source repository
+    source_repo = tmp_path / "source" / "test_repo"
+    source_dsg = source_repo / ".dsg"
+    source_dsg.mkdir(parents=True)
+    
+    # Create destination directory
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    backend = LocalhostBackend(source_repo.parent, source_repo.name)
+    
+    # Test 1: Clone succeeds first time
+    backend.clone(dest_repo)
+    assert (dest_repo / ".dsg").exists()
+    
+    # Test 2: Clone fails if .dsg already exists and resume=False
+    with pytest.raises(ValueError, match="Destination .dsg directory already exists"):
+        backend.clone(dest_repo, resume=False)
+    
+    # Test 3: Clone succeeds with resume=True
+    backend.clone(dest_repo, resume=True)  # Should not raise
+    
+    # Test 4: Clone fails if source is not a DSG repository
+    non_dsg_repo = tmp_path / "source" / "not_dsg"
+    non_dsg_repo.mkdir(parents=True)
+    
+    bad_backend = LocalhostBackend(non_dsg_repo.parent, non_dsg_repo.name)
+    dest_repo2 = tmp_path / "dest2"
+    dest_repo2.mkdir()
+    
+    with pytest.raises(ValueError, match="Source is not a DSG repository"):
+        bad_backend.clone(dest_repo2)
+
+
 # done.

@@ -433,4 +433,169 @@ def test_list_repos_local_with_valid_repos():
             assert "repo1" in result.stdout
             assert "repo2" in result.stdout
             assert "not-a-repo" not in result.stdout
-            assert "Found 2 repositories" in result.stdout 
+            assert "Found 2 repositories" in result.stdout
+
+
+def test_clone_command_integration():
+    """Test complete dsg clone command workflow with localhost backend."""
+    from collections import OrderedDict
+    from dsg.manifest import Manifest
+    
+    # Create user config
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        # Create isolated filesystem for testing
+        with runner.isolated_filesystem() as td:
+            td = Path(td)
+            
+            # 1. Create source repository with test data
+            source_repo = td / "source_repo"
+            source_dsg = source_repo / ".dsg"
+            source_dsg.mkdir(parents=True)
+            
+            # Create test files in source
+            input_dir = source_repo / "input"
+            input_dir.mkdir()
+            test_file1 = input_dir / "data1.txt"
+            test_file1.write_text("Source data content 1")
+            test_file2 = input_dir / "data2.csv"
+            test_file2.write_text("id,value\n1,test\n2,data")
+            
+            # Create manifest for source repository
+            entries = OrderedDict()
+            entries["input/data1.txt"] = Manifest.create_entry(test_file1, source_repo)
+            entries["input/data2.csv"] = Manifest.create_entry(test_file2, source_repo)
+            
+            manifest = Manifest(entries=entries)
+            manifest.generate_metadata(snapshot_id="test_snapshot", user_id="test@example.com")
+            
+            # Write last-sync.json to source
+            last_sync_path = source_dsg / "last-sync.json"
+            manifest.to_json(last_sync_path, include_metadata=True)
+            
+            # 2. Create destination directory with .dsgconfig.yml pointing to source
+            dest_project = td / "dest_project"
+            dest_project.mkdir()
+            os.chdir(dest_project)
+            
+            # Create .dsgconfig.yml pointing to source repository
+            config_content = f"""
+transport: ssh
+ssh:
+  host: localhost
+  path: {source_repo.parent}
+  name: {source_repo.name}
+  type: xfs
+project:
+  data_dirs:
+    - input
+    - output
+  ignore:
+    paths: []
+    names: []
+    suffixes: []
+"""
+            (dest_project / ".dsgconfig.yml").write_text(config_content)
+            
+            # 3. Run dsg clone command
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            result = runner.invoke(app, ["clone"], env=env)
+            
+            # 4. Verify success
+            assert result.exit_code == 0, f"Clone command failed with output:\n{result.stdout}\nErrors:\n{result.stderr if result.stderr else 'None'}"
+            assert "Repository cloned successfully" in result.stdout
+            
+            # 5. Verify files were cloned
+            assert (dest_project / ".dsg").exists()
+            assert (dest_project / ".dsg" / "last-sync.json").exists()
+            assert (dest_project / "input" / "data1.txt").exists()
+            assert (dest_project / "input" / "data2.csv").exists()
+            
+            # 6. Verify file contents match
+            assert (dest_project / "input" / "data1.txt").read_text() == "Source data content 1"
+            assert (dest_project / "input" / "data2.csv").read_text() == "id,value\n1,test\n2,data"
+
+
+def test_clone_command_errors():
+    """Test dsg clone command error conditions."""
+    
+    # Create user config
+    with tempfile.TemporaryDirectory() as user_config_dir:
+        user_config_path = Path(user_config_dir) / "dsg.yml"
+        user_config_path.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        
+        with runner.isolated_filesystem() as td:
+            td = Path(td)
+            dest_project = td / "dest_project"
+            dest_project.mkdir()
+            os.chdir(dest_project)
+            
+            env = os.environ.copy()
+            env["DSG_CONFIG_HOME"] = user_config_dir
+            
+            # Test 1: No .dsgconfig.yml
+            result = runner.invoke(app, ["clone"], env=env)
+            assert result.exit_code == 1
+            assert "No .dsgconfig.yml found" in result.stdout
+            
+            # Test 2: .dsgconfig.yml pointing to non-existent repository
+            config_content = """
+transport: ssh
+ssh:
+  host: localhost
+  path: /nonexistent/path
+  name: missing-repo
+  type: xfs
+project:
+  data_dirs:
+    - input
+  ignore:
+    paths: []
+    names: []
+    suffixes: []
+"""
+            (dest_project / ".dsgconfig.yml").write_text(config_content)
+            
+            result = runner.invoke(app, ["clone"], env=env)
+            assert result.exit_code == 1
+            assert "Backend connectivity failed" in result.stdout
+            
+            # Test 3: .dsg directory already exists without --force
+            (dest_project / ".dsg").mkdir()
+            
+            # First create a valid source for testing
+            source_repo = td / "valid_source"
+            source_dsg = source_repo / ".dsg"
+            source_dsg.mkdir(parents=True)
+            
+            # Update config to point to valid source
+            valid_config = f"""
+transport: ssh
+ssh:
+  host: localhost
+  path: {source_repo.parent}
+  name: {source_repo.name}
+  type: xfs
+project:
+  data_dirs:
+    - input
+  ignore:
+    paths: []
+    names: []
+    suffixes: []
+"""
+            (dest_project / ".dsgconfig.yml").write_text(valid_config)
+            
+            result = runner.invoke(app, ["clone"], env=env)
+            assert result.exit_code == 1
+            assert ".dsg directory already exists" in result.stdout 

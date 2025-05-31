@@ -17,6 +17,7 @@ import paramiko
 
 from dsg.config_manager import Config
 from dsg.host_utils import is_local_host
+from dsg.manifest import Manifest
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include "s3", "dropbox", etc.
 
@@ -155,6 +156,20 @@ class Backend(ABC):
         """Copy a file from local filesystem to the backend."""
         raise NotImplementedError("copy_file() not implemented")
     
+    @abstractmethod
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+        """Clone entire repository to local destination using metadata-first approach:
+        1. Copy remote:.dsg/ → local/.dsg/ (get metadata first)
+        2. Parse local/.dsg/last-sync.json for file list
+        3. Copy files according to manifest
+        
+        Args:
+            dest_path: Local directory to clone repository into
+            resume: Continue interrupted transfer if True
+            progress_callback: Optional callback for progress updates
+        """
+        raise NotImplementedError("clone() not implemented")
+    
     # TODO: Add snapshot operation methods
     # @abstractmethod
     # def list_snapshots(self) -> List[Dict[str, Any]]:
@@ -218,6 +233,45 @@ class LocalhostBackend(Backend):
         dest_path = self.full_path / rel_dest_path
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, dest_path)
+    
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+        """Clone repository from local source to destination directory."""
+        source_path = self.full_path
+        
+        # Step 1: Copy metadata directory first
+        source_dsg = source_path / ".dsg"
+        dest_dsg = dest_path / ".dsg"
+        
+        if dest_dsg.exists() and not resume:
+            raise ValueError("Destination .dsg directory already exists (use resume=True to continue)")
+        
+        if not source_dsg.exists():
+            raise ValueError("Source is not a DSG repository (missing .dsg directory)")
+        
+        # Copy .dsg directory 
+        shutil.copytree(source_dsg, dest_dsg, dirs_exist_ok=resume)
+        
+        # Step 2: Parse manifest for file list
+        manifest_file = dest_dsg / "last-sync.json"
+        if not manifest_file.exists():
+            # Repository has no synced data yet, only metadata
+            return
+        
+        manifest = Manifest.from_json(manifest_file)
+        
+        # Step 3: Copy data files according to manifest
+        for path, entry in manifest.entries.items():
+            src_file = source_path / path
+            dst_file = dest_path / path
+            
+            if dst_file.exists() and resume:
+                continue  # Skip existing files in resume mode
+                
+            dst_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            if src_file.exists():
+                shutil.copy2(src_file, dst_file)
+            # Note: Missing files will be detected by subsequent validation
 
 
 class SSHBackend(Backend):
@@ -313,6 +367,11 @@ class SSHBackend(Backend):
         """Copy a file from local filesystem to the SSH repository."""
         # TODO: Implement SSH file copying
         raise NotImplementedError("SSH file copying not yet implemented")
+    
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+        """Clone repository from SSH source to destination directory."""
+        # TODO: Implement SSH clone using rsync
+        raise NotImplementedError("SSH clone not yet implemented")
 
 
 def create_backend(cfg: Config) -> Backend:

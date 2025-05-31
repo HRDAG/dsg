@@ -288,15 +288,25 @@ def clone(
     if verbose:
         console.print(f"[green]✓[/green] Backend accessible: {msg}")
     
-    # TODO: Implement actual data cloning
-    console.print("[yellow]⚠[/yellow]  Data cloning not yet implemented")
-    console.print("This command will:")
-    console.print("1. Create .dsg/ metadata directory")
-    console.print("2. Download all data files from remote repository") 
-    console.print("3. Create initial manifest and sync metadata")
-    console.print("\nFor now, use 'dsg sync --init' (to be implemented)")
-    
-    raise NotImplementedError("Data cloning not yet implemented")
+    # Create .dsg directory and clone data
+    from dsg.backends import create_backend
+
+    if verbose:
+        console.print("[dim]Creating backend and starting clone...[/dim]")
+
+    backend = create_backend(config)
+
+    try:
+        backend.clone(
+            dest_path=Path("."), 
+            resume=force,  # If --force, can resume/overwrite
+            progress_callback=None  # TODO: Add progress reporting
+        )
+        console.print("[green]✓[/green] Repository cloned successfully")
+        console.print("Use 'dsg sync' for ongoing updates")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Clone failed: {e}")
+        raise typer.Exit(1)
 
 
 @app.command(name="list-files")
