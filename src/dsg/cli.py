@@ -563,6 +563,36 @@ def validate_config(
         if check_backend:
             console.print("[green]✓[/green] Backend connectivity verified")
             
+            # Show detailed SSH test results if verbose and SSH backend
+            if verbose:
+                try:
+                    from dsg.config_manager import Config
+                    from dsg.backends import can_access_backend, SSHBackend
+                    config = Config.load()
+                    
+                    # Get backend instance with detailed results
+                    ok, msg, backend = can_access_backend(config, return_backend=True)
+                    
+                    if isinstance(backend, SSHBackend) and hasattr(backend, 'get_detailed_results'):
+                        detailed_results = backend.get_detailed_results()
+                        if detailed_results:
+                            console.print("\n[bold]SSH Connection Test Details:[/bold]")
+                            
+                            # Create table for SSH test results
+                            ssh_table = Table()
+                            ssh_table.add_column("Test", style="cyan")
+                            ssh_table.add_column("Status", style="")
+                            ssh_table.add_column("Details", style="dim")
+                            
+                            for test_name, success, details in detailed_results:
+                                status = "[green]✓[/green]" if success else "[red]✗[/red]"
+                                ssh_table.add_row(test_name, status, details)
+                            
+                            console.print(ssh_table)
+                            
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not load SSH test details: {e}[/yellow]")
+            
         if verbose:
             console.print("\n[bold]Configuration Details:[/bold]")
             try:

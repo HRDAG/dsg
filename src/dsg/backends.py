@@ -232,49 +232,67 @@ class SSHBackend(Backend):
     
     def is_accessible(self) -> tuple[bool, str]:
         """Check if the SSH repository is accessible."""
+        # Store detailed test results for verbose output
+        self._detailed_results = []
+        
         try:
-            # Create SSH client
+            # Test 1: SSH Connection
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
-            # Connect to host (uses SSH config for key authentication)
             client.connect(self.host, timeout=10)
+            self._detailed_results.append(("SSH Connection", True, f"Successfully connected to {self.host}"))
             
-            # Test 1: Repository path exists
+            # Test 2: Repository path exists
             stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}'")
             if stdout.channel.recv_exit_status() != 0:
+                self._detailed_results.append(("Repository Path", False, f"Path {self.repo_path} not found"))
                 client.close()
                 return False, f"Repository path {self.repo_path} not found on {self.host}"
+            self._detailed_results.append(("Repository Path", True, f"Path {self.repo_path} exists"))
             
-            # Test 2: .dsg directory exists (DSG repository)
+            # Test 3: .dsg directory exists (DSG repository)
             stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
+                self._detailed_results.append(("DSG Repository", False, "Missing .dsg/ directory"))
                 client.close()
                 return False, f"Path exists but is not a DSG repository (missing .dsg/ directory)"
+            self._detailed_results.append(("DSG Repository", True, "Valid DSG repository (.dsg/ directory found)"))
             
-            # Test 3: Read permissions on .dsg directory
+            # Test 4: Read permissions on .dsg directory
             stdin, stdout, stderr = client.exec_command(f"test -r '{self.repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
+                self._detailed_results.append(("Read Permissions", False, "Cannot read .dsg directory"))
                 client.close()
                 return False, f"Permission denied accessing .dsg directory"
+            self._detailed_results.append(("Read Permissions", True, "Read access to .dsg directory confirmed"))
             
-            # Test 4: Check for manifest files
+            # Test 5: Check for manifest files
             stdin, stdout, stderr = client.exec_command(f"ls '{self.repo_path}/.dsg/'*.json 2>/dev/null")
             manifest_files = stdout.read().decode().strip()
             
-            client.close()
-            
             if not manifest_files:
+                self._detailed_results.append(("Manifest Files", True, "No manifest files found (repository may be uninitialized)"))
+                client.close()
                 return True, "Repository accessible (no manifest files found - may be uninitialized)"
             else:
+                file_count = len(manifest_files.split('\n'))
+                self._detailed_results.append(("Manifest Files", True, f"Found {file_count} manifest file(s)"))
+                client.close()
                 return True, "Repository accessible with manifest files"
                 
         except paramiko.AuthenticationException:
+            self._detailed_results.append(("SSH Connection", False, f"Authentication failed for {self.host}"))
             return False, f"SSH authentication failed for {self.host}"
         except paramiko.SSHException as e:
+            self._detailed_results.append(("SSH Connection", False, f"SSH error: {e}"))
             return False, f"SSH connection error: {e}"
         except Exception as e:
+            self._detailed_results.append(("SSH Connection", False, f"Connection error: {e}"))
             return False, f"Connection failed: {e}"
+    
+    def get_detailed_results(self) -> list[tuple[str, bool, str]]:
+        """Get detailed test results from last is_accessible() call."""
+        return getattr(self, '_detailed_results', [])
     
     def read_file(self, rel_path: str) -> bytes:
         """Read a file from the SSH repository."""
@@ -317,18 +335,28 @@ def create_backend(cfg: Config) -> Backend:
         raise ValueError(f"Transport type '{transport}' not supported")  # pragma: no cover
 
 
-def can_access_backend(cfg: Config) -> tuple[bool, str]:
-    """Check if the repo backend is accessible. Returns (ok, message)."""
+def can_access_backend(cfg: Config, return_backend: bool = False) -> tuple[bool, str] | tuple[bool, str, Backend]:
+    """Check if the repo backend is accessible. Returns (ok, message) or (ok, message, backend)."""
     repo = cfg.project
     assert repo is not None  # validated upstream
     
     try:
         backend = create_backend(cfg)
-        return backend.is_accessible()
+        ok, msg = backend.is_accessible()
+        if return_backend:
+            return ok, msg, backend
+        else:
+            return ok, msg
     except NotImplementedError as e:
-        return False, str(e)
+        if return_backend:
+            return False, str(e), None
+        else:
+            return False, str(e)
     except ValueError as e:  # pragma: no cover
         # This should not happen with valid configs, but kept for defensive programming
-        return False, str(e)
+        if return_backend:
+            return False, str(e), None
+        else:
+            return False, str(e)
 
 # done.
