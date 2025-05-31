@@ -16,7 +16,10 @@ from dsg.display import manifest_to_table, format_file_count
 from dsg.config_manager import load_repository_discovery_config
 from dsg.host_utils import is_local_host
 
-app = typer.Typer(help="DSG - Project data management tools")
+app = typer.Typer(
+    help="DSG - Project data management tools",
+    rich_markup_mode="rich"
+)
 console = Console()
 
 # Repository Discovery and Resolution Patterns:
@@ -85,7 +88,7 @@ def init(
     interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values")
 ):
     """
-    Initialize project configuration for DSG repository.
+    [bold blue]Setup & Discovery[/bold blue]: Initialize project configuration for DSG repository.
 
     Creates .dsgconfig.yml in the project root with repository connection details.
     This file should be committed to version control so all team members can sync.
@@ -157,7 +160,7 @@ def list_repos(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show additional details")
 ):
     """
-    List all available DSG repositories.
+    [bold blue]Setup & Discovery[/bold blue]: List all available DSG repositories.
 
     Discovers repositories by listing directories at $host:$default_project_path/*
     and filtering for those containing a .dsg/ subdirectory.
@@ -215,7 +218,7 @@ def list_files(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information in reports"),
 ):
     """
-    List all files in data directories with metadata.
+    [bold green]Core Operations[/bold green]: List all files in data directories with metadata.
 
     Shows an inventory of all tracked files including:
     - Include/exclude status
@@ -284,7 +287,7 @@ def status(  # pragma: no cover
     remote: bool = typer.Option(False, "--remote", help="Also compare with remote manifest"),
 ):
     """
-    Show sync status by comparing local files with last sync.
+    [bold green]Core Operations[/bold green]: Show sync status by comparing local files with last sync.
 
     Compares current local state against .dsg/last-sync.json to show:
     - Added files (new since last sync)
@@ -311,20 +314,22 @@ def sync(  # pragma: no cover
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview changes without syncing"),
     force: bool = typer.Option(False, "--force", help="Force sync even with conflicts"),
     message: Optional[str] = typer.Option(None, "-m", "--message", help="Sync message describing changes"),
-    # TODO: Add normalize option for sync command
-    # normalize: bool = typer.Option(False, "--normalize", help="Normalize invalid paths during sync"),
+    exclude_once: Optional[list[str]] = typer.Option(None, "--exclude-once", help="Temporarily exclude paths (this sync only)"),
+    no_normalize: bool = typer.Option(False, "--no-normalize", help="Skip automatic path normalization"),
 ):
     """
-    Synchronize local files with remote repository.
+    [bold green]Core Operations[/bold green]: Synchronize local files with remote repository.
 
     Process:
     1. Connect to backend specified in .dsg/config.yml
     2. Fetch remote manifest (.dsg/last-sync.json)
     3. Compare local, cache, and remote manifests
-    4. Determine sync operations based on SyncState
-    5. Execute sync operations via backend
-    6. Generate sync-hash for the merged manifest
-    7. Update both local and remote .dsg/last-sync.json
+    4. Normalize invalid paths if needed (unless --no-normalize)
+    5. Apply temporary exclusions (--exclude-once paths)
+    6. Determine sync operations based on SyncState
+    7. Execute sync operations via backend
+    8. Generate sync-hash for the merged manifest
+    9. Update both local and remote .dsg/last-sync.json
 
     With --continue: Resume after manually resolving conflicts
     With --dry-run: Show what would be done without actually syncing
@@ -360,80 +365,6 @@ def sync(  # pragma: no cover
     raise NotImplementedError("The sync command has not been implemented yet")
 
 
-@app.command()
-def normalize(  # pragma: no cover
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview normalization without making changes"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed normalization information"),
-):
-    """
-    Normalize invalid file paths in the current project.
-    
-    Scans the project directory and normalizes paths that fail validation:
-    - Unicode NFD → NFC normalization
-    - TODO: Sanitize illegal characters (reserved names, control chars, etc.)
-    - TODO: Handle path length limits and other cross-platform issues
-    
-    With --dry-run: Shows what would be normalized without making changes
-    With --verbose: Shows detailed information about each normalization
-    
-    This command should be run before sync if there are path validation warnings.
-    
-    Examples:
-    - dsg normalize --dry-run     # Preview what would be normalized
-    - dsg normalize               # Actually normalize invalid paths
-    - dsg normalize -v            # Show detailed normalization results
-    """
-    # TODO: Implement normalize command
-    # 1. Scan current directory with normalize_paths=False to find invalid paths
-    # 2. For each invalid path found:
-    #    - Determine normalization strategy based on validation failure type:
-    #      - NFC normalization: use existing _normalize_path logic
-    #      - Illegal characters: sanitize or replace with safe alternatives
-    #      - Reserved names: add suffix or prefix to make valid
-    #      - Path length: truncate intelligently while preserving extensions
-    #    - If --dry-run: show what would be done
-    #    - Else: perform the normalization (rename files/directories)
-    # 3. Handle normalization conflicts:
-    #    - If normalized path already exists, use suffix (_1, _2, etc.)
-    #    - Warn about potential data loss or confusion
-    # 4. Update any DSG metadata that references the old paths
-    # 5. Display summary:
-    #    - Number of paths normalized
-    #    - Types of normalizations performed
-    #    - Any conflicts or issues encountered
-    # 6. Recommend running 'dsg status' to verify results
-    raise NotImplementedError("The normalize command has not been implemented yet")
-
-
-@app.command(name="exclude-once")
-def exclude_once(  # pragma: no cover
-    path: str = typer.Option(..., "--path", help="Path to temporarily exclude (relative to project root)"),
-):
-    """
-    Temporarily exclude a path from the current session.
-
-    This exclusion only lasts for the current command session.
-    For permanent exclusions, edit .dsg/config.yml directly.
-
-    Examples (default data_dirs are: input, output, frozen):
-    - dsg exclude-once --path=input/temp-data.csv
-    - dsg exclude-once --path=output/debug-logs/
-    - dsg exclude-once --path="input/*.tmp"
-    - dsg exclude-once --path=frozen/old-analysis/
-
-    Note: These exclusions are not persisted between commands.
-    """
-    # TODO: Implement exclude-once command
-    # 1. Store temporary exclusion in memory/context for current session
-    # 2. This exclusion should be picked up by subsequent operations (status, sync)
-    # 3. Show confirmation that path is temporarily excluded
-    # 4. Maybe show current list of temporary exclusions?
-    #
-    # Question: How do we pass temporary exclusions between commands?
-    # - Environment variable?
-    # - Temporary file in /tmp/?
-    # - Within the same shell session only?
-    raise NotImplementedError("The exclude-once command has not been implemented yet")
 
 
 @app.command()
@@ -444,7 +375,7 @@ def log(  # pragma: no cover
     author: Optional[str] = typer.Option(None, "--author", help="Filter by author/user"),
 ):
     """
-    Show snapshot history for the repository.
+    [bold magenta]History[/bold magenta]: Show snapshot history for the repository.
 
     Displays the chronological history of snapshots including:
     - Snapshot ID and timestamp
@@ -485,7 +416,7 @@ def blame(  # pragma: no cover
     repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
 ):
     """
-    Show modification history for a file.
+    [bold magenta]History[/bold magenta]: Show modification history for a file.
 
     Displays the complete history of users who have modified this file,
     including timestamps and sync messages (when available).
@@ -523,7 +454,7 @@ def snapmount(  # pragma: no cover
     unmount: bool = typer.Option(False, "--unmount", help="Unmount snapshot"),
 ):
     """
-    Mount snapshots for browsing historical data.
+    [bold magenta]History[/bold magenta]: Mount snapshots for browsing historical data.
 
     Works across all backends (zfs, localhost, rclone, ipfs) with consistent interface.
     Returns the mount path where the snapshot can be accessed.
@@ -567,7 +498,7 @@ def snapfetch(  # pragma: no cover
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output path (default: current directory)"),
 ):
     """
-    Fetch a single file from a snapshot.
+    [bold magenta]History[/bold magenta]: Fetch a single file from a snapshot.
 
     Efficiently retrieves one file without mounting the entire snapshot.
     Useful for quick recovery of specific files.
@@ -597,7 +528,7 @@ def validate_config(  # pragma: no cover
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation output"),
 ):
     """
-    Validate configuration files and optionally test backend connectivity.
+    [bold red]Validation[/bold red]: Validate configuration files and optionally test backend connectivity.
 
     Checks:
     1. User config: $HOME/.config/dsg/dsg.yml exists and is valid
@@ -647,7 +578,7 @@ def validate_file(  # pragma: no cover
     manifest_path: Optional[str] = typer.Option(None, "--manifest", help="Path to manifest (default: .dsg/last-sync.json)"),
 ):
     """
-    Validate a file's hash against the manifest.
+    [bold red]Validation[/bold red]: Validate a file's hash against the manifest.
 
     Computes the file's current hash and compares it with the hash
     stored in the manifest. Useful for checking file integrity.
@@ -683,7 +614,7 @@ def validate_snapshot(  # pragma: no cover
     check_files: bool = typer.Option(False, "--check-files", help="Also validate all file hashes"),
 ):
     """
-    Validate a single snapshot's integrity and optionally its file hashes.
+    [bold red]Validation[/bold red]: Validate a single snapshot's integrity and optionally its file hashes.
 
     Verifies:
     1. Snapshot metadata is valid
@@ -728,7 +659,7 @@ def validate_chain(  # pragma: no cover
     stop: Optional[int] = typer.Option(None, "--stop", help="Stop validation at specific snapshot"),
 ):
     """
-    Validate the entire snapshot chain integrity.
+    [bold red]Validation[/bold red]: Validate the entire snapshot chain integrity.
 
     Walks backwards from the current snapshot (or --start) to the genesis (s1)
     verifying that each snapshot correctly references and hashes its predecessor.
