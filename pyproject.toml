@@ -27,6 +27,7 @@ dependencies = [
     "pyyaml>=6.0,<7.0",
     "email-validator>=2.0,<3.0",
     "lz4>=4.3.2,<5.0.0",
+    "paramiko>=3.0,<4.0",
 ]
 
 [project.scripts]

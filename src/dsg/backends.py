@@ -11,7 +11,9 @@ import subprocess
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal, Tuple, BinaryIO, Optional
+from typing import Literal, BinaryIO, Optional
+
+import paramiko
 
 from dsg.config_manager import Config
 from dsg.host_utils import is_local_host
@@ -129,7 +131,7 @@ class Backend(ABC):
     """
     
     @abstractmethod
-    def is_accessible(self) -> Tuple[bool, str]:
+    def is_accessible(self) -> tuple[bool, str]:
         """Check if the backend is accessible. Returns (ok, message)."""
         raise NotImplementedError("is_accessible() not implemented")
     
@@ -188,7 +190,7 @@ class LocalhostBackend(Backend):
         self.repo_name = repo_name
         self.full_path = repo_path / repo_name
     
-    def is_accessible(self) -> Tuple[bool, str]:
+    def is_accessible(self) -> tuple[bool, str]:
         """Check if the local repository is accessible."""
         if self.full_path.is_dir() and (self.full_path / ".dsg").is_dir():
             return True, "OK"
@@ -218,6 +220,83 @@ class LocalhostBackend(Backend):
         shutil.copy2(source_path, dest_path)
 
 
+class SSHBackend(Backend):
+    """Backend for SSH-based remote repository access."""
+    
+    def __init__(self, ssh_config, user_config):
+        self.ssh_config = ssh_config
+        self.user_config = user_config
+        self.host = ssh_config.host
+        self.repo_path = ssh_config.path
+        self.repo_name = ssh_config.name
+    
+    def is_accessible(self) -> tuple[bool, str]:
+        """Check if the SSH repository is accessible."""
+        try:
+            # Create SSH client
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # Connect to host (uses SSH config for key authentication)
+            client.connect(self.host, timeout=10)
+            
+            # Test 1: Repository path exists
+            stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}'")
+            if stdout.channel.recv_exit_status() != 0:
+                client.close()
+                return False, f"Repository path {self.repo_path} not found on {self.host}"
+            
+            # Test 2: .dsg directory exists (DSG repository)
+            stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}/.dsg'")
+            if stdout.channel.recv_exit_status() != 0:
+                client.close()
+                return False, f"Path exists but is not a DSG repository (missing .dsg/ directory)"
+            
+            # Test 3: Read permissions on .dsg directory
+            stdin, stdout, stderr = client.exec_command(f"test -r '{self.repo_path}/.dsg'")
+            if stdout.channel.recv_exit_status() != 0:
+                client.close()
+                return False, f"Permission denied accessing .dsg directory"
+            
+            # Test 4: Check for manifest files
+            stdin, stdout, stderr = client.exec_command(f"ls '{self.repo_path}/.dsg/'*.json 2>/dev/null")
+            manifest_files = stdout.read().decode().strip()
+            
+            client.close()
+            
+            if not manifest_files:
+                return True, "Repository accessible (no manifest files found - may be uninitialized)"
+            else:
+                return True, "Repository accessible with manifest files"
+                
+        except paramiko.AuthenticationException:
+            return False, f"SSH authentication failed for {self.host}"
+        except paramiko.SSHException as e:
+            return False, f"SSH connection error: {e}"
+        except Exception as e:
+            return False, f"Connection failed: {e}"
+    
+    def read_file(self, rel_path: str) -> bytes:
+        """Read a file from the SSH repository."""
+        # TODO: Implement SSH file reading
+        raise NotImplementedError("SSH file reading not yet implemented")
+    
+    def write_file(self, rel_path: str, content: bytes) -> None:
+        """Write content to a file in the SSH repository."""
+        # TODO: Implement SSH file writing  
+        raise NotImplementedError("SSH file writing not yet implemented")
+    
+    def file_exists(self, rel_path: str) -> bool:
+        """Check if a file exists in the SSH repository."""
+        # TODO: Implement SSH file existence check
+        raise NotImplementedError("SSH file existence check not yet implemented")
+    
+    def copy_file(self, source_path: Path, rel_dest_path: str) -> None:
+        """Copy a file from local filesystem to the SSH repository."""
+        # TODO: Implement SSH file copying
+        raise NotImplementedError("SSH file copying not yet implemented")
+
+
 def create_backend(cfg: Config) -> Backend:
     """Create the appropriate backend instance based on config."""
     transport = cfg.project.transport
@@ -228,8 +307,7 @@ def create_backend(cfg: Config) -> Backend:
         if is_local_host(ssh_config.host):
             return LocalhostBackend(ssh_config.path, ssh_config.name)
         else:
-            # For future implementation
-            raise NotImplementedError("Remote SSH backends not yet implemented")
+            return SSHBackend(ssh_config, cfg.user)
     elif transport == "rclone":
         raise NotImplementedError("Rclone backend not yet implemented")
     elif transport == "ipfs":

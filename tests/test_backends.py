@@ -148,27 +148,30 @@ def test_backend_access_unsupported_type(base_config):
 
 
 def test_remote_backend_valid(base_config):
-    """Test remote backend path (currently not implemented)"""
+    """Test remote backend path (SSH connection attempt)"""
     base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "not yet implemented" in msg
+    # Should get DNS resolution failure or connection error for non-existent host
+    assert "Connection failed" in msg or "SSH connection error" in msg
 
 
 def test_remote_backend_invalid(base_config):
-    """Test remote backend with invalid repo (currently not implemented)"""
+    """Test remote backend with invalid repo (SSH connection attempt)"""
     base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "not yet implemented" in msg
+    # Should get DNS resolution failure or connection error for non-existent host
+    assert "Connection failed" in msg or "SSH connection error" in msg
 
 
 def test_remote_backend_ssh_error(base_config):
-    """Test remote backend with SSH error (currently not implemented)"""
+    """Test remote backend with SSH error (SSH connection attempt)"""
     base_config.project.ssh.host = "remote-host"
     ok, msg = can_access_backend(base_config)
     assert not ok
-    assert "not yet implemented" in msg
+    # Should get DNS resolution failure or connection error for non-existent host
+    assert "Connection failed" in msg or "SSH connection error" in msg
 
 
 def test_localhost_backend_creation(base_config):
@@ -288,10 +291,12 @@ def test_create_backend_local_host(base_config):
 
 
 def test_create_backend_remote_host(base_config):
-    """Test remote host backend creation (not implemented)"""
+    """Test remote host backend creation (SSH backend)"""
     base_config.project.ssh.host = "remote-host"
-    with pytest.raises(NotImplementedError):
-        create_backend(base_config)
+    from dsg.backends import SSHBackend
+    backend = create_backend(base_config)
+    assert isinstance(backend, SSHBackend)
+    assert backend.host == "remote-host"
 
 
 def test_create_backend_unsupported_type(base_config):
