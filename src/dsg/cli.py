@@ -17,7 +17,13 @@ from dsg.config_manager import load_repository_discovery_config
 from dsg.host_utils import is_local_host
 
 app = typer.Typer(
-    help="DSG - Project data management tools",
+    help="""DSG - Project data management tools
+
+[bold blue]Setup:[/bold blue] init, clone, list-repos
+[bold green]Core Operations:[/bold green] list-files, status, sync  
+[bold magenta]History:[/bold magenta] log, blame, snapmount, snapfetch
+[bold red]Validation:[/bold red] validate-config, validate-file, validate-snapshot, validate-chain
+""",
     rich_markup_mode="rich"
 )
 console = Console()
@@ -88,10 +94,13 @@ def init(
     interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values")
 ):
     """
-    [bold blue]Setup & Discovery[/bold blue]: Initialize project configuration for DSG repository.
+    [bold blue]Setup[/bold blue]: Initialize project configuration for NEW DSG repository.
 
     Creates .dsgconfig.yml in the project root with repository connection details.
     This file should be committed to version control so all team members can sync.
+    
+    NOTE: This creates a NEW data repository. To get data from an EXISTING repository,
+    use 'dsg clone' after running 'git clone' on the project repository.
 
     Transport Types:
     ----------------
@@ -160,7 +169,7 @@ def list_repos(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show additional details")
 ):
     """
-    [bold blue]Setup & Discovery[/bold blue]: List all available DSG repositories.
+    [bold blue]Setup[/bold blue]: List all available DSG repositories.
 
     Discovers repositories by listing directories at $host:$default_project_path/*
     and filtering for those containing a .dsg/ subdirectory.
@@ -204,6 +213,90 @@ def list_repos(
     except Exception as e:
         console.print(f"[red]Error listing repositories: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def clone(
+    force: bool = typer.Option(False, "--force", help="Overwrite existing .dsg directory"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress")
+):
+    """
+    [bold blue]Setup[/bold blue]: Clone data from existing DSG repository.
+
+    Downloads all data from the configured remote repository to initialize 
+    a local working copy. Use this after 'git clone' to get the actual data files.
+    
+    Workflow:
+    1. git clone <project-repo>     # Gets .dsgconfig.yml and project structure
+    2. cd <project>
+    3. dsg clone                    # Gets data repository contents
+    4. dsg sync                     # Ongoing bidirectional updates
+    
+    Safety:
+    - Refuses to run if .dsg/ directory already exists (use --force to override)
+    - Requires .dsgconfig.yml to exist in current directory
+    - Validates backend connectivity before starting download
+    
+    Examples:
+    - dsg clone                     # Clone data repository
+    - dsg clone --verbose           # Show detailed download progress
+    - dsg clone --force             # Overwrite existing .dsg directory
+    """
+    from pathlib import Path
+    from dsg.config_manager import Config
+    from dsg.backends import can_access_backend
+    
+    console.print("[bold]DSG Repository Clone[/bold]")
+    console.print()
+    
+    # Check for .dsgconfig.yml
+    config_file = Path(".dsgconfig.yml")
+    if not config_file.exists():
+        console.print("[red]✗[/red] No .dsgconfig.yml found in current directory")
+        console.print("Run this command from a project directory that contains .dsgconfig.yml")
+        console.print("(Usually created by 'git clone <project-repo>' or 'dsg init')")
+        raise typer.Exit(1)
+    
+    # Check for existing .dsg directory
+    dsg_dir = Path(".dsg")
+    if dsg_dir.exists() and not force:
+        console.print("[red]✗[/red] .dsg directory already exists")
+        console.print("This directory appears to be already initialized")
+        console.print("Use --force to overwrite, or 'dsg sync' for updates")
+        raise typer.Exit(1)
+    
+    if verbose:
+        console.print("[dim]Loading configuration...[/dim]")
+    
+    # Load and validate configuration
+    try:
+        config = Config.load()
+    except Exception as e:
+        console.print(f"[red]✗[/red] Configuration error: {e}")
+        raise typer.Exit(1)
+    
+    if verbose:
+        console.print("[dim]Testing backend connectivity...[/dim]")
+    
+    # Test backend connectivity
+    ok, msg = can_access_backend(config)
+    if not ok:
+        console.print(f"[red]✗[/red] Backend connectivity failed: {msg}")
+        console.print("Run 'dsg validate-config --check-backend' for detailed diagnostics")
+        raise typer.Exit(1)
+    
+    if verbose:
+        console.print(f"[green]✓[/green] Backend accessible: {msg}")
+    
+    # TODO: Implement actual data cloning
+    console.print("[yellow]⚠[/yellow]  Data cloning not yet implemented")
+    console.print("This command will:")
+    console.print("1. Create .dsg/ metadata directory")
+    console.print("2. Download all data files from remote repository") 
+    console.print("3. Create initial manifest and sync metadata")
+    console.print("\nFor now, use 'dsg sync --init' (to be implemented)")
+    
+    raise NotImplementedError("Data cloning not yet implemented")
 
 
 @app.command(name="list-files")
