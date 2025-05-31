@@ -523,7 +523,7 @@ def snapfetch(  # pragma: no cover
 
 
 @app.command()
-def validate_config(  # pragma: no cover
+def validate_config(
     check_backend: bool = typer.Option(False, "--check-backend", help="Test backend connectivity"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation output"),
 ):
@@ -547,29 +547,62 @@ def validate_config(  # pragma: no cover
     - dsg validate-config --check-backend    # Also test backend connection
     - dsg validate-config -v                 # Show detailed results
     """
-    # TODO: Implement validate-config command
-    # 1. Check user config:
-    #    - Find $HOME/.config/dsg/dsg.yml or $DSG_CONFIG_HOME/dsg.yml
-    #    - Validate YAML syntax
-    #    - Check required fields: user_name, user_id
-    #    - Validate email format for user_id
-    # 2. Check project config:
-    #    - Find .dsg/config.yml
-    #    - Validate YAML syntax
-    #    - Check required fields: repo_name, host, repo_path, repo_type
-    #    - Validate repo_type is supported
-    # 3. If --check-backend:
-    #    - Create backend instance
-    #    - Call backend.is_accessible()
-    #    - For SSH backends: test SSH connection
-    #    - For API backends: test authentication
-    #    - Show connection status
-    # 4. Display results:
-    #    - Green checkmarks for valid items
-    #    - Red X for invalid items
-    #    - Yellow warnings for missing optional items
-    # 5. Exit with appropriate code (0 for success, 1 for errors)
-    raise NotImplementedError("The validate-config command has not been implemented yet")
+    from dsg.config_manager import validate_config as validate_config_func
+    from rich.table import Table
+    
+    console.print("[bold]DSG Configuration Validation[/bold]")
+    console.print()
+    
+    # Run validation
+    errors = validate_config_func(check_backend=check_backend)
+    
+    if not errors:
+        # Success case
+        console.print("[green]✓[/green] All configuration checks passed")
+        
+        if check_backend:
+            console.print("[green]✓[/green] Backend connectivity verified")
+            
+        if verbose:
+            console.print("\n[bold]Configuration Details:[/bold]")
+            try:
+                from dsg.config_manager import Config
+                config = Config.load()
+                
+                table = Table(title="Configuration Summary")
+                table.add_column("Setting", style="cyan")
+                table.add_column("Value", style="green")
+                
+                table.add_row("User Name", config.user.user_name)
+                table.add_row("User ID", config.user.user_id)
+                table.add_row("Transport", config.project.transport)
+                
+                if config.project.ssh:
+                    table.add_row("SSH Host", config.project.ssh.host)
+                    table.add_row("SSH Path", str(config.project.ssh.path))
+                    table.add_row("Repository Name", config.project.ssh.name)
+                    table.add_row("Repository Type", config.project.ssh.type)
+                
+                console.print(table)
+                
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not load config details: {e}[/yellow]")
+        
+        console.print("\n[green]Configuration is valid and ready to use.[/green]")
+        
+    else:
+        # Error case
+        console.print("[red]✗[/red] Configuration validation failed")
+        console.print()
+        
+        for i, error in enumerate(errors, 1):
+            console.print(f"[red]{i}.[/red] {error}")
+        
+        console.print(f"\n[red]Found {len(errors)} configuration error(s).[/red]")
+        console.print("\nPlease fix these issues before using DSG commands.")
+        
+        # Exit with error code
+        raise typer.Exit(1)
 
 
 @app.command()
