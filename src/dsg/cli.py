@@ -13,14 +13,20 @@ from rich.console import Console
 
 from dsg.operations import list_directory, parse_cli_overrides
 from dsg.display import manifest_to_table, format_file_count
-from dsg.config_manager import load_repository_discovery_config
+from dsg.config_manager import load_repository_discovery_config, Config
+from dsg.backends import create_backend, can_access_backend
 from dsg.host_utils import is_local_host
+from dsg.cli_utils import (
+    validate_clone_prerequisites,
+    validate_repository_command_prerequisites,
+    validate_project_prerequisites
+)
 
 app = typer.Typer(
     help="""DSG - Project data management tools
 
 [bold blue]Setup:[/bold blue] init, clone, list-repos
-[bold green]Core Operations:[/bold green] list-files, status, sync  
+[bold green]Core Operations:[/bold green] list-files, status, sync
 [bold magenta]History:[/bold magenta] log, blame, snapmount, snapfetch
 [bold red]Validation:[/bold red] validate-config, validate-file, validate-snapshot, validate-chain
 """,
@@ -49,8 +55,6 @@ console = Console()
 # Repository location pattern: All repos are at $host:$default_project_path/$repo_name
 # Example: repo "BB" is at $host:$default_project_path/BB
 
-# TODO: Consider organizing commands into groups:
-#
 # 1. Core operations (main commands):
 #    - checkout: Initialize/checkout repository
 #    - sync: Synchronize files
@@ -98,7 +102,7 @@ def init(
 
     Creates .dsgconfig.yml in the project root with repository connection details.
     This file should be committed to version control so all team members can sync.
-    
+
     NOTE: This creates a NEW data repository. To get data from an EXISTING repository,
     use 'dsg clone' after running 'git clone' on the project repository.
 
@@ -182,31 +186,31 @@ def list_repos(
     try:
         # Load config to get default_host and default_project_path
         config = load_repository_discovery_config()
-        
+
         # Validate required fields
         if not config.default_host:
             console.print("[red]Error: default_host not configured. Please set it in your config file.[/red]")
             raise typer.Exit(1)
-            
+
         if not config.default_project_path:
             console.print("[red]Error: default_project_path not configured. Please set it in your config file.[/red]")
             raise typer.Exit(1)
-        
+
         host = config.default_host
         project_path = config.default_project_path
-        
+
         # Use new repository discovery
         from dsg.repository_discovery import RepositoryDiscovery
         discovery = RepositoryDiscovery()
         repos = discovery.list_repositories(host, project_path)
-        
+
         # Display results
         if not repos:
             console.print(f"No DSG repositories found at {host}:{project_path}")
             return
-            
+
         _display_repositories_new(repos, host, project_path, verbose)
-        
+
     except FileNotFoundError as e:
         console.print(f"[red]Config error: {e}[/red]")
         raise typer.Exit(1)
@@ -223,73 +227,32 @@ def clone(
     """
     [bold blue]Setup[/bold blue]: Clone data from existing DSG repository.
 
-    Downloads all data from the configured remote repository to initialize 
+    Downloads all data from the configured remote repository to initialize
     a local working copy. Use this after 'git clone' to get the actual data files.
-    
+
     Workflow:
     1. git clone <project-repo>     # Gets .dsgconfig.yml and project structure
     2. cd <project>
     3. dsg clone                    # Gets data repository contents
     4. dsg sync                     # Ongoing bidirectional updates
-    
+
     Safety:
     - Refuses to run if .dsg/ directory already exists (use --force to override)
     - Requires .dsgconfig.yml to exist in current directory
     - Validates backend connectivity before starting download
-    
+
     Examples:
     - dsg clone                     # Clone data repository
     - dsg clone --verbose           # Show detailed download progress
     - dsg clone --force             # Overwrite existing .dsg directory
     """
-    from pathlib import Path
-    from dsg.config_manager import Config
-    from dsg.backends import can_access_backend
-    
+
     console.print("[bold]DSG Repository Clone[/bold]")
     console.print()
-    
-    # Check for .dsgconfig.yml
-    config_file = Path(".dsgconfig.yml")
-    if not config_file.exists():
-        console.print("[red]✗[/red] No .dsgconfig.yml found in current directory")
-        console.print("Run this command from a project directory that contains .dsgconfig.yml")
-        console.print("(Usually created by 'git clone <project-repo>' or 'dsg init')")
-        raise typer.Exit(1)
-    
-    # Check for existing .dsg directory
-    dsg_dir = Path(".dsg")
-    if dsg_dir.exists() and not force:
-        console.print("[red]✗[/red] .dsg directory already exists")
-        console.print("This directory appears to be already initialized")
-        console.print("Use --force to overwrite, or 'dsg sync' for updates")
-        raise typer.Exit(1)
-    
-    if verbose:
-        console.print("[dim]Loading configuration...[/dim]")
-    
-    # Load and validate configuration
-    try:
-        config = Config.load()
-    except Exception as e:
-        console.print(f"[red]✗[/red] Configuration error: {e}")
-        raise typer.Exit(1)
-    
-    if verbose:
-        console.print("[dim]Testing backend connectivity...[/dim]")
-    
-    # Test backend connectivity
-    ok, msg = can_access_backend(config)
-    if not ok:
-        console.print(f"[red]✗[/red] Backend connectivity failed: {msg}")
-        console.print("Run 'dsg validate-config --check-backend' for detailed diagnostics")
-        raise typer.Exit(1)
-    
-    if verbose:
-        console.print(f"[green]✓[/green] Backend accessible: {msg}")
-    
-    # Create .dsg directory and clone data
-    from dsg.backends import create_backend
+
+    # Validate all prerequisites for cloning
+    config = validate_clone_prerequisites(console, force=force, verbose=verbose)
+
 
     if verbose:
         console.print("[dim]Creating backend and starting clone...[/dim]")
@@ -298,7 +261,7 @@ def clone(
 
     try:
         backend.clone(
-            dest_path=Path("."), 
+            dest_path=Path("."),
             resume=force,  # If --force, can resume/overwrite
             progress_callback=None  # TODO: Add progress reporting
         )
@@ -488,7 +451,7 @@ def log(  # pragma: no cover
 
     Examples:
     - dsg log                           # Show all snapshots
-    - dsg log --limit=10                # Show last 10 snapshots  
+    - dsg log --limit=10                # Show last 10 snapshots
     - dsg log --since=2023-01-01        # Show snapshots since date
     - dsg log --author=alice            # Show snapshots by alice
     - dsg log --repo=BB                 # Show snapshots for BB repository
@@ -497,7 +460,7 @@ def log(  # pragma: no cover
     """
     # TODO: Implement log command
     # 1. Resolve repository (--repo arg or auto-detect)
-    # 2. Load current snapshot from .dsg/last-sync.json  
+    # 2. Load current snapshot from .dsg/last-sync.json
     # 3. Walk backwards through snapshot chain using .dsg/archive/
     # 4. For each snapshot in chain:
     #    - Extract metadata: snapshot_id, timestamp, user, message
@@ -652,88 +615,88 @@ def validate_config(
     """
     from dsg.config_manager import validate_config as validate_config_func
     from rich.table import Table
-    
+
     console.print("[bold]DSG Configuration Validation[/bold]")
     console.print()
-    
+
     # Run validation
     errors = validate_config_func(check_backend=check_backend)
-    
+
     if not errors:
         # Success case
         console.print("[green]✓[/green] All configuration checks passed")
-        
+
         if check_backend:
             console.print("[green]✓[/green] Backend connectivity verified")
-            
+
             # Show detailed SSH test results if verbose and SSH backend
             if verbose:
                 try:
                     from dsg.config_manager import Config
                     from dsg.backends import can_access_backend, SSHBackend
                     config = Config.load()
-                    
+
                     # Get backend instance with detailed results
                     ok, msg, backend = can_access_backend(config, return_backend=True)
-                    
+
                     if isinstance(backend, SSHBackend) and hasattr(backend, 'get_detailed_results'):
                         detailed_results = backend.get_detailed_results()
                         if detailed_results:
                             console.print("\n[bold]SSH Connection Test Details:[/bold]")
-                            
+
                             # Create table for SSH test results
                             ssh_table = Table()
                             ssh_table.add_column("Test", style="cyan")
                             ssh_table.add_column("Status", style="")
                             ssh_table.add_column("Details", style="dim")
-                            
+
                             for test_name, success, details in detailed_results:
                                 status = "[green]✓[/green]" if success else "[red]✗[/red]"
                                 ssh_table.add_row(test_name, status, details)
-                            
+
                             console.print(ssh_table)
-                            
+
                 except Exception as e:
                     console.print(f"[yellow]Warning: Could not load SSH test details: {e}[/yellow]")
-            
+
         if verbose:
             console.print("\n[bold]Configuration Details:[/bold]")
             try:
                 from dsg.config_manager import Config
                 config = Config.load()
-                
+
                 table = Table(title="Configuration Summary")
                 table.add_column("Setting", style="cyan")
                 table.add_column("Value", style="green")
-                
+
                 table.add_row("User Name", config.user.user_name)
                 table.add_row("User ID", config.user.user_id)
                 table.add_row("Transport", config.project.transport)
-                
+
                 if config.project.ssh:
                     table.add_row("SSH Host", config.project.ssh.host)
                     table.add_row("SSH Path", str(config.project.ssh.path))
                     table.add_row("Repository Name", config.project.ssh.name)
                     table.add_row("Repository Type", config.project.ssh.type)
-                
+
                 console.print(table)
-                
+
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not load config details: {e}[/yellow]")
-        
+
         console.print("\n[green]Configuration is valid and ready to use.[/green]")
-        
+
     else:
         # Error case
         console.print("[red]✗[/red] Configuration validation failed")
         console.print()
-        
+
         for i, error in enumerate(errors, 1):
             console.print(f"[red]{i}.[/red] {error}")
-        
+
         console.print(f"\n[red]Found {len(errors)} configuration error(s).[/red]")
         console.print("\nPlease fix these issues before using DSG commands.")
-        
+
         # Exit with error code
         raise typer.Exit(1)
 
@@ -869,66 +832,66 @@ def validate_chain(  # pragma: no cover
 
 def _truncate_message(message: str) -> str:
     """Truncate commit message using git's convention.
-    
+
     Shows the first line (subject) truncated to 50 characters with "..." if longer.
     This follows git's standard for displaying commit messages in list views.
-    
+
     Args:
         message: The commit/sync message to truncate
-        
+
     Returns:
         Truncated message string
     """
     if not message:
         return ""
-        
+
     # Get first line only (subject line)
     first_line = message.split('\n')[0].strip()
-    
+
     # Truncate to 50 characters with ellipsis if longer
     if len(first_line) > 50:
         return first_line[:47] + "..."
-    
+
     return first_line
 
 def _list_local_repositories(project_path: Path) -> list[dict]:
     """List DSG repositories on local filesystem with snapshot information.
-    
+
     Args:
         project_path: Path to search for repositories
-        
+
     Returns:
         List of repository info dicts with snapshot metadata
     """
     import orjson
     from pathlib import Path
-    
+
     repos = []
-    
+
     try:
         if not project_path.exists():
             return []
-            
+
         if not project_path.is_dir():
             return []
-            
+
         # List all directories in project_path
         for item in project_path.iterdir():
             if not item.is_dir():
                 continue
-                
+
             # Check if it has a .dsg subdirectory
             dsg_dir = item / ".dsg"
             if dsg_dir.exists() and dsg_dir.is_dir():
                 repo_info = {"name": item.name}
-                
+
                 try:
                     # Try to read last-sync.json for snapshot info
                     last_sync_file = dsg_dir / "last-sync.json"
                     if last_sync_file.exists():
                         data = orjson.loads(last_sync_file.read_bytes())
                         metadata = data.get("metadata", {})
-                        
+
                         repo_info.update({
                             "snapshot": metadata.get("snapshot_id", "Unknown"),
                             "timestamp": metadata.get("created_at", "Unknown"),
@@ -941,7 +904,7 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
                         if manifest_file.exists():
                             data = orjson.loads(manifest_file.read_bytes())
                             metadata = data.get("metadata", {})
-                            
+
                             repo_info.update({
                                 "snapshot": metadata.get("snapshot_id", "Working"),
                                 "timestamp": metadata.get("created_at", "Unknown"),
@@ -956,7 +919,7 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
                                 "user": "Unknown",
                                 "message": "Not initialized"
                             })
-                            
+
                 except (PermissionError, OSError, orjson.JSONDecodeError) as e:
                     repo_info.update({
                         "snapshot": "Error",
@@ -964,93 +927,93 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
                         "user": "Unknown",
                         "message": f"Read error: {str(e)[:30]}..."
                     })
-                    
+
                 repos.append(repo_info)
-                
+
     except (PermissionError, OSError) as e:
         console.print(f"[yellow]Warning: Cannot access {project_path}: {e}[/yellow]")
-        
+
     return repos
 
 
 def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
     """List DSG repositories on remote host via SSH with snapshot information.
-    
+
     Args:
         host: Remote hostname
         project_path: Path on remote host to search
-        
+
     Returns:
         List of repository info dicts with snapshot metadata
     """
     import subprocess
     import orjson
-    
+
     repos = []
-    
+
     try:
         # SSH command to find directories with .dsg subdirectories
         ssh_cmd = [
             "ssh", host,
             f"find {project_path} -maxdepth 2 -name .dsg -type d 2>/dev/null"
         ]
-        
+
         result = subprocess.run(
             ssh_cmd,
             capture_output=True,
             text=True,
             timeout=30
         )
-        
+
         if result.returncode != 0:
             console.print(f"[yellow]Warning: SSH to {host} failed: {result.stderr}[/yellow]")
             return []
-            
+
         # Parse the output to get repository names and metadata
         for line in result.stdout.strip().split('\n'):
             if not line:
                 continue
-                
+
             # Extract repo name from path like "/var/repos/zsd/repo1/.dsg"
             dsg_path = Path(line)
             repo_name = dsg_path.parent.name
             repo_info = {"name": repo_name}
-            
+
             try:
                 # Try to read last-sync.json via SSH
                 read_cmd = [
                     "ssh", host,
                     f"cat {dsg_path}/last-sync.json 2>/dev/null || cat {dsg_path}/manifest.json 2>/dev/null || echo '{{}}'"
                 ]
-                
+
                 read_result = subprocess.run(
                     read_cmd,
                     capture_output=True,
                     text=True,
                     timeout=10
                 )
-                
+
                 if read_result.returncode == 0 and read_result.stdout.strip():
                     try:
                         data = orjson.loads(read_result.stdout.strip())
                         metadata = data.get("metadata", {})
-                        
+
                         # Check if this came from last-sync.json or manifest.json
                         has_snapshot_id = metadata.get("snapshot_id") is not None
-                        
+
                         repo_info.update({
                             "snapshot": metadata.get("snapshot_id", "Working" if has_snapshot_id else "None"),
                             "timestamp": metadata.get("created_at", "Unknown"),
                             "user": metadata.get("created_by", "Unknown"),
                             "message": _truncate_message(
-                                metadata.get("snapshot_message", 
+                                metadata.get("snapshot_message",
                                 "Working directory" if has_snapshot_id else "Not initialized")
                             )
                         })
                     except orjson.JSONDecodeError:
                         repo_info.update({
                             "snapshot": "None",
-                            "timestamp": "Unknown", 
+                            "timestamp": "Unknown",
                             "user": "Unknown",
                             "message": "Not initialized"
                         })
@@ -1058,10 +1021,10 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
                     repo_info.update({
                         "snapshot": "Error",
                         "timestamp": "Unknown",
-                        "user": "Unknown", 
+                        "user": "Unknown",
                         "message": "SSH read failed"
                     })
-                    
+
             except subprocess.TimeoutExpired:
                 repo_info.update({
                     "snapshot": "Error",
@@ -1071,19 +1034,19 @@ def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
                 })
             except Exception as e:
                 repo_info.update({
-                    "snapshot": "Error", 
+                    "snapshot": "Error",
                     "timestamp": "Unknown",
                     "user": "Unknown",
                     "message": f"Error: {str(e)[:20]}..."
                 })
-                
+
             repos.append(repo_info)
-            
+
     except subprocess.TimeoutExpired:
         console.print(f"[red]Error: SSH connection to {host} timed out[/red]")
     except Exception as e:
         console.print(f"[red]Error connecting to {host}: {e}[/red]")
-        
+
     return repos
 
 
@@ -1091,20 +1054,20 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
     """Display repositories using new RepositoryInfo objects."""
     from rich.table import Table
     from dsg.repository_discovery import RepositoryInfo
-    
+
     table = Table(title=f"DSG Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
     table.add_column("HEAD", style="yellow", no_wrap=True)
     table.add_column("Timestamp", style="green", no_wrap=True)
     table.add_column("Size", style="blue", no_wrap=True)
     table.add_column("Files", style="magenta", no_wrap=True, justify="right")
-    
+
     for repo in repos:
         # Format timestamp
         timestamp_str = "Unknown"
         if repo.timestamp:
             timestamp_str = repo.timestamp.strftime("%Y-%m-%d %H:%M")
-        
+
         # Color-code snapshot status
         snapshot_id = repo.snapshot_id or "None"
         if snapshot_id.startswith("s") and snapshot_id[1:].isdigit():
@@ -1115,13 +1078,13 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
             snapshot_style = f"[red]{snapshot_id}[/red]"
         else:
             snapshot_style = snapshot_id
-        
+
         # Get repository size from ZFS
         size_str = repo.size or "Unknown"
-        
+
         # Get file count from manifest
         files_str = str(repo.file_count) if repo.file_count is not None else "Unknown"
-        
+
         table.add_row(
             repo.name,
             snapshot_style,
@@ -1129,15 +1092,15 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
             size_str,
             files_str
         )
-    
+
     console.print(table)
-    
+
     # Show summary
     total = len(repos)
     active = sum(1 for r in repos if r.status == "active")
     errors = sum(1 for r in repos if r.status == "error")
     uninitialized = sum(1 for r in repos if r.status == "uninitialized")
-    
+
     parts = [f"Found {total} repositories"]
     if active:
         parts.append(f"{active} active")
@@ -1145,26 +1108,26 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
         parts.append(f"{uninitialized} uninitialized")
     if errors:
         parts.append(f"[red]{errors} with errors[/red]")
-    
+
     console.print(" - ".join(parts))
 
 
 def _display_repositories(repos: list[dict], host: str, project_path: Path) -> None:
     """Display repository list in a formatted table with snapshot information.
-    
+
     Args:
         repos: List of repository info dicts with snapshot metadata
         host: Host name where repositories are located
         project_path: Base path where repositories are stored
     """
     from rich.table import Table
-    
+
     table = Table(title=f"DSG Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
     table.add_column("Last Snapshot", style="yellow", no_wrap=True)
     table.add_column("Timestamp", style="green", no_wrap=True)
     table.add_column("User", style="blue", no_wrap=True)
-    
+
     for repo in repos:
         # Format timestamp for display (remove timezone info for brevity)
         timestamp = repo.get("timestamp", "Unknown")
@@ -1177,25 +1140,25 @@ def _display_repositories(repos: list[dict], host: str, project_path: Path) -> N
             except (ValueError, AttributeError):
                 # Keep original if parsing fails
                 pass
-        
+
         # Color-code snapshot status
         snapshot = repo.get("snapshot", "Unknown")
         if snapshot.startswith("s") and snapshot[1:].isdigit():
             snapshot_style = f"[green]{snapshot}[/green]"
         elif snapshot == "Working":
-            snapshot_style = f"[yellow]{snapshot}[/yellow]" 
+            snapshot_style = f"[yellow]{snapshot}[/yellow]"
         elif snapshot in ("None", "Error"):
             snapshot_style = f"[red]{snapshot}[/red]"
         else:
             snapshot_style = f"[white]{snapshot}[/white]"
-            
+
         table.add_row(
-            repo["name"], 
+            repo["name"],
             snapshot_style,
             timestamp,
             repo.get("user", "Unknown")
         )
-    
+
     console.print(table)
     console.print(f"\nFound {len(repos)} repositories")
 
@@ -1208,4 +1171,3 @@ if __name__ == "__main__":
     app()
 
 # done
-

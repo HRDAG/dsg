@@ -9,6 +9,8 @@
 import socket
 import subprocess
 import shutil
+import tempfile
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal, BinaryIO, Optional
@@ -369,9 +371,88 @@ class SSHBackend(Backend):
         raise NotImplementedError("SSH file copying not yet implemented")
     
     def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
-        """Clone repository from SSH source to destination directory."""
-        # TODO: Implement SSH clone using rsync
-        raise NotImplementedError("SSH clone not yet implemented")
+        """Clone repository from SSH source to destination directory using rsync.
+        
+        Implements metadata-first approach:
+        1. rsync remote:.dsg/ → local/.dsg/ (get metadata first)
+        2. Parse local:.dsg/last-sync.json for file list
+        3. rsync files according to manifest using --files-from
+        
+        Args:
+            dest_path: Local directory to clone repository into
+            resume: Continue interrupted transfer if True
+            progress_callback: Optional callback for progress updates (not implemented yet)
+        
+        Raises:
+            subprocess.CalledProcessError: If rsync commands fail
+            ValueError: If source is not a DSG repository
+        """
+        # Construct remote paths
+        remote_dsg_path = f"{self.host}:{self.repo_path}/.dsg/"
+        remote_repo_path = f"{self.host}:{self.repo_path}/"
+        dest_dsg_path = dest_path / ".dsg"
+        
+        # Step 1: Transfer metadata directory (critical, small, fast)
+        try:
+            rsync_cmd = [
+                "rsync", "-av",
+                remote_dsg_path,
+                str(dest_dsg_path) + "/"
+            ]
+            
+            # Add progress if callback provided (future enhancement)
+            if progress_callback:
+                rsync_cmd.append("--progress")
+            
+            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            
+        except subprocess.CalledProcessError as e:
+            raise ValueError(f"Failed to sync metadata directory: {e.stderr}")
+        
+        # Step 2: Parse manifest for file list using existing utilities
+        manifest_file = dest_dsg_path / "last-sync.json"
+        if not manifest_file.exists():
+            # Repository has no synced data yet, only metadata
+            return
+        
+        try:
+            manifest = Manifest.from_json(manifest_file)
+        except Exception as e:
+            raise ValueError(f"Failed to parse manifest: {e}")
+        
+        # Step 3: Create temporary file list for rsync
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
+            for path in manifest.entries.keys():
+                f.write(f"{path}\n")
+            filelist_path = f.name
+        
+        try:
+            # Step 4: Bulk transfer data files using --files-from
+            rsync_cmd = [
+                "rsync", "-av",
+                f"--files-from={filelist_path}",
+                remote_repo_path,
+                str(dest_path)
+            ]
+            
+            # Add progress if callback provided
+            if progress_callback:
+                rsync_cmd.append("--progress")
+            
+            # Add resume support
+            if resume:
+                rsync_cmd.append("--partial")
+            
+            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            
+        except subprocess.CalledProcessError as e:
+            raise ValueError(f"Failed to sync data files: {e.stderr}")
+        finally:
+            # Step 5: Always cleanup temp file
+            try:
+                os.unlink(filelist_path)
+            except OSError:
+                pass  # Ignore cleanup errors
 
 
 def create_backend(cfg: Config) -> Backend:

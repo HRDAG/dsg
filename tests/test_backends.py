@@ -17,7 +17,8 @@ from dsg.config_manager import (
     SSHUserConfig
 )
 from dsg.backends import (
-    can_access_backend, 
+    can_access_backend,
+    SSHBackend, 
     create_backend, 
     Backend, 
     LocalhostBackend
@@ -412,6 +413,250 @@ def test_localhost_backend_clone_errors(tmp_path):
     
     with pytest.raises(ValueError, match="Source is not a DSG repository"):
         bad_backend.clone(dest_repo2)
+
+
+# SSH Backend Clone Tests
+
+@pytest.mark.parametrize("use_progress", [False, True])
+def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
+    """Test SSH backend clone with rsync mocking"""
+    from unittest.mock import Mock, patch, call
+    
+    # Create destination directory
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    # Create mock SSH config
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = Path("/remote/repo")
+    ssh_config.name = "test_repo"
+    
+    user_config = Mock()
+    
+    # Create manifest content for testing
+    manifest_content = {
+        "metadata": {
+            "version": "0.1.0",
+            "created_at": "2025-06-01T12:00:00Z",
+            "created_by": "test_user"
+        },
+        "entries": {
+            "file1.txt": {"hash": "abc123", "size": 100},
+            "subdir/file2.csv": {"hash": "def456", "size": 200}
+        }
+    }
+    
+    # Mock the rsync calls and manifest parsing
+    with patch('subprocess.run') as mock_run, \
+         patch('dsg.backends.Manifest.from_json') as mock_manifest:
+        
+        # Setup manifest mock
+        mock_manifest_obj = Mock()
+        mock_manifest_obj.entries = manifest_content["entries"]
+        mock_manifest.return_value = mock_manifest_obj
+        
+        # Create backend
+        backend = SSHBackend(ssh_config, user_config)
+        
+        # Create fake manifest file that the clone will check for
+        manifest_file = dest_repo / ".dsg" / "last-sync.json"
+        
+        # Side effect function to create manifest after first rsync call
+        def rsync_side_effect(*args, **kwargs):
+            if mock_run.call_count == 1:
+                # First call: create the manifest file
+                manifest_file.parent.mkdir(parents=True, exist_ok=True)
+                manifest_file.write_text('{"test": "manifest"}')
+            return Mock()
+        
+        mock_run.side_effect = rsync_side_effect
+        
+        # Test clone
+        progress_callback = Mock() if use_progress else None
+        backend.clone(dest_repo, progress_callback=progress_callback)
+        
+        # Verify rsync calls
+        assert mock_run.call_count == 2
+        
+        # First call: metadata sync
+        first_call = mock_run.call_args_list[0]
+        first_args = first_call[0][0]
+        assert first_args[0] == "rsync"
+        assert first_args[1] == "-av"
+        assert first_args[2] == "testhost:/remote/repo/.dsg/"
+        assert first_args[3].endswith("/.dsg/")
+        if use_progress:
+            assert "--progress" in first_args
+        
+        # Second call: data sync with files-from
+        second_call = mock_run.call_args_list[1]
+        second_args = second_call[0][0]
+        assert second_args[0] == "rsync"
+        assert second_args[1] == "-av"
+        assert any(arg.startswith("--files-from=") for arg in second_args)
+        assert "testhost:/remote/repo/" in second_args
+        assert str(dest_repo) in second_args
+        if use_progress:
+            assert "--progress" in second_args
+
+
+def test_ssh_backend_clone_no_manifest(tmp_path, monkeypatch):
+    """Test SSH clone when no manifest exists (repository has no synced data)"""
+    from unittest.mock import Mock, patch
+    
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = Path("/remote/repo")
+    ssh_config.name = "test_repo"
+    
+    user_config = Mock()
+    backend = SSHBackend(ssh_config, user_config)
+    
+    with patch('subprocess.run') as mock_run:
+        # Create .dsg directory but no manifest file
+        def create_empty_dsg(*args, **kwargs):
+            dsg_dir = dest_repo / ".dsg"
+            dsg_dir.mkdir(parents=True, exist_ok=True)
+            return Mock()
+        
+        mock_run.side_effect = [create_empty_dsg]
+        
+        # Clone should succeed but stop after metadata sync
+        backend.clone(dest_repo)
+        
+        # Only one rsync call (metadata sync)
+        assert mock_run.call_count == 1
+
+
+def test_ssh_backend_clone_with_resume(tmp_path):
+    """Test SSH clone with resume flag"""
+    from unittest.mock import Mock, patch
+    
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = Path("/remote/repo")
+    ssh_config.name = "test_repo"
+    
+    user_config = Mock()
+    backend = SSHBackend(ssh_config, user_config)
+    
+    with patch('subprocess.run') as mock_run, \
+         patch('dsg.backends.Manifest.from_json') as mock_manifest:
+        
+        # Setup manifest mock
+        mock_manifest_obj = Mock()
+        mock_manifest_obj.entries = {"file1.txt": {"hash": "abc123"}}
+        mock_manifest.return_value = mock_manifest_obj
+        
+        manifest_file = dest_repo / ".dsg" / "last-sync.json"
+        
+        def rsync_side_effect(*args, **kwargs):
+            if mock_run.call_count == 1:
+                # First call: create the manifest file
+                manifest_file.parent.mkdir(parents=True, exist_ok=True)
+                manifest_file.write_text('{"test": "manifest"}')
+            return Mock()
+        
+        mock_run.side_effect = rsync_side_effect
+        
+        # Test clone with resume
+        backend.clone(dest_repo, resume=True)
+        
+        # Check that --partial flag was added to data sync
+        second_call = mock_run.call_args_list[1]
+        second_args = second_call[0][0]
+        assert "--partial" in second_args
+
+
+def test_ssh_backend_clone_rsync_errors(tmp_path):
+    """Test SSH clone error handling for rsync failures"""
+    from unittest.mock import Mock, patch
+    import subprocess
+    
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = Path("/remote/repo")
+    ssh_config.name = "test_repo"
+    
+    user_config = Mock()
+    backend = SSHBackend(ssh_config, user_config)
+    
+    # Test metadata sync failure
+    with patch('subprocess.run') as mock_run:
+        error = subprocess.CalledProcessError(1, "rsync")
+        error.stderr = "Connection refused"
+        mock_run.side_effect = error
+        
+        with pytest.raises(ValueError, match="Failed to sync metadata directory"):
+            backend.clone(dest_repo)
+    
+    # Test data sync failure
+    with patch('subprocess.run') as mock_run, \
+         patch('dsg.backends.Manifest.from_json') as mock_manifest:
+        
+        # Setup manifest mock
+        mock_manifest_obj = Mock()
+        mock_manifest_obj.entries = {"file1.txt": {"hash": "abc123"}}
+        mock_manifest.return_value = mock_manifest_obj
+        
+        def first_success_second_fail(*args, **kwargs):
+            # First call (metadata) succeeds
+            manifest_file = dest_repo / ".dsg" / "last-sync.json"
+            manifest_file.parent.mkdir(parents=True, exist_ok=True)
+            manifest_file.write_text('{"test": "manifest"}')
+            
+            # Second call (data) fails
+            if mock_run.call_count == 1:
+                return Mock()
+            else:
+                error = subprocess.CalledProcessError(1, "rsync")
+                error.stderr = "File not found"
+                raise error
+        
+        mock_run.side_effect = first_success_second_fail
+        
+        with pytest.raises(ValueError, match="Failed to sync data files"):
+            backend.clone(dest_repo)
+
+
+def test_ssh_backend_clone_manifest_parse_error(tmp_path):
+    """Test SSH clone with manifest parsing errors"""
+    from unittest.mock import Mock, patch
+    
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = Path("/remote/repo")
+    ssh_config.name = "test_repo"
+    
+    user_config = Mock()
+    backend = SSHBackend(ssh_config, user_config)
+    
+    with patch('subprocess.run') as mock_run, \
+         patch('dsg.backends.Manifest.from_json') as mock_manifest:
+        
+        # Metadata sync succeeds but creates invalid manifest
+        manifest_file = dest_repo / ".dsg" / "last-sync.json"
+        manifest_file.parent.mkdir(parents=True, exist_ok=True)
+        manifest_file.write_text('invalid json')
+        
+        mock_run.return_value = Mock()
+        mock_manifest.side_effect = ValueError("Invalid JSON")
+        
+        with pytest.raises(ValueError, match="Failed to parse manifest"):
+            backend.clone(dest_repo)
 
 
 # done.
