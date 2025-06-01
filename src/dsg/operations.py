@@ -18,7 +18,8 @@ def list_directory(
     ignored_suffixes: Optional[Set[str]] = None,
     ignored_paths: Optional[Set[str]] = None,
     use_config: bool = True,
-    debug: bool = False
+    debug: bool = False,
+    include_dsg_files: bool = True
 ) -> ScanResult:
     """High-level operation to list directory contents.
     
@@ -29,6 +30,7 @@ def list_directory(
         ignored_paths: Set of paths to ignore
         use_config: Whether to try loading project config
         debug: Enable debug logging
+        include_dsg_files: When False, excludes .dsg/ metadata files from results
         
     Returns:
         ScanResult with manifest and ignored files
@@ -65,7 +67,7 @@ def list_directory(
                     cfg.project.project.ignore.suffixes.update(value)
                 # Branch 64->57: loop continuation  # pragma: no cover
             
-            return scan_directory(cfg)
+            return scan_directory(cfg, include_dsg_files=include_dsg_files)
             
         except Exception as e:
             if debug:
@@ -74,7 +76,7 @@ def list_directory(
     
     # Fall back to minimal config
     # Branch 52->74: when use_config is False  # pragma: no cover
-    return scan_directory_no_cfg(path, **overrides)
+    return scan_directory_no_cfg(path, include_dsg_files=include_dsg_files, **overrides)
 
 
 def parse_cli_overrides(

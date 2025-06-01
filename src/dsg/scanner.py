@@ -43,7 +43,7 @@ def manifest_from_scan_result(scan_result: ScanResult) -> Manifest:
 
 
 def scan_directory(cfg: Config, compute_hashes: bool = False, 
-                normalize_paths: bool = False) -> ScanResult:
+                normalize_paths: bool = False, include_dsg_files: bool = True) -> ScanResult:
     """
     Scan a directory using configuration from cfg.
 
@@ -51,6 +51,7 @@ def scan_directory(cfg: Config, compute_hashes: bool = False,
         cfg: Configuration object with project settings
         compute_hashes: When True, calculates file hashes for all files in the manifest
         normalize_paths: When True, normalizes invalid paths during scanning
+        include_dsg_files: When False, excludes .dsg/ metadata files from results
     """
     # Use getattr to safely handle the user_id attribute
     user_id = getattr(cfg.user, 'user_id', None) if cfg.user else None
@@ -63,13 +64,15 @@ def scan_directory(cfg: Config, compute_hashes: bool = False,
         ignored_suffixes=cfg.project.project.ignore.suffixes,
         compute_hashes=compute_hashes,
         user_id=user_id,
-        normalize_paths=normalize_paths
+        normalize_paths=normalize_paths,
+        include_dsg_files=include_dsg_files
     )
 
 
 def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False, 
                         user_id: Optional[str] = None, 
                         normalize_paths: bool = False,
+                        include_dsg_files: bool = True,
                         **config_overrides) -> ScanResult:
     """
     Scan a directory using a minimal configuration created on the fly.
@@ -84,6 +87,7 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False,
         compute_hashes: When True, calculates file hashes for all files in the manifest
         user_id: Optional user ID to attribute to new entries
         normalize_paths: When True, normalizes invalid paths during scanning
+        include_dsg_files: When False, excludes .dsg/ metadata files from results
         **config_overrides: Override values for the minimal config (data_dirs, ignored_paths, etc.)
     """
     # Default values
@@ -108,7 +112,8 @@ def scan_directory_no_cfg(root_path: Path, compute_hashes: bool = False,
         ignored_suffixes=ignored_suffixes,
         compute_hashes=compute_hashes,
         user_id=user_id,
-        normalize_paths=normalize_paths
+        normalize_paths=normalize_paths,
+        include_dsg_files=include_dsg_files
     )
 
 
@@ -175,7 +180,8 @@ def _scan_directory_internal(
     ignored_suffixes: set[str],
     compute_hashes: bool = False,
     user_id: Optional[str] = None,
-    normalize_paths: bool = False) -> ScanResult:
+    normalize_paths: bool = False,
+    include_dsg_files: bool = True) -> ScanResult:
     """
     Internal implementation of directory scanning.
 
@@ -188,6 +194,7 @@ def _scan_directory_internal(
         compute_hashes: When True, calculates file hashes for all files in the manifest
         user_id: Optional user ID to attribute to new entries
         normalize_paths: When True, normalizes invalid paths during scanning
+        include_dsg_files: When False, excludes .dsg/ metadata files from results
     """
     entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
@@ -210,7 +217,7 @@ def _scan_directory_internal(
         is_dsg_file = _is_dsg_path(relative_path)
         is_in_data_dir = _is_in_data_dir(path_parts, data_dirs)
         is_hidden = _is_hidden_path(relative_path)
-        should_include = is_dsg_file or (is_in_data_dir and not is_hidden)
+        should_include = (is_dsg_file and include_dsg_files) or (is_in_data_dir and not is_hidden)
 
         logger.debug(f"  Is DSG file: {is_dsg_file}")
         logger.debug(f"  Is in data dir: {is_in_data_dir}")

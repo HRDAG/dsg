@@ -158,6 +158,9 @@ class UserConfig(BaseModel):
     default_host: Optional[str] = None
     default_project_path: Optional[Path] = None
     
+    # Optional logging configuration
+    local_log: Optional[Path] = None
+    
     # Optional security configs
     ssh: Optional[SSHUserConfig] = None
     rclone: Optional[RcloneUserConfig] = None

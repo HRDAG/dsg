@@ -8,6 +8,11 @@
 from pathlib import Path
 from typing import Optional
 
+try:
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
+
 import typer
 from rich.console import Console
 
@@ -23,7 +28,7 @@ from dsg.cli_utils import (
 )
 
 app = typer.Typer(
-    help="""DSG - Project data management tools
+    help="""dsg - Project data management tools
 
 [bold blue]Setup:[/bold blue] init, clone, list-repos
 [bold green]Core Operations:[/bold green] list-files, status, sync
@@ -34,6 +39,25 @@ app = typer.Typer(
 )
 console = Console()
 
+def version_callback(value: bool):
+    """Print version and exit."""
+    if value:
+        try:
+            pkg_version = version("dsg")
+        except Exception:
+            pkg_version = "unknown"
+        console.print(f"dsg version {pkg_version}")
+        raise typer.Exit()
+
+@app.callback()
+def main(
+    version: bool = typer.Option(False, "--version", callback=version_callback, help="Show version and exit")
+):
+    """dsg - Project data management tools"""
+    # Setup logging for the entire application
+    from dsg.logging_setup import setup_logging
+    setup_logging()
+
 # Repository Discovery and Resolution Patterns:
 #
 # --list-repos command (special case - no specific repo needed):
@@ -41,7 +65,7 @@ console = Console()
 # - If host is local: filesystem directory listing
 # - If host is remote: connect via SSH and list directories
 # - Filter directories for presence of .dsg/ subdirectory
-# - Only directories with .dsg/ are valid DSG repositories
+# - Only directories with .dsg/ are valid dsg repositories
 # - Host parsing/local detection is the first implementation task
 #
 # All other commands (require specific repository):
@@ -98,7 +122,7 @@ def init(
     interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values")
 ):
     """
-    [bold blue]Setup[/bold blue]: Initialize project configuration for NEW DSG repository.
+    [bold blue]Setup[/bold blue]: Initialize project configuration for NEW dsg repository.
 
     Creates .dsgconfig.yml in the project root with repository connection details.
     This file should be committed to version control so all team members can sync.
@@ -154,7 +178,7 @@ def init(
 
     After running init, commit .dsgconfig.yml to version control:
     git add .dsgconfig.yml
-    git commit -m "Add DSG repository configuration"
+    git commit -m "Add dsg repository configuration"
     """
     # TODO: Implement init command
     # 1. Check if .dsgconfig.yml already exists (error if yes)
@@ -173,7 +197,7 @@ def list_repos(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show additional details")
 ):
     """
-    [bold blue]Setup[/bold blue]: List all available DSG repositories.
+    [bold blue]Setup[/bold blue]: List all available dsg repositories.
 
     Discovers repositories by listing directories at $host:$default_project_path/*
     and filtering for those containing a .dsg/ subdirectory.
@@ -206,7 +230,7 @@ def list_repos(
 
         # Display results
         if not repos:
-            console.print(f"No DSG repositories found at {host}:{project_path}")
+            console.print(f"No dsg repositories found at {host}:{project_path}")
             return
 
         _display_repositories_new(repos, host, project_path, verbose)
@@ -225,7 +249,7 @@ def clone(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress")
 ):
     """
-    [bold blue]Setup[/bold blue]: Clone data from existing DSG repository.
+    [bold blue]Setup[/bold blue]: Clone data from existing dsg repository.
 
     Downloads all data from the configured remote repository to initialize
     a local working copy. Use this after 'git clone' to get the actual data files.
@@ -247,7 +271,7 @@ def clone(
     - dsg clone --force             # Overwrite existing .dsg directory
     """
 
-    console.print("[bold]DSG Repository Clone[/bold]")
+    console.print("[bold]dsg Repository Clone[/bold]")
     console.print()
 
     # Validate all prerequisites for cloning
@@ -300,11 +324,13 @@ def list_files(
     Similar to 'git ls-files' - shows the catalog of tracked files.
     """
     # TODO: Update to show sync metadata from .dsg/last-sync.json
+    # Configure logging based on debug/verbose flags
     if debug:
-        import logging
-        from loguru import logger
-        logger.remove()
-        logger.add(logging.StreamHandler(), level="DEBUG")
+        from dsg.logging_setup import enable_debug_logging
+        enable_debug_logging()
+    elif verbose:
+        from dsg.logging_setup import enable_verbose_logging
+        enable_verbose_logging()
 
     # Convert path to absolute path
     abs_path = Path(path).absolute()
@@ -325,7 +351,8 @@ def list_files(
             abs_path,
             **cli_overrides,
             use_config=True,
-            debug=debug
+            debug=debug,
+            include_dsg_files=False
         )
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -616,7 +643,7 @@ def validate_config(
     from dsg.config_manager import validate_config as validate_config_func
     from rich.table import Table
 
-    console.print("[bold]DSG Configuration Validation[/bold]")
+    console.print("[bold]dsg Configuration Validation[/bold]")
     console.print()
 
     # Run validation
@@ -695,7 +722,7 @@ def validate_config(
             console.print(f"[red]{i}.[/red] {error}")
 
         console.print(f"\n[red]Found {len(errors)} configuration error(s).[/red]")
-        console.print("\nPlease fix these issues before using DSG commands.")
+        console.print("\nPlease fix these issues before using dsg commands.")
 
         # Exit with error code
         raise typer.Exit(1)
@@ -855,7 +882,7 @@ def _truncate_message(message: str) -> str:
     return first_line
 
 def _list_local_repositories(project_path: Path) -> list[dict]:
-    """List DSG repositories on local filesystem with snapshot information.
+    """List dsg repositories on local filesystem with snapshot information.
 
     Args:
         project_path: Path to search for repositories
@@ -937,7 +964,7 @@ def _list_local_repositories(project_path: Path) -> list[dict]:
 
 
 def _list_remote_repositories(host: str, project_path: Path) -> list[dict]:
-    """List DSG repositories on remote host via SSH with snapshot information.
+    """List dsg repositories on remote host via SSH with snapshot information.
 
     Args:
         host: Remote hostname
@@ -1055,7 +1082,7 @@ def _display_repositories_new(repos: list, host: str, project_path: Path, verbos
     from rich.table import Table
     from dsg.repository_discovery import RepositoryInfo
 
-    table = Table(title=f"DSG Repositories at {host}:{project_path}")
+    table = Table(title=f"dsg Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
     table.add_column("HEAD", style="yellow", no_wrap=True)
     table.add_column("Timestamp", style="green", no_wrap=True)
@@ -1122,7 +1149,7 @@ def _display_repositories(repos: list[dict], host: str, project_path: Path) -> N
     """
     from rich.table import Table
 
-    table = Table(title=f"DSG Repositories at {host}:{project_path}")
+    table = Table(title=f"dsg Repositories at {host}:{project_path}")
     table.add_column("Repository", style="cyan", no_wrap=True)
     table.add_column("Last Snapshot", style="yellow", no_wrap=True)
     table.add_column("Timestamp", style="green", no_wrap=True)

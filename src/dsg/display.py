@@ -9,6 +9,7 @@
 from pathlib import Path
 from typing import List, Optional
 from rich.table import Table
+import humanize
 from dsg.manifest import Manifest
 
 
@@ -59,7 +60,7 @@ def manifest_to_table(
                 "included",
                 display_path,
                 entry.mtime,  # ISO format datetime string
-                f"{entry.filesize:,} bytes"
+                humanize.naturalsize(entry.filesize)
             ]
             
             # Add additional details in verbose mode

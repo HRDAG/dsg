@@ -95,8 +95,8 @@ user_id: test@example.com
         assert "included" in result.stdout and "input/subdir/subfile2.csv" in result.stdout
         assert "input/link.txt -> file1.txt" in result.stdout
         
-        # Verify file sizes are shown
-        assert "bytes" in result.stdout
+        # Verify file sizes are shown (humanized)
+        assert "Bytes" in result.stdout
         
         # Check summary statistics
         assert "Included: 7 files" in result.stdout
@@ -143,7 +143,7 @@ user_id: test@example.com
         assert "excluded" in result.stdout and "input/file2.txt" in result.stdout
         
         # Verify all files still show size information
-        assert "bytes" in result.stdout
+        assert "Bytes" in result.stdout
         
         # Check summary statistics
         assert "Included: 5 files" in result.stdout
@@ -189,7 +189,7 @@ user_id: test@example.com
         assert "excluded" in result.stdout and "input/subdir/subfile2.csv" in result.stdout
         
         # Verify all files still show size information
-        assert "bytes" in result.stdout
+        assert "Bytes" in result.stdout
         
         # Check that subdirectory .txt files are included
         assert "included" in result.stdout and "input/subdir/subfile1.txt" in result.stdout
@@ -391,7 +391,7 @@ def test_list_repos_local_empty_directory():
             
             result = runner.invoke(app, ["list-repos"])
             assert result.exit_code == 0
-            assert "No DSG repositories found" in result.stdout
+            assert "No dsg repositories found" in result.stdout
 
 
 def test_list_repos_local_with_valid_repos():
@@ -598,4 +598,30 @@ project:
             
             result = runner.invoke(app, ["clone"], env=env)
             assert result.exit_code == 1
-            assert ".dsg directory already exists" in result.stdout 
+            assert ".dsg directory already exists" in result.stdout
+
+
+def test_version_option():
+    """Test --version option displays version and exits"""
+    from typer.testing import CliRunner
+    from dsg.cli import app
+    
+    runner = CliRunner()
+    result = runner.invoke(app, ["--version"])
+    
+    assert result.exit_code == 0
+    assert "dsg version" in result.stdout
+    assert "0.1.0" in result.stdout or "unknown" in result.stdout
+
+
+def test_version_option_in_help():
+    """Test version appears in help"""
+    from typer.testing import CliRunner
+    from dsg.cli import app
+    
+    runner = CliRunner()
+    result = runner.invoke(app, ["--help"])
+    
+    assert result.exit_code == 0
+    assert "--version" in result.stdout
+    assert "Show version and exit" in result.stdout 
