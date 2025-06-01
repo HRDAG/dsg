@@ -415,6 +415,93 @@ def test_localhost_backend_clone_errors(tmp_path):
         bad_backend.clone(dest_repo2)
 
 
+# SSH Backend Tests
+
+def test_ssh_backend_path_construction():
+    """Test SSH backend constructs correct repository paths"""
+    from unittest.mock import Mock
+    
+    # Create mock SSH config
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = "/var/repos/zsd"
+    ssh_config.name = "test-repo"
+    
+    user_config = Mock()
+    
+    # Create backend
+    backend = SSHBackend(ssh_config, user_config)
+    
+    # Verify path construction
+    assert backend.host == "testhost"
+    assert backend.repo_path == "/var/repos/zsd"
+    assert backend.repo_name == "test-repo"
+    assert backend.full_repo_path == "/var/repos/zsd/test-repo"
+
+
+def test_ssh_backend_path_construction_with_trailing_slash():
+    """Test SSH backend handles trailing slashes correctly"""
+    from unittest.mock import Mock
+    
+    # Create mock SSH config with trailing slash
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = "/var/repos/zsd/"  # Note trailing slash
+    ssh_config.name = "test-repo"
+    
+    user_config = Mock()
+    
+    # Create backend
+    backend = SSHBackend(ssh_config, user_config)
+    
+    # Should normalize trailing slash correctly
+    assert backend.full_repo_path == "/var/repos/zsd/test-repo"
+
+
+def test_ssh_backend_accessibility_uses_full_path():
+    """Test that is_accessible() checks the full repository path, not just base path"""
+    from unittest.mock import Mock, patch
+    import paramiko
+    
+    ssh_config = Mock()
+    ssh_config.host = "testhost"
+    ssh_config.path = "/var/repos/zsd"
+    ssh_config.name = "test-repo"
+    
+    user_config = Mock()
+    backend = SSHBackend(ssh_config, user_config)
+    
+    # Mock SSH connection and commands
+    with patch('paramiko.SSHClient') as mock_ssh_class:
+        mock_client = Mock()
+        mock_ssh_class.return_value = mock_client
+        
+        # Mock stdout with successful exit status for all commands
+        mock_stdout = Mock()
+        mock_stdout.channel.recv_exit_status.return_value = 0
+        mock_stdout.read.return_value = b"manifest.json\nlast-sync.json"
+        
+        mock_client.exec_command.return_value = (Mock(), mock_stdout, Mock())
+        
+        # Test accessibility
+        ok, msg = backend.is_accessible()
+        
+        # Verify it checked the full path, not just base path
+        expected_calls = [
+            f"test -d '/var/repos/zsd/test-repo'",  # Full repo path
+            f"test -d '/var/repos/zsd/test-repo/.dsg'",  # .dsg directory
+            f"test -r '/var/repos/zsd/test-repo/.dsg'",  # Read permissions
+            f"ls '/var/repos/zsd/test-repo/.dsg/'*.json 2>/dev/null"  # Manifest files
+        ]
+        
+        # Check that exec_command was called with the right paths
+        actual_calls = [call[0][0] for call in mock_client.exec_command.call_args_list]
+        assert actual_calls == expected_calls
+        
+        assert ok == True
+        assert "accessible with manifest files" in msg
+
+
 # SSH Backend Clone Tests
 
 @pytest.mark.parametrize("use_progress", [False, True])
@@ -484,7 +571,7 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
         first_args = first_call[0][0]
         assert first_args[0] == "rsync"
         assert first_args[1] == "-av"
-        assert first_args[2] == "testhost:/remote/repo/.dsg/"
+        assert first_args[2] == "testhost:/remote/repo/test_repo/.dsg/"
         assert first_args[3].endswith("/.dsg/")
         if use_progress:
             assert "--progress" in first_args
@@ -495,7 +582,7 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
         assert second_args[0] == "rsync"
         assert second_args[1] == "-av"
         assert any(arg.startswith("--files-from=") for arg in second_args)
-        assert "testhost:/remote/repo/" in second_args
+        assert "testhost:/remote/repo/test_repo/" in second_args
         assert str(dest_repo) in second_args
         if use_progress:
             assert "--progress" in second_args

@@ -285,6 +285,10 @@ class SSHBackend(Backend):
         self.host = ssh_config.host
         self.repo_path = ssh_config.path
         self.repo_name = ssh_config.name
+        # Construct full repository path: base_path/repo_name
+        # Handle trailing slashes properly (convert Path to string if needed)
+        base_path = str(self.repo_path).rstrip('/')
+        self.full_repo_path = f"{base_path}/{self.repo_name}"
     
     def is_accessible(self) -> tuple[bool, str]:
         """Check if the SSH repository is accessible."""
@@ -299,15 +303,15 @@ class SSHBackend(Backend):
             self._detailed_results.append(("SSH Connection", True, f"Successfully connected to {self.host}"))
             
             # Test 2: Repository path exists
-            stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}'")
+            stdin, stdout, stderr = client.exec_command(f"test -d '{self.full_repo_path}'")
             if stdout.channel.recv_exit_status() != 0:
-                self._detailed_results.append(("Repository Path", False, f"Path {self.repo_path} not found"))
+                self._detailed_results.append(("Repository Path", False, f"Path {self.full_repo_path} not found"))
                 client.close()
-                return False, f"Repository path {self.repo_path} not found on {self.host}"
-            self._detailed_results.append(("Repository Path", True, f"Path {self.repo_path} exists"))
+                return False, f"Repository path {self.full_repo_path} not found on {self.host}"
+            self._detailed_results.append(("Repository Path", True, f"Path {self.full_repo_path} exists"))
             
             # Test 3: .dsg directory exists (DSG repository)
-            stdin, stdout, stderr = client.exec_command(f"test -d '{self.repo_path}/.dsg'")
+            stdin, stdout, stderr = client.exec_command(f"test -d '{self.full_repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("DSG Repository", False, "Missing .dsg/ directory"))
                 client.close()
@@ -315,7 +319,7 @@ class SSHBackend(Backend):
             self._detailed_results.append(("DSG Repository", True, "Valid DSG repository (.dsg/ directory found)"))
             
             # Test 4: Read permissions on .dsg directory
-            stdin, stdout, stderr = client.exec_command(f"test -r '{self.repo_path}/.dsg'")
+            stdin, stdout, stderr = client.exec_command(f"test -r '{self.full_repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("Read Permissions", False, "Cannot read .dsg directory"))
                 client.close()
@@ -323,7 +327,7 @@ class SSHBackend(Backend):
             self._detailed_results.append(("Read Permissions", True, "Read access to .dsg directory confirmed"))
             
             # Test 5: Check for manifest files
-            stdin, stdout, stderr = client.exec_command(f"ls '{self.repo_path}/.dsg/'*.json 2>/dev/null")
+            stdin, stdout, stderr = client.exec_command(f"ls '{self.full_repo_path}/.dsg/'*.json 2>/dev/null")
             manifest_files = stdout.read().decode().strip()
             
             if not manifest_files:
@@ -388,8 +392,8 @@ class SSHBackend(Backend):
             ValueError: If source is not a DSG repository
         """
         # Construct remote paths
-        remote_dsg_path = f"{self.host}:{self.repo_path}/.dsg/"
-        remote_repo_path = f"{self.host}:{self.repo_path}/"
+        remote_dsg_path = f"{self.host}:{self.full_repo_path}/.dsg/"
+        remote_repo_path = f"{self.host}:{self.full_repo_path}/"
         dest_dsg_path = dest_path / ".dsg"
         
         # Step 1: Transfer metadata directory (critical, small, fast)
