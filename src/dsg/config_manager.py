@@ -35,7 +35,7 @@ class SSHRepositoryConfig(BaseModel):
     """SSH transport configuration."""
     host: str
     path: Path  # Repository path on remote host
-    name: str  
+    name: Optional[str] = None  # Legacy field, use top-level name instead
     type: Literal["zfs", "xfs"]
 
 
@@ -43,13 +43,13 @@ class RcloneRepositoryConfig(BaseModel):
     """Rclone transport configuration."""
     remote: str
     path: Path  # Path within the rclone remote
-    name: str
+    name: Optional[str] = None  # Legacy field, use top-level name instead
 
 
 class IPFSRepositoryConfig(BaseModel):
     """IPFS transport configuration."""
     did: str
-    name: str
+    name: Optional[str] = None  # Legacy field, use top-level name instead
     encrypted: bool = True
 
 
@@ -65,10 +65,10 @@ class IgnoreSettings(BaseModel):
         ".DS_Store", "__pycache__", ".Rdata", ".rdata", ".RData", ".Rproj.user"
     })
     suffixes: set[str] = Field(default_factory=lambda: {".tmp", ".pyc"})
-    
+
     # Derived field for exact path matching
     _ignored_exact: set[PurePosixPath] = PrivateAttr(default_factory=set)
-    
+
     @model_validator(mode="after")
     def process_paths(self) -> "IgnoreSettings":
         """Process paths into PurePosixPath for exact matching."""
@@ -93,26 +93,28 @@ class ProjectSettings(BaseModel):
 
 class ProjectConfig(BaseModel):
     """Project configuration including transport and settings."""
+    name: Optional[str] = None  # Repository name (auto-migrated from transport sections if missing)
     transport: Literal["ssh", "rclone", "ipfs"]
-    
+
     # Transport-specific configs (only one will be set)
     ssh: Optional[SSHRepositoryConfig] = None
-    rclone: Optional[RcloneRepositoryConfig] = None  
+    rclone: Optional[RcloneRepositoryConfig] = None
     ipfs: Optional[IPFSRepositoryConfig] = None
-    
+
     # Project settings (stable across transports)
     project: ProjectSettings
-    
-    @model_validator(mode="after") 
-    def validate_transport_config(self):
-        """Ensure exactly one transport config is set and matches transport type."""
+
+    @model_validator(mode="after")
+    def migrate_legacy_format_and_validate(self):
+        """Auto-migrate from legacy format and validate transport config."""
+        # First validate transport config consistency (to preserve existing test behavior)
         configs = [self.ssh, self.rclone, self.ipfs]
         set_configs = [c for c in configs if c is not None]
-        
+
         if len(set_configs) != 1:
             raise ValueError("Exactly one transport config must be set")
-            
-        # Check that the set config matches transport type
+
+        # TODO: can't this be deleaged to the transport-specific config class?
         if self.transport == "ssh" and self.ssh is None:
             raise ValueError("SSH config required when transport=ssh")
         elif self.transport == "rclone" and self.rclone is None:  # pragma: no cover
@@ -121,14 +123,33 @@ class ProjectConfig(BaseModel):
         elif self.transport == "ipfs" and self.ipfs is None:  # pragma: no cover
             # TODO: Implement IPFS transport support
             raise ValueError("IPFS config required when transport=ipfs")
+
+        # Then auto-migrate: extract name from transport section if missing at top level
+        if not self.name:
+            transport_config = None
+            if self.transport == "ssh" and self.ssh:
+                transport_config = self.ssh
+            elif self.transport == "rclone" and self.rclone:
+                transport_config = self.rclone
+            elif self.transport == "ipfs" and self.ipfs:
+                transport_config = self.ipfs
             
+            if transport_config and hasattr(transport_config, 'name') and transport_config.name:
+                self.name = transport_config.name
+
+        # Finally validate that we have a name after migration
+        if not self.name:
+            raise ValueError("Repository name is required (either at top level or in transport section)")
+
         return self
-    
+
     @classmethod
     def load(cls, config_path: Path) -> "ProjectConfig":
-        """Load project config from file."""
+        """Load project config from file with auto-migration from legacy format."""
         with config_path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+
+        # Model validator handles migration automatically
         return cls.model_validate(data)
 
 
@@ -153,19 +174,19 @@ class UserConfig(BaseModel):
     """User configuration with optional transport-specific settings."""
     user_name: str
     user_id: EmailStr
-    
-    # Optional default repository settings  
+
+    # Optional default repository settings
     default_host: Optional[str] = None
     default_project_path: Optional[Path] = None
-    
+
     # Optional logging configuration
     local_log: Optional[Path] = None
-    
+
     # Optional security configs
     ssh: Optional[SSHUserConfig] = None
     rclone: Optional[RcloneUserConfig] = None
     ipfs: Optional[IPFSUserConfig] = None
-    
+
     @classmethod
     def load(cls, config_path: Path) -> "UserConfig":
         """Load user config from file."""
@@ -184,21 +205,21 @@ class RepositoryDiscoveryConfig(BaseModel):
 
 def _validate_system_config(config_data: dict, config_path: Path) -> dict:
     """Validate system config and remove personal fields with error logging.
-    
+
     Args:
         config_data: Raw config data from system config file
         config_path: Path to the config file for error reporting
-        
+
     Returns:
         Cleaned config data with personal fields removed
-        
+
     Raises:
         ValueError: If personal fields are found in system config
     """
     if not str(config_path).startswith("/etc/dsg/"):
         # Only validate system configs
         return config_data
-        
+
     found_personal_fields = PERSONAL_FIELDS.intersection(config_data.keys())
     if found_personal_fields:
         fields_str = ", ".join(sorted(found_personal_fields))
@@ -209,93 +230,93 @@ def _validate_system_config(config_data: dict, config_path: Path) -> dict:
         raise ValueError(
             f"System config contains personal fields: {fields_str}"
         )
-    
+
     return config_data
 
 
 def load_merged_user_config() -> UserConfig:
     """Load and merge user config from all locations (system defaults + user overrides)."""
-    # Config file search order (later configs override earlier ones)
+    # FIXME: this search should be a module_level constant pls refactor
     candidates = [
         Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
         Path.home() / ".config" / "dsg" / USER_CFG,  # User config
         Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
         Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
     ]
-    
+
     merged_data = {}
     found_configs = []
-    
+
     for candidate in candidates:
         if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
             try:
                 with candidate.open("r", encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
-                
+
                 # Validate system config for personal fields
                 data = _validate_system_config(data, candidate)
-                
+
                 merged_data.update(data)  # Later configs override earlier ones
                 found_configs.append(str(candidate))
                 logger.debug(f"Loaded config from {candidate}")
             except Exception as e:
                 logger.warning(f"Failed to load config from {candidate}: {e}")
-    
+
     if not found_configs:
         logger.error(f"No user config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
         raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
-    
+
     logger.debug(f"Merged config from: {', '.join(found_configs)}")
     return UserConfig.model_validate(merged_data)
 
 
 def load_repository_discovery_config() -> RepositoryDiscoveryConfig:
     """Load configuration for repository discovery operations.
-    
+
     This loads only the fields needed for repository discovery (default_host,
     default_project_path) without requiring personal user fields.
-    
+
     Returns:
         RepositoryDiscoveryConfig with host and path information
-        
+
     Raises:
         FileNotFoundError: If no config files are found
     """
-    # Config file search order (later configs override earlier ones)
+    # FIXME: this search should be a module_level constant pls refactor
     candidates = [
         Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
         Path.home() / ".config" / "dsg" / USER_CFG,  # User config
         Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
         Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
     ]
-    
+
     merged_data = {}
     found_configs = []
-    
+
     for candidate in candidates:
         if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
             try:
                 with candidate.open("r", encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
-                
+
                 # Validate system config for personal fields
                 data = _validate_system_config(data, candidate)
-                
+
                 # Only extract repository discovery fields
                 discovery_fields = {
                     key: value for key, value in data.items()
                     if key in {"default_host", "default_project_path"}
                 }
-                
+
                 merged_data.update(discovery_fields)  # Later configs override earlier ones
                 found_configs.append(str(candidate))
             except Exception as e:
                 logger.warning(f"Failed to load config from {candidate}: {e}")
-    
+
     if not found_configs:
         logger.error(f"No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
         raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
-    
+
     return RepositoryDiscoveryConfig.model_validate(merged_data)
 
 
@@ -306,7 +327,7 @@ def find_project_config_path(start: Path | None = None) -> Path:
         candidate = parent / PROJECT_CFG
         if candidate.exists():
             return candidate
-    
+
     raise FileNotFoundError("No .dsgconfig.yml found in this or any parent directory")
 
 
@@ -323,12 +344,12 @@ class Config(BaseModel):
         """Load both user and project configs."""
         # Load merged user config (system defaults + user overrides)
         user_config = load_merged_user_config()
-        
+
         # Load project config (required)
         project_config_path = find_project_config_path(start_path)
         project_root = project_config_path.parent
         project_config = ProjectConfig.load(project_config_path)
-        
+
         return cls(
             user=user_config,
             project=project_config,
@@ -357,12 +378,52 @@ def validate_config(check_backend: bool = False) -> list[str]:
         return errors
 
     # Check user config
+    user_config = None
     try:
         user_config = load_merged_user_config()
     except FileNotFoundError:
         errors.append("User config not found")
     except Exception as e:
         errors.append(f"Error in user config: {e}")
+
+    # Validate local_log if specified
+    if user_config and user_config.local_log:
+        log_path = user_config.local_log
+        try:
+            # Check if path is absolute
+            if not log_path.is_absolute():
+                errors.append(f"local_log path must be absolute: {log_path}")
+            else:
+                # Check if directory exists
+                if log_path.exists():
+                    if not log_path.is_dir():
+                        errors.append(f"local_log path exists but is not a directory: {log_path}")
+                    else:
+                        # Check if directory is writable
+                        test_file = log_path / ".dsg_write_test"
+                        try:
+                            test_file.write_text("test")
+                            test_file.unlink()
+                        except Exception as write_error:
+                            errors.append(f"local_log directory is not writable: {log_path} ({write_error})")
+                else:
+                    # Try to create directory to validate parent path
+                    try:
+                        log_path.mkdir(parents=True, exist_ok=True)
+                        # Test write access
+                        test_file = log_path / ".dsg_write_test"
+                        test_file.write_text("test")
+                        test_file.unlink()
+                        # Clean up test directory if we created it
+                        try:
+                            log_path.rmdir()
+                        except OSError:
+                            # Directory not empty or other issue, leave it
+                            pass
+                    except Exception as create_error:
+                        errors.append(f"Cannot create or write to local_log directory: {log_path} ({create_error})")
+        except Exception as path_error:
+            errors.append(f"Error validating local_log path: {log_path} ({path_error})")
 
     # Try full config load
     try:

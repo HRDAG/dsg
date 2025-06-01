@@ -279,12 +279,12 @@ class LocalhostBackend(Backend):
 class SSHBackend(Backend):
     """Backend for SSH-based remote repository access."""
     
-    def __init__(self, ssh_config, user_config):
+    def __init__(self, ssh_config, user_config, repo_name: str):
         self.ssh_config = ssh_config
         self.user_config = user_config
         self.host = ssh_config.host
         self.repo_path = ssh_config.path
-        self.repo_name = ssh_config.name
+        self.repo_name = repo_name  # Use passed repo_name (from top-level config)
         # Construct full repository path: base_path/repo_name
         # Handle trailing slashes properly (convert Path to string if needed)
         base_path = str(self.repo_path).rstrip('/')
@@ -462,14 +462,15 @@ class SSHBackend(Backend):
 def create_backend(cfg: Config) -> Backend:
     """Create the appropriate backend instance based on config."""
     transport = cfg.project.transport
+    repo_name = cfg.project.name  # Use top-level name (supports both new and migrated configs)
     
     if transport == "ssh":
         ssh_config = cfg.project.ssh
         # Check if it's actually local
         if is_local_host(ssh_config.host):
-            return LocalhostBackend(ssh_config.path, ssh_config.name)
+            return LocalhostBackend(ssh_config.path, repo_name)
         else:
-            return SSHBackend(ssh_config, cfg.user)
+            return SSHBackend(ssh_config, cfg.user, repo_name)
     elif transport == "rclone":
         raise NotImplementedError("Rclone backend not yet implemented")
     elif transport == "ipfs":

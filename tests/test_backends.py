@@ -29,11 +29,11 @@ from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def base_config(tmp_path):
-    """Create standard config for backend testing"""
+    """Create standard config for backend testing (legacy format for backward compatibility)"""
     ssh_config = SSHRepositoryConfig(
         host=socket.gethostname(),
         path=tmp_path,
-        name="KO",
+        name="KO",  # Legacy: name still in transport config for existing tests
         type="zfs"
     )
     ignore_settings = IgnoreSettings(
@@ -46,6 +46,47 @@ def base_config(tmp_path):
         ignore=ignore_settings
     )
     project = ProjectConfig(
+        name="KO",  # Also add top-level name for new format
+        transport="ssh",
+        ssh=ssh_config,
+        project=project_settings
+    )
+    
+    user_ssh = SSHUserConfig()
+    user = UserConfig(
+        user_name="Clayton Chiclitz",
+        user_id="clayton@yoyodyne.net",
+        ssh=user_ssh
+    )
+    
+    cfg = Config(
+        user=user,
+        project=project,
+        project_root=tmp_path
+    )
+    return cfg
+
+
+@pytest.fixture 
+def new_format_config(tmp_path):
+    """Create config using new format with top-level name (no migration needed)"""
+    ssh_config = SSHRepositoryConfig(
+        host=socket.gethostname(),
+        path=tmp_path,
+        name=None,  # New format: no name in transport config
+        type="zfs"
+    )
+    ignore_settings = IgnoreSettings(
+        paths={"graphs/"},
+        names=set(),
+        suffixes=set()
+    )
+    project_settings = ProjectSettings(
+        data_dirs={"input", "output", "frozen"},
+        ignore=ignore_settings
+    )
+    project = ProjectConfig(
+        name="KO",  # New format: top-level name
         transport="ssh",
         ssh=ssh_config,
         project=project_settings
@@ -430,7 +471,7 @@ def test_ssh_backend_path_construction():
     user_config = Mock()
     
     # Create backend
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     # Verify path construction
     assert backend.host == "testhost"
@@ -452,7 +493,7 @@ def test_ssh_backend_path_construction_with_trailing_slash():
     user_config = Mock()
     
     # Create backend
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     # Should normalize trailing slash correctly
     assert backend.full_repo_path == "/var/repos/zsd/test-repo"
@@ -469,7 +510,7 @@ def test_ssh_backend_accessibility_uses_full_path():
     ssh_config.name = "test-repo"
     
     user_config = Mock()
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     # Mock SSH connection and commands
     with patch('paramiko.SSHClient') as mock_ssh_class:
@@ -544,7 +585,7 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
         mock_manifest.return_value = mock_manifest_obj
         
         # Create backend
-        backend = SSHBackend(ssh_config, user_config)
+        backend = SSHBackend(ssh_config, user_config, ssh_config.name)
         
         # Create fake manifest file that the clone will check for
         manifest_file = dest_repo / ".dsg" / "last-sync.json"
@@ -601,7 +642,7 @@ def test_ssh_backend_clone_no_manifest(tmp_path, monkeypatch):
     ssh_config.name = "test_repo"
     
     user_config = Mock()
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     with patch('subprocess.run') as mock_run:
         # Create .dsg directory but no manifest file
@@ -632,7 +673,7 @@ def test_ssh_backend_clone_with_resume(tmp_path):
     ssh_config.name = "test_repo"
     
     user_config = Mock()
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     with patch('subprocess.run') as mock_run, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
@@ -676,7 +717,7 @@ def test_ssh_backend_clone_rsync_errors(tmp_path):
     ssh_config.name = "test_repo"
     
     user_config = Mock()
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     # Test metadata sync failure
     with patch('subprocess.run') as mock_run:
@@ -729,7 +770,7 @@ def test_ssh_backend_clone_manifest_parse_error(tmp_path):
     ssh_config.name = "test_repo"
     
     user_config = Mock()
-    backend = SSHBackend(ssh_config, user_config)
+    backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     with patch('subprocess.run') as mock_run, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
@@ -744,6 +785,199 @@ def test_ssh_backend_clone_manifest_parse_error(tmp_path):
         
         with pytest.raises(ValueError, match="Failed to parse manifest"):
             backend.clone(dest_repo)
+
+
+class TestNewFormatBackends:
+    """Test backend functionality with new config format (top-level name)."""
+    
+    def test_create_backend_with_new_format_localhost(self, new_format_config, tmp_path):
+        """Test create_backend works with new format for localhost."""
+        # Create repository structure
+        repo_dir = tmp_path / "KO"
+        repo_dir.mkdir()
+        (repo_dir / ".dsg").mkdir()
+        
+        backend = create_backend(new_format_config)
+        
+        # Should create LocalhostBackend with correct repo name from top-level config
+        assert isinstance(backend, LocalhostBackend)
+        assert backend.repo_name == "KO"  # From top-level config.project.name
+        assert backend.repo_path == tmp_path
+        assert backend.full_path == repo_dir
+
+    def test_create_backend_with_new_format_ssh(self, new_format_config):
+        """Test create_backend works with new format for SSH."""
+        # Make SSH config point to remote host
+        new_format_config.project.ssh.host = "remote-host"
+        
+        backend = create_backend(new_format_config)
+        
+        # Should create SSHBackend with correct repo name from top-level config
+        assert isinstance(backend, SSHBackend)
+        assert backend.repo_name == "KO"  # From top-level config.project.name
+        assert backend.host == "remote-host"
+        assert backend.repo_path == new_format_config.project.ssh.path
+
+    def test_ssh_backend_constructor_with_new_format(self, tmp_path):
+        """Test SSHBackend constructor with new format (repo_name parameter)."""
+        from unittest.mock import Mock
+        
+        ssh_config = Mock()
+        ssh_config.host = "testhost"
+        ssh_config.path = Path("/remote/repo")
+        ssh_config.name = None  # New format: no name in transport config
+        
+        user_config = Mock()
+        repo_name = "new-format-repo"
+        
+        backend = SSHBackend(ssh_config, user_config, repo_name)
+        
+        # Should use passed repo_name, not ssh_config.name
+        assert backend.repo_name == "new-format-repo"
+        assert backend.host == "testhost"
+        assert backend.repo_path == Path("/remote/repo")
+        assert backend.full_repo_path == "/remote/repo/new-format-repo"
+
+    def test_localhost_backend_with_new_format(self, tmp_path):
+        """Test LocalhostBackend works correctly with new format."""
+        repo_name = "test-new-format"
+        repo_dir = tmp_path / repo_name
+        repo_dir.mkdir()
+        (repo_dir / ".dsg").mkdir()
+        
+        backend = LocalhostBackend(tmp_path, repo_name)
+        
+        # Should work with new format
+        assert backend.repo_name == repo_name
+        assert backend.repo_path == tmp_path
+        assert backend.full_path == repo_dir
+        
+        # Should be accessible
+        ok, msg = backend.is_accessible()
+        assert ok
+        assert msg == "OK"
+
+    def test_backend_access_with_new_format_success(self, new_format_config, tmp_path):
+        """Test can_access_backend works with new format."""
+        # Create repository structure
+        repo_dir = tmp_path / "KO"
+        repo_dir.mkdir()
+        (repo_dir / ".dsg").mkdir()
+        
+        ok, msg = can_access_backend(new_format_config)
+        assert ok
+        assert msg == "OK"
+
+    def test_backend_access_with_new_format_missing_repo(self, new_format_config):
+        """Test can_access_backend error handling with new format."""
+        # Repository directory doesn't exist
+        ok, msg = can_access_backend(new_format_config)
+        assert not ok
+        assert "not a valid repository" in msg
+
+    def test_backend_name_priority_new_over_legacy(self, tmp_path):
+        """Test that top-level name takes priority over transport name in create_backend."""
+        # Create config with BOTH top-level name AND legacy transport name
+        ssh_config = SSHRepositoryConfig(
+            host=socket.gethostname(),
+            path=tmp_path,
+            name="legacy-name",  # Legacy name (should be ignored)
+            type="zfs"
+        )
+        project_settings = ProjectSettings()
+        project = ProjectConfig(
+            name="top-level-name",  # New format name (should be used)
+            transport="ssh",
+            ssh=ssh_config,
+            project=project_settings
+        )
+        
+        user = UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        )
+        
+        cfg = Config(
+            user=user,
+            project=project,
+            project_root=tmp_path
+        )
+        
+        # Create repository structure with top-level name
+        repo_dir = tmp_path / "top-level-name"
+        repo_dir.mkdir()
+        (repo_dir / ".dsg").mkdir()
+        
+        backend = create_backend(cfg)
+        
+        # Should use top-level name, NOT transport name
+        assert backend.repo_name == "top-level-name"
+        if isinstance(backend, LocalhostBackend):
+            assert backend.full_path == repo_dir
+        elif isinstance(backend, SSHBackend):
+            assert "top-level-name" in backend.full_repo_path
+
+
+class TestMigratedConfigBackends:
+    """Test backend functionality with migrated configs (legacy format loaded and migrated)."""
+    
+    def test_backend_works_with_migrated_config(self, tmp_path):
+        """Test that backends work correctly with configs migrated from legacy format."""
+        from dsg.config_manager import ProjectConfig, Config, UserConfig, ProjectSettings
+        
+        # Create legacy format config file
+        config_file = tmp_path / ".dsgconfig.yml"
+        config_content = {
+            "transport": "ssh",
+            "ssh": {
+                "host": socket.gethostname(),
+                "path": str(tmp_path),
+                "name": "migrated-repo",  # Legacy location
+                "type": "zfs"
+            },
+            "project": {
+                "data_dirs": ["input", "output"]
+            }
+        }
+        
+        import yaml
+        with config_file.open("w") as f:
+            yaml.safe_dump(config_content, f)
+        
+        # Load config (should auto-migrate)
+        project_config = ProjectConfig.load(config_file)
+        
+        # Verify migration occurred
+        assert project_config.name == "migrated-repo"  # Migrated to top-level
+        assert project_config.ssh.name == "migrated-repo"  # Legacy field preserved
+        
+        # Create full config for backend testing
+        user = UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        )
+        
+        cfg = Config(
+            user=user,
+            project=project_config,
+            project_root=tmp_path
+        )
+        
+        # Create repository structure
+        repo_dir = tmp_path / "migrated-repo"
+        repo_dir.mkdir()
+        (repo_dir / ".dsg").mkdir()
+        
+        # Test backend creation with migrated config
+        backend = create_backend(cfg)
+        
+        # Should work correctly with migrated name
+        assert backend.repo_name == "migrated-repo"
+        
+        # Should be accessible
+        ok, msg = can_access_backend(cfg)
+        assert ok
+        assert msg == "OK"
 
 
 # done.

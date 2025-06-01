@@ -302,6 +302,8 @@ user_id: joe@example.org
         assert cfg.ssh is None
         assert cfg.rclone is None
         assert cfg.ipfs is None
+        # Logging config is optional and defaults to None
+        assert cfg.local_log is None
 
     def test_user_config_missing_required_fields(self, tmp_path):
         user_cfg = tmp_path / "dsg.yml"
@@ -324,6 +326,41 @@ user_id: not-an-email
             UserConfig.load(user_cfg)
         assert "user_id" in str(excinfo.value)
         assert "email" in str(excinfo.value).lower()
+
+    def test_user_config_with_local_log(self, tmp_path):
+        """Test UserConfig with local_log field."""
+        user_cfg = tmp_path / "dsg.yml"
+        log_dir = tmp_path / "logs"
+        user_cfg.write_text(f"""
+user_name: Joe
+user_id: joe@example.org
+local_log: {log_dir}
+""")
+        cfg = UserConfig.load(user_cfg)
+        assert cfg.user_name == "Joe"
+        assert cfg.user_id == "joe@example.org"
+        assert cfg.local_log == log_dir
+
+    def test_user_config_with_optional_fields(self, tmp_path):
+        """Test UserConfig with all optional fields including local_log."""
+        user_cfg = tmp_path / "dsg.yml"
+        log_dir = tmp_path / "logs"
+        user_cfg.write_text(f"""
+user_name: Joe
+user_id: joe@example.org
+default_host: localhost
+default_project_path: /tmp/projects
+local_log: {log_dir}
+ssh:
+  key_path: ~/.ssh/id_rsa
+""")
+        cfg = UserConfig.load(user_cfg)
+        assert cfg.user_name == "Joe"
+        assert cfg.user_id == "joe@example.org"
+        assert cfg.default_host == "localhost"
+        assert cfg.default_project_path == Path("/tmp/projects")
+        assert cfg.local_log == log_dir
+        assert cfg.ssh.key_path == Path("~/.ssh/id_rsa")
 
 
 def test_config_with_user_config(config_files):
@@ -719,6 +756,245 @@ class TestSystemConfigValidation:
         # Should raise ValueError mentioning only the found field
         with pytest.raises(ValueError, match="System config contains personal fields: user_name"):
             _validate_system_config(config_data, system_config_path)
+
+
+class TestValidateConfigLocalLog:
+    """Test validate_config function with local_log field validation."""
+    
+    def test_validate_config_with_valid_local_log(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config with valid local_log directory."""
+        from dsg.config_manager import validate_config
+        
+        # Create log directory
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        
+        # Set up user config with local_log
+        user_dir = tmp_path / "userconfig"  
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text(f"""
+user_name: Test User
+user_id: test@example.com
+local_log: {log_dir}
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should return empty list (no errors)
+        assert errors == []
+
+    def test_validate_config_with_nonexistent_local_log_creatable(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config with nonexistent but creatable local_log directory."""
+        from dsg.config_manager import validate_config
+        
+        # Use nonexistent but creatable path
+        log_dir = tmp_path / "logs" / "dsg"
+        
+        # Set up user config with local_log
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text(f"""
+user_name: Test User
+user_id: test@example.com
+local_log: {log_dir}
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should return empty list (no errors)
+        assert errors == []
+
+    def test_validate_config_with_relative_local_log_path(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config with relative local_log path (should fail)."""
+        from dsg.config_manager import validate_config
+        
+        # Set up user config with relative local_log path
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text("""
+user_name: Test User
+user_id: test@example.com
+local_log: ./logs
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should contain error about relative path
+        assert len(errors) >= 1
+        assert any("local_log path must be absolute" in error for error in errors)
+
+    def test_validate_config_with_local_log_file_not_directory(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config when local_log points to a file instead of directory."""
+        from dsg.config_manager import validate_config
+        
+        # Create a file where we want the log directory
+        log_file = tmp_path / "logs.txt"
+        log_file.write_text("this is a file, not a directory")
+        
+        # Set up user config with local_log pointing to file
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text(f"""
+user_name: Test User
+user_id: test@example.com
+local_log: {log_file}
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should contain error about path not being a directory
+        assert len(errors) >= 1
+        assert any("local_log path exists but is not a directory" in error for error in errors)
+
+    def test_validate_config_with_unwritable_local_log(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config with unwritable local_log directory."""
+        from dsg.config_manager import validate_config
+        import os
+        
+        # Create log directory and make it read-only
+        log_dir = tmp_path / "readonly_logs"
+        log_dir.mkdir()
+        # Change permissions to read-only (if not Windows)
+        if os.name != 'nt':  # Skip on Windows where chmod behaves differently
+            log_dir.chmod(0o444)
+        
+        # Set up user config with unwritable local_log
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text(f"""
+user_name: Test User
+user_id: test@example.com
+local_log: {log_dir}
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Restore permissions for cleanup
+        if os.name != 'nt':
+            log_dir.chmod(0o755)
+        
+        # Should contain error about directory not being writable (on non-Windows)
+        if os.name != 'nt':
+            assert len(errors) >= 1
+            assert any("local_log directory is not writable" in error for error in errors)
+
+    def test_validate_config_with_uncreatable_local_log(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config with local_log that cannot be created."""
+        from dsg.config_manager import validate_config
+        import os
+        
+        # Create a file where we want to create the parent directory
+        parent_file = tmp_path / "blocking_file"
+        parent_file.write_text("blocks directory creation")
+        
+        # Try to create subdirectory under the file (should fail)
+        log_dir = parent_file / "logs"
+        
+        # Set up user config with uncreatable local_log
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text(f"""
+user_name: Test User  
+user_id: test@example.com
+local_log: {log_dir}
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should contain error about not being able to create directory
+        assert len(errors) >= 1
+        assert any("Cannot create or write to local_log directory" in error for error in errors)
+
+    def test_validate_config_without_local_log(self, basic_project_config, tmp_path, monkeypatch):
+        """Test validate_config when local_log is not specified (should work normally)."""
+        from dsg.config_manager import validate_config
+        
+        # Set up user config without local_log
+        user_dir = tmp_path / "userconfig"
+        user_dir.mkdir()
+        user_config = user_dir / "dsg.yml"
+        user_config.write_text("""
+user_name: Test User
+user_id: test@example.com
+""")
+        monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+        
+        # Change to project directory
+        monkeypatch.chdir(basic_project_config["repo_dir"])
+        
+        # Run validation
+        errors = validate_config(check_backend=False)
+        
+        # Should return empty list (no errors)
+        assert errors == []
+
+
+class TestConfigMigrationIntegration:
+    """Integration test for config migration."""
+    
+    def test_basic_migration_works(self, tmp_path):
+        """Test that basic migration from legacy format works."""
+        from dsg.config_manager import ProjectConfig
+        
+        config_file = tmp_path / ".dsgconfig.yml"
+        config_content = {
+            "transport": "ssh",
+            "ssh": {
+                "host": "localhost",
+                "path": "/tmp/test",
+                "name": "migration-test-repo",
+                "type": "xfs"
+            },
+            "project": {
+                "data_dirs": ["input", "output"]
+            }
+        }
+        
+        import yaml
+        with config_file.open("w") as f:
+            yaml.safe_dump(config_content, f)
+        
+        # Should migrate successfully
+        config = ProjectConfig.load(config_file)
+        assert config.name == "migration-test-repo"
+        assert config.transport == "ssh"
+        assert config.ssh.name == "migration-test-repo"  # Legacy field preserved
 
 
 # done.
