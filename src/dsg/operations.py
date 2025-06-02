@@ -35,13 +35,11 @@ def list_directory(
     Returns:
         ScanResult with manifest and ignored files
     """
-    # Validate path
     if not path.exists():
         raise ValueError(f"Directory '{path}' does not exist")
     if not path.is_dir():
         raise ValueError(f"'{path}' is not a directory")
     
-    # Build overrides dictionary
     overrides = {}
     if ignored_names:
         overrides["ignored_names"] = ignored_names
@@ -50,16 +48,14 @@ def list_directory(
     if ignored_paths:
         overrides["ignored_paths"] = ignored_paths
     
-    # Try to load config if requested
     if use_config:
         try:
             cfg = Config.load(path)
             
-            # Apply overrides to config
             for key, value in overrides.items():
                 if key == "ignored_paths":
                     cfg.project.project.ignore.paths.update(value)
-                    # Update _ignored_exact to match
+                    # Sync internal cache used for fast path lookups
                     cfg.project.project.ignore._ignored_exact.update(PurePosixPath(p) for p in value)
                 elif key == "ignored_names":
                     cfg.project.project.ignore.names.update(value)
@@ -74,7 +70,6 @@ def list_directory(
                 print(f"Could not load config, using minimal config: {e}")
             # Branch 70->74: when debug is False  # pragma: no cover
     
-    # Fall back to minimal config
     # Branch 52->74: when use_config is False  # pragma: no cover
     return scan_directory_no_cfg(path, include_dsg_files=include_dsg_files, **overrides)
 

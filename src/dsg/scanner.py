@@ -244,14 +244,11 @@ def _scan_directory_internal(
             # TODO: The create_entry method now validates paths and warns about invalid ones.
             # Consider collecting validation warnings for reporting to CLI commands.
             # This would be useful for 'dsg status' and 'dsg normalize --dry-run' commands.
-            # Set user attribution if provided
             if user_id and hasattr(entry, "user") and not entry.user:
                 entry.user = user_id
                 logger.debug(f"  Setting user attribution for {str_path}: {user_id}")
                 
-            # Determine if this is a file that can be safely hashed
-            # Double-check against race conditions where symlinks might be created between
-            # the time create_entry() was called and now
+            # Race condition: files could become symlinks between scan and hash
             is_hashable_file = isinstance(entry, FileRef) and not full_path.is_symlink()
             
             if compute_hashes and is_hashable_file:

@@ -75,7 +75,6 @@ class BaseRepositoryDiscovery(ABC):
         if is_working_dir and not message:
             message = "Working directory"
 
-        # Count files in manifest entries
         entries = manifest_data.get("entries", {})
         file_count = len(entries) if entries else 0
 

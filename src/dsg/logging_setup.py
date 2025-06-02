@@ -22,7 +22,6 @@ def detect_repo_name() -> Optional[str]:
         Repository name or None if not detected
     """
     try:
-        # Use proper config loading with migration support
         from dsg.config_manager import find_project_config_path, ProjectConfig
         
         config_path = find_project_config_path()
@@ -30,10 +29,7 @@ def detect_repo_name() -> Optional[str]:
         return config.name
         
     except Exception:
-        # Config loading failed, fall back to directory name
         pass
-
-    # Fallback to current directory name
     cwd = Path.cwd()
     if cwd.name and cwd.name != "/":
         return cwd.name
@@ -48,7 +44,6 @@ def setup_logging() -> None:
     - Console output: WARNING+ only (clean CLI output)
     - File output: DEBUG+ if local_log is configured in user config
     """
-    # Remove any existing handlers
     logger.remove()
 
     # Console handler: WARNING+ only for clean output

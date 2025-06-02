@@ -84,7 +84,6 @@ class FileRef(BaseModel):
         if not isinstance(other, FileRef):
             return False
 
-        # First check path is the same
         if self.path != other.path:
             return False
 
@@ -92,7 +91,6 @@ class FileRef(BaseModel):
         if not self.hash or not other.hash:
             raise ValueError(f"Cannot compare FileRef objects with missing hash values: {self.path}")
 
-        # Compare hash values
         return self.hash == other.hash
 
 

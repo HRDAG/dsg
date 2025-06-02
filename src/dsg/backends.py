@@ -240,7 +240,6 @@ class LocalhostBackend(Backend):
         """Clone repository from local source to destination directory."""
         source_path = self.full_path
         
-        # Step 1: Copy metadata directory first
         source_dsg = source_path / ".dsg"
         dest_dsg = dest_path / ".dsg"
         
@@ -250,18 +249,14 @@ class LocalhostBackend(Backend):
         if not source_dsg.exists():
             raise ValueError("Source is not a DSG repository (missing .dsg directory)")
         
-        # Copy .dsg directory 
         shutil.copytree(source_dsg, dest_dsg, dirs_exist_ok=resume)
         
-        # Step 2: Parse manifest for file list
         manifest_file = dest_dsg / "last-sync.json"
         if not manifest_file.exists():
             # Repository has no synced data yet, only metadata
             return
         
         manifest = Manifest.from_json(manifest_file)
-        
-        # Step 3: Copy data files according to manifest
         for path, entry in manifest.entries.items():
             src_file = source_path / path
             dst_file = dest_path / path
@@ -285,7 +280,6 @@ class SSHBackend(Backend):
         self.host = ssh_config.host
         self.repo_path = ssh_config.path
         self.repo_name = repo_name  # Use passed repo_name (from top-level config)
-        # Construct full repository path: base_path/repo_name
         # Handle trailing slashes properly (convert Path to string if needed)
         base_path = str(self.repo_path).rstrip('/')
         self.full_repo_path = f"{base_path}/{self.repo_name}"
@@ -296,13 +290,11 @@ class SSHBackend(Backend):
         self._detailed_results = []
         
         try:
-            # Test 1: SSH Connection
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             client.connect(self.host, timeout=10)
             self._detailed_results.append(("SSH Connection", True, f"Successfully connected to {self.host}"))
             
-            # Test 2: Repository path exists
             stdin, stdout, stderr = client.exec_command(f"test -d '{self.full_repo_path}'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("Repository Path", False, f"Path {self.full_repo_path} not found"))
@@ -310,15 +302,12 @@ class SSHBackend(Backend):
                 return False, f"Repository path {self.full_repo_path} not found on {self.host}"
             self._detailed_results.append(("Repository Path", True, f"Path {self.full_repo_path} exists"))
             
-            # Test 3: .dsg directory exists (DSG repository)
             stdin, stdout, stderr = client.exec_command(f"test -d '{self.full_repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("DSG Repository", False, "Missing .dsg/ directory"))
                 client.close()
                 return False, f"Path exists but is not a DSG repository (missing .dsg/ directory)"
             self._detailed_results.append(("DSG Repository", True, "Valid DSG repository (.dsg/ directory found)"))
-            
-            # Test 4: Read permissions on .dsg directory
             stdin, stdout, stderr = client.exec_command(f"test -r '{self.full_repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("Read Permissions", False, "Cannot read .dsg directory"))

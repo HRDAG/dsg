@@ -64,15 +64,12 @@ def normalize_path(path: Path) -> tuple[Path, bool]:
     """
     was_modified = False
     
-    # Normalize each component individually
     normalized_parts = []
     for part in path.parts:
         nfc_part = unicodedata.normalize("NFC", part) 
         if part != nfc_part:
             was_modified = True
         normalized_parts.append(nfc_part)
-    
-    # Reassemble the path
     if was_modified:
         # Handle absolute paths
         if path.is_absolute():

@@ -145,12 +145,10 @@ def normalize_directory_tree(base_path: Path,
     total_items = 0
     processed_items = 0
     
-    # First count total items for progress tracking
     if progress_callback:
         for root, dirs, files in os.walk(base_path):
             total_items += len(dirs) + len(files)
     
-    # Process the tree
     for root, dirnames, filenames in os.walk(str(base_path), topdown=True):
         root_path = Path(root)
         
@@ -180,7 +178,6 @@ def normalize_directory_tree(base_path: Path,
                 # Update dirnames in-place for continued traversal
                 dirnames[i] = new_name
         
-        # Process files
         for filename in filenames:
             file_path = root_path / filename
             processed_items += 1

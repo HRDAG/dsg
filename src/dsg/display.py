@@ -46,7 +46,6 @@ def manifest_to_table(
         table.add_column("User")
         table.add_column("Last Sync")
     
-    # Convert base_path to string for comparison
     base_path_str = str(base_path) + "/" if base_path else ""
     
     # Add manifest entries
