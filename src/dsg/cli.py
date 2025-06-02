@@ -297,8 +297,7 @@ def clone(
         console.print("[green]✓[/green] Repository cloned successfully")
         console.print("Use 'dsg sync' for ongoing updates")
     except Exception as e:
-        console.print(f"[red]✗[/red] Clone failed: {e}")
-        raise typer.Exit(1)
+        handle_operation_error(console, "cloning repository", e)
 
 
 @app.command(name="list-files")

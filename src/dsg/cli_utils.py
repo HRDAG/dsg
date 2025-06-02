@@ -225,11 +225,11 @@ def truncate_commit_message(message: str) -> str:
 
 def handle_config_error(console: Console, error_message: str) -> None:
     """Handle configuration errors with consistent formatting."""
-    console.print(f"[red]Error: {error_message}[/red]")
+    console.print(f"[red]✗[/red] Configuration error: {error_message}")
     raise typer.Exit(1)
 
 
 def handle_operation_error(console: Console, operation: str, error: Exception) -> None:
     """Handle operation errors with consistent formatting."""
-    console.print(f"[red]Error {operation}: {error}[/red]")
+    console.print(f"[red]✗[/red] Error {operation}: {error}")
     raise typer.Exit(1)
