@@ -249,14 +249,38 @@ class LocalhostBackend(Backend):
         if not source_dsg.exists():
             raise ValueError("Source is not a DSG repository (missing .dsg directory)")
         
+        # Notify progress: starting metadata sync
+        if progress_callback:
+            progress_callback("start_metadata")
+        
         shutil.copytree(source_dsg, dest_dsg, dirs_exist_ok=resume)
+        
+        # Notify progress: metadata sync complete
+        if progress_callback:
+            progress_callback("complete_metadata")
         
         manifest_file = dest_dsg / "last-sync.json"
         if not manifest_file.exists():
             # Repository has no synced data yet, only metadata
+            if progress_callback:
+                progress_callback("no_files")
             return
         
         manifest = Manifest.from_json(manifest_file)
+        
+        # Calculate total files and size for progress reporting
+        total_files = len(manifest.entries)
+        try:
+            total_size = sum(entry.filesize for entry in manifest.entries.values())
+        except AttributeError:
+            # Handle mock objects in tests that don't have filesize
+            total_size = 0
+        
+        # Notify progress: starting file sync
+        if progress_callback:
+            progress_callback("start_files", total_files=total_files, total_size=total_size)
+        
+        files_copied = 0
         for path, entry in manifest.entries.items():
             src_file = source_path / path
             dst_file = dest_path / path
@@ -268,7 +292,16 @@ class LocalhostBackend(Backend):
             
             if src_file.exists():
                 shutil.copy2(src_file, dst_file)
+                files_copied += 1
+                
+                # Update progress for each file
+                if progress_callback:
+                    progress_callback("update_files", completed=1)
             # Note: Missing files will be detected by subsequent validation
+        
+        # Notify progress: file sync complete
+        if progress_callback:
+            progress_callback("complete_files")
 
 
 class SSHBackend(Backend):
@@ -386,6 +419,9 @@ class SSHBackend(Backend):
         dest_dsg_path = dest_path / ".dsg"
         
         # Step 1: Transfer metadata directory (critical, small, fast)
+        if progress_callback:
+            progress_callback("start_metadata")
+            
         try:
             rsync_cmd = [
                 "rsync", "-av",
@@ -393,7 +429,7 @@ class SSHBackend(Backend):
                 str(dest_dsg_path) + "/"
             ]
             
-            # Add progress if callback provided (future enhancement)
+            # Add progress if callback provided
             if progress_callback:
                 rsync_cmd.append("--progress")
             
@@ -402,16 +438,32 @@ class SSHBackend(Backend):
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Failed to sync metadata directory: {e.stderr}")
         
+        if progress_callback:
+            progress_callback("complete_metadata")
+        
         # Step 2: Parse manifest for file list using existing utilities
         manifest_file = dest_dsg_path / "last-sync.json"
         if not manifest_file.exists():
             # Repository has no synced data yet, only metadata
+            if progress_callback:
+                progress_callback("no_files")
             return
         
         try:
             manifest = Manifest.from_json(manifest_file)
         except Exception as e:
             raise ValueError(f"Failed to parse manifest: {e}")
+        
+        # Calculate total files and size for progress reporting
+        total_files = len(manifest.entries)
+        try:
+            total_size = sum(entry.filesize for entry in manifest.entries.values())
+        except AttributeError:
+            # Handle mock objects in tests that don't have filesize
+            total_size = 0
+        
+        if progress_callback:
+            progress_callback("start_files", total_files=total_files, total_size=total_size)
         
         # Step 3: Create temporary file list for rsync
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
@@ -438,6 +490,11 @@ class SSHBackend(Backend):
             
             subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
             
+            # For SSH, we can't easily track individual file progress like localhost backend,
+            # but we can report completion of the bulk transfer
+            if progress_callback:
+                progress_callback("update_files", completed=total_files)
+            
         except subprocess.CalledProcessError as e:
             raise ValueError(f"Failed to sync data files: {e.stderr}")
         finally:
@@ -446,6 +503,10 @@ class SSHBackend(Backend):
                 os.unlink(filelist_path)
             except OSError:
                 pass  # Ignore cleanup errors
+        
+        # Notify progress: file sync complete
+        if progress_callback:
+            progress_callback("complete_files")
 
 
 def create_backend(cfg: Config) -> Backend:

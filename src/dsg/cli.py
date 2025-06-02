@@ -19,6 +19,7 @@ from importlib.metadata import version
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 from dsg.backends import create_backend, can_access_backend, SSHBackend
 from dsg.cli_utils import (
@@ -29,6 +30,95 @@ from dsg.cli_utils import (
     handle_operation_error
 )
 from dsg.config_manager import load_repository_discovery_config, Config, validate_config as validate_config_func
+
+
+class CloneProgressReporter:
+    """Progress reporting for clone operations with Rich UI."""
+    
+    def __init__(self, console: Console, verbose: bool = False):
+        self.console = console
+        self.verbose = verbose
+        self.progress = None
+        self.metadata_task = None
+        self.files_task = None
+        
+    def start_progress(self):
+        """Start the progress display."""
+        if not self.verbose:
+            return
+            
+        self.progress = Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            console=self.console
+        )
+        self.progress.start()
+        
+    def stop_progress(self):
+        """Stop the progress display."""
+        if self.progress:
+            self.progress.stop()
+            self.progress = None
+            
+    def start_metadata_sync(self):
+        """Report start of metadata synchronization."""
+        if self.verbose and self.progress:
+            self.metadata_task = self.progress.add_task(
+                "[cyan]Syncing metadata (.dsg directory)...", 
+                total=None
+            )
+        elif self.verbose:
+            self.console.print("[dim]Syncing repository metadata...[/dim]")
+            
+    def complete_metadata_sync(self):
+        """Report completion of metadata synchronization."""
+        if self.verbose and self.progress and self.metadata_task is not None:
+            self.progress.update(self.metadata_task, completed=True)
+            self.progress.remove_task(self.metadata_task)
+        elif self.verbose:
+            self.console.print("[dim]✓ Metadata sync complete[/dim]")
+            
+    def start_files_sync(self, total_files: int, total_size: int = 0):
+        """Report start of file synchronization."""
+        if self.verbose and self.progress:
+            size_info = f" ({self._format_size(total_size)})" if total_size > 0 else ""
+            self.files_task = self.progress.add_task(
+                f"[green]Copying {total_files} files{size_info}...",
+                total=total_files
+            )
+        elif self.verbose:
+            self.console.print(f"[dim]Copying {total_files} files...[/dim]")
+            
+    def update_files_progress(self, completed_files: int = 1):
+        """Update file synchronization progress."""
+        if self.verbose and self.progress and self.files_task is not None:
+            self.progress.update(self.files_task, advance=completed_files)
+            
+    def complete_files_sync(self):
+        """Report completion of file synchronization."""
+        if self.verbose and self.progress and self.files_task is not None:
+            self.progress.update(self.files_task, completed=True)
+            self.progress.remove_task(self.files_task)
+        elif self.verbose:
+            self.console.print("[dim]✓ File sync complete[/dim]")
+            
+    def report_no_files(self):
+        """Report that no files need to be copied."""
+        if self.verbose:
+            self.console.print("[dim]Repository has no synced data yet - only metadata copied[/dim]")
+            
+    def _format_size(self, size_bytes: int) -> str:
+        """Format file size in human readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
+
 from dsg.display import (
     manifest_to_table, format_file_count, display_repositories,
     display_config_validation_results, display_ssh_test_details, display_config_summary
@@ -288,16 +378,40 @@ def clone(
 
     backend = create_backend(config)
 
+    # Create progress reporter
+    progress_reporter = CloneProgressReporter(console, verbose)
+    
+    def progress_callback(action: str, **kwargs):
+        """Progress callback for clone operations."""
+        if action == "start_metadata":
+            progress_reporter.start_metadata_sync()
+        elif action == "complete_metadata":
+            progress_reporter.complete_metadata_sync()
+        elif action == "start_files":
+            total_files = kwargs.get("total_files", 0)
+            total_size = kwargs.get("total_size", 0)
+            progress_reporter.start_files_sync(total_files, total_size)
+        elif action == "update_files":
+            completed = kwargs.get("completed", 1)
+            progress_reporter.update_files_progress(completed)
+        elif action == "complete_files":
+            progress_reporter.complete_files_sync()
+        elif action == "no_files":
+            progress_reporter.report_no_files()
+    
     try:
+        progress_reporter.start_progress()
         backend.clone(
             dest_path=Path("."),
             resume=force,  # If --force, can resume/overwrite
-            progress_callback=None  # TODO: Add progress reporting
+            progress_callback=progress_callback
         )
         console.print("[green]✓[/green] Repository cloned successfully")
         console.print("Use 'dsg sync' for ongoing updates")
     except Exception as e:
         handle_operation_error(console, "cloning repository", e)
+    finally:
+        progress_reporter.stop_progress()
 
 
 @app.command(name="list-files")

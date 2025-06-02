@@ -509,7 +509,7 @@ project:
             result = runner.invoke(app, ["clone"], env=env)
             
             # 4. Verify success
-            assert result.exit_code == 0, f"Clone command failed with output:\n{result.stdout}\nErrors:\n{result.stderr if result.stderr else 'None'}"
+            assert result.exit_code == 0, f"Clone command failed with output:\n{result.stdout}"
             assert "Repository cloned successfully" in result.stdout
             
             # 5. Verify files were cloned
