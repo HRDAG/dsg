@@ -228,97 +228,81 @@ class HistoryWalker:
         previous_hash = None
         file_exists_in_previous = False
         
-        archive_files = self.get_archive_files()
+        # Collect all manifests to process (archives + current)
+        manifests_to_process = []
         
-        for snapshot_num, archive_path in archive_files:
+        # Add archive manifests
+        for snapshot_num, archive_path in self.get_archive_files():
             result = self._load_manifest_from_archive(archive_path)
-            if not result:
-                continue
-                
-            manifest, metadata = result
-            
-            if file_path in manifest.entries:
-                entry = manifest.entries[file_path]
-                current_hash = None
-                
-                if isinstance(entry, FileRef):
-                    current_hash = entry.hash
-                
-                if not file_exists_in_previous:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="add",
-                        file_hash=current_hash,
-                        snapshot_message=metadata.snapshot_message
-                    ))
-                elif current_hash != previous_hash and current_hash is not None:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="modify",
-                        file_hash=current_hash,
-                        snapshot_message=metadata.snapshot_message
-                    ))
-                
-                previous_hash = current_hash
-                file_exists_in_previous = True
-                
-            else:
-                if file_exists_in_previous:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="delete",
-                        file_hash=None,
-                        snapshot_message=metadata.snapshot_message
-                    ))
-                    file_exists_in_previous = False
+            if result:
+                manifests_to_process.append(result)
         
+        # Add current manifest
         current_result = self._load_current_manifest()
         if current_result:
-            manifest, metadata = current_result
+            manifests_to_process.append(current_result)
+        
+        # Process each manifest
+        for manifest, metadata in manifests_to_process:
+            # Determine what happened to the file in this snapshot
+            event_type, file_hash = self._determine_file_event(
+                file_path, manifest, previous_hash, file_exists_in_previous
+            )
             
+            # Create blame entry if something happened
+            if event_type:
+                blame_entries.append(self._create_blame_entry(
+                    metadata, event_type, file_hash
+                ))
+            
+            # Update state for next iteration
             if file_path in manifest.entries:
                 entry = manifest.entries[file_path]
-                current_hash = None
-                
                 if isinstance(entry, FileRef):
-                    current_hash = entry.hash
-                
-                if not file_exists_in_previous:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="add",
-                        file_hash=current_hash,
-                        snapshot_message=metadata.snapshot_message
-                    ))
-                elif current_hash != previous_hash and current_hash is not None:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="modify",
-                        file_hash=current_hash,
-                        snapshot_message=metadata.snapshot_message
-                    ))
+                    previous_hash = entry.hash
+                file_exists_in_previous = True
             else:
                 if file_exists_in_previous:
-                    blame_entries.append(BlameEntry(
-                        snapshot_id=metadata.snapshot_id,
-                        created_at=metadata.created_at,
-                        created_by=metadata.created_by,
-                        event_type="delete",
-                        file_hash=None,
-                        snapshot_message=metadata.snapshot_message
-                    ))
+                    file_exists_in_previous = False
         
         return blame_entries
+    
+    def _determine_file_event(self, file_path: str, manifest: Manifest, 
+                             previous_hash: Optional[str], file_exists_in_previous: bool) -> tuple[Optional[str], Optional[str]]:
+        """Determine what event occurred for a file in this manifest.
+        
+        Returns:
+            Tuple of (event_type, file_hash) or (None, None) if no event
+        """
+        file_in_manifest = file_path in manifest.entries
+        current_hash = None
+        
+        if file_in_manifest:
+            entry = manifest.entries[file_path]
+            if isinstance(entry, FileRef):
+                current_hash = entry.hash
+        
+        # Dispatch logic
+        if not file_in_manifest:
+            if file_exists_in_previous:
+                return "delete", None
+        elif not file_exists_in_previous:
+            return "add", current_hash
+        elif current_hash != previous_hash and current_hash is not None:
+            return "modify", current_hash
+        
+        return None, None
+    
+    def _create_blame_entry(self, metadata: ManifestMetadata, event_type: str, file_hash: Optional[str]) -> BlameEntry:
+        """Create a blame entry with the given event type and file hash."""
+        return BlameEntry(
+            snapshot_id=metadata.snapshot_id,
+            created_at=metadata.created_at,
+            created_by=metadata.created_by,
+            event_type=event_type,
+            file_hash=file_hash,
+            snapshot_message=metadata.snapshot_message
+        )
 
 
 def get_repository_log(config: Config, limit: Optional[int] = None,
