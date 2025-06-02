@@ -208,3 +208,28 @@ def validate_repository_command_prerequisites(console: Console, verbose: bool = 
     config = validate_project_prerequisites(console, verbose=verbose, check_backend=check_backend)
     ensure_dsg_exists(console)
     return config
+
+
+def truncate_commit_message(message: str) -> str:
+    """Truncate commit message using git's convention."""
+    if not message:
+        return ""
+
+    first_line = message.split('\n')[0].strip()
+
+    if len(first_line) > 50:
+        return first_line[:47] + "..."
+
+    return first_line
+
+
+def handle_config_error(console: Console, error_message: str) -> None:
+    """Handle configuration errors with consistent formatting."""
+    console.print(f"[red]Error: {error_message}[/red]")
+    raise typer.Exit(1)
+
+
+def handle_operation_error(console: Console, operation: str, error: Exception) -> None:
+    """Handle operation errors with consistent formatting."""
+    console.print(f"[red]Error {operation}: {error}[/red]")
+    raise typer.Exit(1)

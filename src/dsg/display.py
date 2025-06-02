@@ -9,8 +9,10 @@
 from pathlib import Path
 from typing import List, Optional
 from rich.table import Table
+from rich.console import Console
 import humanize
 from dsg.manifest import Manifest
+from dsg.repository_discovery import RepositoryInfo
 
 
 def manifest_to_table(
@@ -153,6 +155,134 @@ def format_file_count(manifest: Manifest, ignored: Optional[List[str]] = None, v
         lines.append(f"Total size: {total_size:,} bytes")
     
     return "\n".join(lines)
+
+
+def display_repositories(console: Console, repos: List[RepositoryInfo], host: str, project_path: Path, verbose: bool = False) -> None:
+    """Display repository list using RepositoryInfo objects.
+    
+    Args:
+        console: Rich console for output
+        repos: List of RepositoryInfo objects
+        host: Host name where repositories are located
+        project_path: Base path where repositories are stored
+        verbose: Show additional details if True
+    """
+    table = Table(title=f"dsg Repositories at {host}:{project_path}")
+    table.add_column("Repository", style="cyan", no_wrap=True)
+    table.add_column("HEAD", style="yellow", no_wrap=True)
+    table.add_column("Timestamp", style="green", no_wrap=True)
+    table.add_column("Size", style="blue", no_wrap=True)
+    table.add_column("Files", style="magenta", no_wrap=True, justify="right")
+
+    for repo in repos:
+        # Format timestamp
+        timestamp_str = "Unknown"
+        if repo.timestamp:
+            timestamp_str = repo.timestamp.strftime("%Y-%m-%d %H:%M")
+
+        # Color-code snapshot status
+        snapshot_id = repo.snapshot_id or "None"
+        if snapshot_id.startswith("s") and snapshot_id[1:].isdigit():
+            snapshot_style = f"[green]{snapshot_id}[/green]"
+        elif snapshot_id == "Working":
+            snapshot_style = f"[yellow]{snapshot_id}[/yellow]"
+        elif snapshot_id in ("None", "Error"):
+            snapshot_style = f"[red]{snapshot_id}[/red]"
+        else:
+            snapshot_style = snapshot_id
+
+        # Get repository size
+        size_str = repo.size or "Unknown"
+
+        # Get file count from manifest
+        files_str = str(repo.file_count) if repo.file_count is not None else "Unknown"
+
+        table.add_row(
+            repo.name,
+            snapshot_style,
+            timestamp_str,
+            size_str,
+            files_str
+        )
+
+    console.print(table)
+
+    # Show summary
+    total = len(repos)
+    active = sum(1 for r in repos if r.status == "active")
+    errors = sum(1 for r in repos if r.status == "error")
+    uninitialized = sum(1 for r in repos if r.status == "uninitialized")
+
+    parts = [f"Found {total} repositories"]
+    if active:
+        parts.append(f"{active} active")
+    if uninitialized:
+        parts.append(f"{uninitialized} uninitialized")
+    if errors:
+        parts.append(f"[red]{errors} with errors[/red]")
+
+    console.print(" - ".join(parts))
+
+
+def display_config_validation_results(console: Console, errors: List[str], check_backend: bool, verbose: bool) -> None:
+    """Display configuration validation results."""
+    console.print("[bold]dsg Configuration Validation[/bold]")
+    console.print()
+
+    if not errors:
+        console.print("[green]✓[/green] All configuration checks passed")
+        if check_backend:
+            console.print("[green]✓[/green] Backend connectivity verified")
+        console.print("\n[green]Configuration is valid and ready to use.[/green]")
+    else:
+        console.print("[red]✗[/red] Configuration validation failed")
+        console.print()
+        
+        for i, error in enumerate(errors, 1):
+            console.print(f"[red]{i}.[/red] {error}")
+        
+        console.print(f"\n[red]Found {len(errors)} configuration error(s).[/red]")
+        console.print("\nPlease fix these issues before using dsg commands.")
+
+
+def display_ssh_test_details(console: Console, backend) -> None:
+    """Display SSH connection test details."""
+    if hasattr(backend, 'get_detailed_results'):
+        detailed_results = backend.get_detailed_results()
+        if detailed_results:
+            console.print("\n[bold]SSH Connection Test Details:[/bold]")
+            
+            ssh_table = Table()
+            ssh_table.add_column("Test", style="cyan")
+            ssh_table.add_column("Status", style="")
+            ssh_table.add_column("Details", style="dim")
+            
+            for test_name, success, details in detailed_results:
+                status = "[green]✓[/green]" if success else "[red]✗[/red]"
+                ssh_table.add_row(test_name, status, details)
+            
+            console.print(ssh_table)
+
+
+def display_config_summary(console: Console, config) -> None:
+    """Display configuration summary table."""
+    console.print("\n[bold]Configuration Details:[/bold]")
+    
+    table = Table(title="Configuration Summary")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="green")
+    
+    table.add_row("User Name", config.user.user_name)
+    table.add_row("User ID", config.user.user_id)
+    table.add_row("Transport", config.project.transport)
+    
+    if config.project.ssh:
+        table.add_row("SSH Host", config.project.ssh.host)
+        table.add_row("SSH Path", str(config.project.ssh.path))
+        table.add_row("Repository Name", config.project.ssh.name)
+        table.add_row("Repository Type", config.project.ssh.type)
+    
+    console.print(table)
 
 
 # done.
