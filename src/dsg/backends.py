@@ -430,13 +430,19 @@ class SSHBackend(Backend):
             ]
             
             # Add progress if callback provided
-            if progress_callback:
+            show_progress = progress_callback is not None
+            if show_progress:
                 rsync_cmd.append("--progress")
             
-            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            # Don't capture output if showing progress (let rsync progress show through)
+            if show_progress:
+                subprocess.run(rsync_cmd, check=True)
+            else:
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
             
         except subprocess.CalledProcessError as e:
-            raise ValueError(f"Failed to sync metadata directory: {e.stderr}")
+            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
+            raise ValueError(f"Failed to sync metadata directory: {error_msg}")
         
         if progress_callback:
             progress_callback("complete_metadata")
@@ -481,14 +487,19 @@ class SSHBackend(Backend):
             ]
             
             # Add progress if callback provided
-            if progress_callback:
+            show_progress = progress_callback is not None
+            if show_progress:
                 rsync_cmd.append("--progress")
             
             # Add resume support
             if resume:
                 rsync_cmd.append("--partial")
             
-            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            # Don't capture output if showing progress (let rsync progress show through)
+            if show_progress:
+                subprocess.run(rsync_cmd, check=True)
+            else:
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
             
             # For SSH, we can't easily track individual file progress like localhost backend,
             # but we can report completion of the bulk transfer
@@ -496,7 +507,8 @@ class SSHBackend(Backend):
                 progress_callback("update_files", completed=total_files)
             
         except subprocess.CalledProcessError as e:
-            raise ValueError(f"Failed to sync data files: {e.stderr}")
+            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
+            raise ValueError(f"Failed to sync data files: {error_msg}")
         finally:
             # Step 5: Always cleanup temp file
             try:

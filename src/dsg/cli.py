@@ -341,7 +341,7 @@ def list_repos(
 @app.command()
 def clone(
     force: bool = typer.Option(False, "--force", help="Overwrite existing .dsg directory"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed progress")
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output")
 ):
     """
     [bold blue]Setup[/bold blue]: Clone data from existing dsg repository.
@@ -349,10 +349,12 @@ def clone(
     Downloads all data from the configured remote repository to initialize
     a local working copy. Use this after 'git clone' to get the actual data files.
 
+    Shows progress by default for network operations. Use --quiet to suppress output.
+
     Workflow:
     1. git clone <project-repo>     # Gets .dsgconfig.yml and project structure
     2. cd <project>
-    3. dsg clone                    # Gets data repository contents
+    3. dsg clone                    # Gets data repository contents (shows progress)
     4. dsg sync                     # Ongoing bidirectional updates
 
     Safety:
@@ -362,7 +364,7 @@ def clone(
 
     Examples:
     - dsg clone                     # Clone data repository
-    - dsg clone --verbose           # Show detailed download progress
+    - dsg clone --quiet             # Silent operation without progress
     - dsg clone --force             # Overwrite existing .dsg directory
     """
 
@@ -370,16 +372,16 @@ def clone(
     console.print()
 
     # Validate all prerequisites for cloning
-    config = validate_clone_prerequisites(console, force=force, verbose=verbose)
+    config = validate_clone_prerequisites(console, force=force, verbose=not quiet)
 
-
-    if verbose:
+    if not quiet:
         logger.info("Creating backend and starting clone...")
 
     backend = create_backend(config)
 
-    # Create progress reporter
-    progress_reporter = CloneProgressReporter(console, verbose)
+    # Create progress reporter (show progress by default, suppress with --quiet)
+    show_progress = not quiet
+    progress_reporter = CloneProgressReporter(console, show_progress)
     
     def progress_callback(action: str, **kwargs):
         """Progress callback for clone operations."""
