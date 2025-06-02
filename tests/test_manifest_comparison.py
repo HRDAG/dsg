@@ -16,7 +16,7 @@ from dsg.manifest import Manifest, FileRef, LinkRef
 from dsg.manifest_comparison import (
     ManifestComparator,
     TemporalSyncState,
-    BlameDisplay,
+    SyncStateLabels,
     ComparisonResult
 )
 
@@ -256,31 +256,31 @@ class TestTemporalSyncState:
         assert state == TemporalSyncState.sPxCN__recreated_diff
 
 
-class TestBlameDisplay:
+class TestSyncStateLabels:
     """Test the display mapping layer for human-readable output."""
     
     def test_temporal_to_blame_event(self):
         """Test mapping temporal states to blame events."""
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sxPC__only_C) == "add"
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sPxC__only_P) == "delete"
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sPC__both_ne) == "modify"
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sPC__both_eq) is None
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sxPC__only_C) == "add"
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sPxC__only_P) == "delete"
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sPC__both_ne) == "modify"
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sPC__both_eq) is None
         
         # Enhanced states
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sPCN__reverted) == "revert"
-        assert BlameDisplay.temporal_to_blame_event(TemporalSyncState.sPxCN__recreated_diff) == "recreate"
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sPCN__reverted) == "revert"
+        assert SyncStateLabels.temporal_to_blame_event(TemporalSyncState.sPxCN__recreated_diff) == "recreate"
     
     def test_sync_state_to_status_display(self):
         """Test mapping sync states to status display strings."""
         from dsg.manifest_merger import SyncState
         
         # Test a few key mappings
-        assert BlameDisplay.sync_state_to_status(SyncState.sLxCxR__only_L) == "new (local only)"
-        assert BlameDisplay.sync_state_to_status(SyncState.sxLCR__C_eq_R) == "deleted locally"
-        assert BlameDisplay.sync_state_to_status(SyncState.sLCR__C_eq_R_ne_L) == "modified locally"
-        assert BlameDisplay.sync_state_to_status(SyncState.sLCR__L_eq_C_ne_R) == "modified on remote"
-        assert BlameDisplay.sync_state_to_status(SyncState.sLCR__all_eq) == "synced"
-        assert BlameDisplay.sync_state_to_status(SyncState.sLCR__all_ne) == "conflict (all differ)"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sLxCxR__only_L) == "new (local only)"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sxLCR__C_eq_R) == "deleted locally"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sLCR__C_eq_R_ne_L) == "modified locally"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sLCR__L_eq_C_ne_R) == "modified on remote"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sLCR__all_eq) == "synced"
+        assert SyncStateLabels.sync_state_to_status(SyncState.sLCR__all_ne) == "conflict (all differ)"
     
     def test_format_blame_entry(self):
         """Test formatting blame entries for display."""
@@ -295,7 +295,7 @@ class TestBlameDisplay:
             snapshot_message="Fixed data processing bug"
         )
         
-        formatted = BlameDisplay.format_blame_entry(entry)
+        formatted = SyncStateLabels.format_blame_entry(entry)
         assert "s0042" in formatted
         assert "modify" in formatted
         assert "alice@example.com" in formatted
@@ -311,7 +311,7 @@ class TestBlameDisplay:
             snapshot_message=None
         )
         
-        formatted = BlameDisplay.format_blame_entry(entry_no_msg)
+        formatted = SyncStateLabels.format_blame_entry(entry_no_msg)
         assert "s0001" in formatted
         assert "add" in formatted
         assert "system" in formatted
@@ -339,17 +339,17 @@ class TestIntegrationWithHistory:
         # File modified
         result = comparator.classify_2way(manifest_prev, manifest_curr, "data.csv")
         state = TemporalSyncState.from_comparison(result)
-        blame_event = BlameDisplay.temporal_to_blame_event(state)
+        blame_event = SyncStateLabels.temporal_to_blame_event(state)
         assert blame_event == "modify"
         
         # File added
         result = comparator.classify_2way(manifest_prev, manifest_curr, "new.txt")
         state = TemporalSyncState.from_comparison(result)
-        blame_event = BlameDisplay.temporal_to_blame_event(state)
+        blame_event = SyncStateLabels.temporal_to_blame_event(state)
         assert blame_event == "add"
         
         # File deleted
         result = comparator.classify_2way(manifest_curr, manifest_prev, "new.txt")
         state = TemporalSyncState.from_comparison(result)
-        blame_event = BlameDisplay.temporal_to_blame_event(state)
+        blame_event = SyncStateLabels.temporal_to_blame_event(state)
         assert blame_event == "delete"

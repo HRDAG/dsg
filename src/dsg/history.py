@@ -19,7 +19,7 @@ from dsg.config_manager import Config
 from dsg.manifest_comparison import (
     ManifestComparator,
     TemporalSyncState,
-    BlameDisplay
+    SyncStateLabels
 )
 
 logger = loguru.logger
@@ -255,7 +255,7 @@ class HistoryWalker:
         state = TemporalSyncState.from_comparison(result)
         
         # Map to blame event
-        event_type = BlameDisplay.temporal_to_blame_event(state)
+        event_type = SyncStateLabels.temporal_to_blame_event(state)
         
         if event_type is None:
             return None  # No change to track

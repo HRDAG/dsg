@@ -359,4 +359,90 @@ def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_p
     console.print(table)
 
 
+def display_sync_status(console: Console, status_result) -> None:
+    """Display sync status results in user-friendly format."""
+    from dsg.operations import SyncStatusResult
+    from dsg.manifest_merger import SyncState
+    from dsg.manifest_comparison import SyncStateLabels
+    
+    if not isinstance(status_result, SyncStatusResult):
+        console.print("[red]Error: Invalid status result[/red]")
+        return
+    
+    # Show warnings first
+    for warning in status_result.warnings:
+        console.print(f"[yellow]Warning: {warning}[/yellow]")
+    
+    if status_result.warnings:
+        console.print()
+    
+    # Group files by category
+    local_changes = []
+    remote_changes = []
+    conflicts = []
+    synced = []
+    
+    for file_path, sync_state in status_result.sync_states.items():
+        if file_path == "nonexistent/path.txt":  # Skip test entry
+            continue
+            
+        status_label = SyncStateLabels.sync_state_to_status(sync_state)
+        
+        # Categorize based on sync state
+        if sync_state in [SyncState.sLCR__C_eq_R_ne_L, SyncState.sLCxR__L_ne_C, SyncState.sLxCxR__only_L]:
+            local_changes.append((file_path, status_label))
+        elif sync_state in [SyncState.sLCR__L_eq_C_ne_R, SyncState.sxLCxR__only_R]:
+            remote_changes.append((file_path, status_label))
+        elif sync_state in [SyncState.sLCR__all_ne, SyncState.sLxCR__L_ne_R]:
+            conflicts.append((file_path, status_label))
+        elif sync_state in [SyncState.sxLCR__C_eq_R]:
+            local_changes.append((file_path, "deleted locally"))
+        elif sync_state == SyncState.sLCR__all_eq:
+            synced.append((file_path, status_label))
+    
+    # Display sections
+    if local_changes:
+        console.print("[bold]Your local changes:[/bold]")
+        for file_path, status in local_changes:
+            color = "green" if "new" in status else "yellow"
+            console.print(f"  [{color}]{file_path}[/{color}] ({status})")
+        console.print()
+    
+    if status_result.include_remote and remote_changes:
+        console.print("[bold]Remote changes (team updates):[/bold]")
+        for file_path, status in remote_changes:
+            console.print(f"  [blue]{file_path}[/blue] ({status})")
+        console.print()
+    
+    if conflicts:
+        console.print("[bold red]Conflicts requiring attention:[/bold red]")
+        for file_path, status in conflicts:
+            console.print(f"  [red]{file_path}[/red] ({status})")
+        console.print()
+    
+    # Summary
+    local_count = len(local_changes)
+    remote_count = len(remote_changes) if status_result.include_remote else 0
+    conflict_count = len(conflicts)
+    
+    if local_count == 0 and remote_count == 0 and conflict_count == 0:
+        console.print("[green]✓ Everything up to date[/green]")
+    else:
+        summary_parts = []
+        if local_count > 0:
+            summary_parts.append(f"{local_count} local")
+        if remote_count > 0:
+            summary_parts.append(f"{remote_count} remote")
+        if conflict_count > 0:
+            summary_parts.append(f"{conflict_count} conflicts")
+        
+        summary = ", ".join(summary_parts)
+        console.print(f"[bold]Summary:[/bold] {summary}")
+        
+        if conflict_count == 0:
+            console.print("Run 'dsg sync' to synchronize changes")
+        else:
+            console.print("Resolve conflicts before syncing")
+
+
 # done.

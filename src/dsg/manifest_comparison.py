@@ -194,8 +194,8 @@ class TemporalSyncState(Enum):
         return cls.from_comparison(truncated)
 
 
-class BlameDisplay:
-    """Maps detailed states to human-readable displays."""
+class SyncStateLabels:
+    """Maps sync and temporal states to human-readable labels."""
     
     # Map temporal states to blame event types
     TEMPORAL_TO_BLAME_EVENT = {

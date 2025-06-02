@@ -9,8 +9,6 @@
 # Requires Python 3.13+
 
 import logging
-import subprocess
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -487,9 +485,9 @@ def list_files(
 
 
 @app.command()
-def status(  # pragma: no cover
+def status(
     repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
-    remote: bool = typer.Option(False, "--remote", help="Also compare with remote manifest"),
+    remote: bool = typer.Option(True, "--remote/--no-remote", help="Compare with remote manifest (default: True)"),
 ):
     """
     [bold green]Core Operations[/bold green]: Show sync status by comparing local files with last sync.
@@ -499,18 +497,21 @@ def status(  # pragma: no cover
     - Modified files (changed since last sync)
     - Deleted files (removed since last sync)
 
-    With --remote: Also compares with remote manifest
+    With --remote: Also compares with remote manifest to show team changes
 
     Similar to 'git status' - shows what would be synced.
     """
-    # TODO: Implement status command
-    # 1. Load .dsg/last-sync.json manifest
-    # 2. Scan current directory for local manifest
-    # 3. Compare manifests to find differences
-    # 4. If --remote: also load remote manifest and compare
-    # 5. Display results showing sync state for each file
-    # 6. Use SyncState enum from manifest_merger.py for consistent states
-    raise NotImplementedError("The status command has not been implemented yet")
+    try:
+        config = validate_repository_command_prerequisites(console)
+        
+        from dsg.operations import get_sync_status
+        from dsg.display import display_sync_status
+        
+        status_result = get_sync_status(config, include_remote=remote)
+        display_sync_status(console, status_result)
+        
+    except Exception as e:
+        handle_operation_error(console, "checking sync status", e)
 
 
 @app.command()

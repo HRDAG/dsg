@@ -8,8 +8,13 @@
 
 from pathlib import Path, PurePosixPath
 from typing import Optional, Set, Dict, Any
+from collections import OrderedDict
+from dataclasses import dataclass
+
 from dsg.config_manager import Config
 from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
+from dsg.manifest import Manifest
+from dsg.manifest_merger import ManifestMerger, SyncState
 
 
 def list_directory(
@@ -99,6 +104,63 @@ def parse_cli_overrides(
         overrides["ignored_paths"] = set(p.strip() for p in ignored_paths.split(","))
     
     return overrides
+
+
+@dataclass
+class SyncStatusResult:
+    sync_states: OrderedDict[str, SyncState]
+    local_manifest: Manifest
+    cache_manifest: Manifest
+    remote_manifest: Optional[Manifest]
+    include_remote: bool
+    warnings: list[str]
+
+
+def get_sync_status(config: Config, include_remote: bool = True) -> SyncStatusResult:
+    """Shared logic for both 'dsg status' and 'dsg sync --dry-run'."""
+    warnings = []
+    
+    # Load local manifest (current directory scan)
+    scan_result = scan_directory(config)
+    local_manifest = scan_result.manifest
+    
+    # Load cache manifest (.dsg/last-sync.json)
+    cache_path = config.project_root / ".dsg" / "last-sync.json"
+    if cache_path.exists():
+        cache_manifest = Manifest.from_json(cache_path)
+    else:
+        warnings.append("No .dsg/last-sync.json found. Run 'dsg sync' first.")
+        cache_manifest = Manifest()
+    
+    # Load remote manifest if requested
+    remote_manifest = None
+    if include_remote:
+        try:
+            from dsg.backends import create_backend
+            backend = create_backend(config)
+            remote_data = backend.read_file(".dsg/last-sync.json")
+            if remote_data:
+                remote_manifest = Manifest.from_json_str(remote_data)
+            else:
+                warnings.append("No remote manifest found.")
+                remote_manifest = Manifest()
+        except Exception as e:
+            warnings.append(f"Could not fetch remote manifest: {e}")
+            remote_manifest = Manifest()
+    else:
+        remote_manifest = Manifest()  # Empty manifest for 2-way comparison
+    
+    # Use ManifestMerger for comparison
+    merger = ManifestMerger(local_manifest, cache_manifest, remote_manifest, config)
+    
+    return SyncStatusResult(
+        sync_states=merger.get_sync_states(),
+        local_manifest=local_manifest,
+        cache_manifest=cache_manifest, 
+        remote_manifest=remote_manifest,
+        include_remote=include_remote,
+        warnings=warnings
+    )
 
 
 # done.
