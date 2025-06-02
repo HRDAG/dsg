@@ -411,9 +411,33 @@ class Manifest(BaseModel):
         # Read with orjson
         json_bytes = file_path.read_bytes()
         data = orjson.loads(json_bytes)
+        return cls._from_data(data)
+    
+    @classmethod
+    def from_compressed(cls, file_path: Path) -> Manifest:
+        """Load manifest from a compressed file (.gz or .lz4)"""
+        import gzip
+        
+        if file_path.suffix == '.gz':
+            with gzip.open(file_path, 'rb') as f:
+                data = orjson.loads(f.read())
+        elif file_path.suffix == '.lz4':
+            import lz4.frame
+            with open(file_path, 'rb') as f:
+                compressed_data = f.read()
+                decompressed_data = lz4.frame.decompress(compressed_data)
+                data = orjson.loads(decompressed_data)
+        else:
+            raise ValueError(f"Unsupported compression format: {file_path.suffix}")
+        
+        return cls._from_data(data)
+    
+    @classmethod
+    def _from_data(cls, data: dict) -> Manifest:
+        """Create manifest from parsed JSON data"""
 
         # Extract entries as a dictionary
-        entries_data = data.pop("entries", {})
+        entries_data = data.get("entries", {})
         entries = OrderedDict()
 
         # Ensure entries is a dictionary
@@ -445,7 +469,7 @@ class Manifest(BaseModel):
         # Check for metadata in the nested format
         if "metadata" in data:
             try:
-                metadata_data = data.pop("metadata")
+                metadata_data = data["metadata"]
                 manifest.metadata = ManifestMetadata.model_validate(metadata_data)
                 logger.debug(f"Loaded metadata (version {manifest.metadata.manifest_version})")
             except Exception as e:  # pragma: no cover - metadata validation failure

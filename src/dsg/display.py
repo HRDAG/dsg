@@ -13,6 +13,7 @@ from rich.console import Console
 import humanize
 from dsg.manifest import Manifest
 from dsg.repository_discovery import RepositoryInfo
+from dsg.history import LogEntry, BlameEntry
 
 
 def manifest_to_table(
@@ -280,6 +281,80 @@ def display_config_summary(console: Console, config) -> None:
         table.add_row("SSH Path", str(config.project.ssh.path))
         table.add_row("Repository Name", config.project.ssh.name)
         table.add_row("Repository Type", config.project.ssh.type)
+    
+    console.print(table)
+
+
+def display_repository_log(console: Console, log_entries: List[LogEntry], verbose: bool = False) -> None:
+    if not log_entries:
+        console.print("[yellow]No history found[/yellow]")
+        return
+    
+    table = Table(title="Repository History")
+    table.add_column("Snapshot", style="cyan", no_wrap=True)
+    table.add_column("Date", style="green", no_wrap=True)
+    table.add_column("Author", style="yellow", no_wrap=True)
+    table.add_column("Files", style="blue", justify="right")
+    table.add_column("Message", style="magenta")
+    
+    if verbose:
+        table.add_column("Hash", style="dim", no_wrap=True)
+    
+    for entry in log_entries:
+        author = entry.created_by or "Unknown"
+        files_count = str(entry.entry_count)
+        
+        message = entry.snapshot_message or ""
+        
+        row = [
+            entry.snapshot_id,
+            entry.formatted_datetime,
+            author,
+            files_count,
+            message
+        ]
+        
+        if verbose:
+            hash_short = entry.entries_hash[:8] if entry.entries_hash else ""
+            row.append(hash_short)
+        
+        table.add_row(*row)
+    
+    console.print(table)
+
+
+def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_path: str) -> None:
+    if not blame_entries:
+        console.print(f"[yellow]No history found for file: {file_path}[/yellow]")
+        return
+    
+    console.print(f"[bold]File History:[/bold] {file_path}")
+    console.print()
+    
+    table = Table()
+    table.add_column("Action", style="cyan", no_wrap=True)
+    table.add_column("Snapshot", style="blue", no_wrap=True)
+    table.add_column("Date", style="green", no_wrap=True)
+    table.add_column("Author", style="yellow", no_wrap=True)
+    table.add_column("Message", style="magenta")
+    
+    for entry in blame_entries:
+        action_style = {
+            "add": "[green]added[/green]",
+            "modify": "[yellow]modified[/yellow]", 
+            "delete": "[red]deleted[/red]"
+        }.get(entry.event_type, entry.event_type)
+        
+        author = entry.created_by or "Unknown"
+        message = entry.snapshot_message or ""
+        
+        table.add_row(
+            action_style,
+            entry.snapshot_id,
+            entry.formatted_datetime,
+            author,
+            message
+        )
     
     console.print(table)
 

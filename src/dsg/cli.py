@@ -121,7 +121,8 @@ class CloneProgressReporter:
 
 from dsg.display import (
     manifest_to_table, format_file_count, display_repositories,
-    display_config_validation_results, display_ssh_test_details, display_config_summary
+    display_config_validation_results, display_ssh_test_details, display_config_summary,
+    display_repository_log, display_file_blame
 )
 from dsg.host_utils import is_local_host
 from dsg.logging_setup import setup_logging, enable_debug_logging, enable_verbose_logging
@@ -570,11 +571,11 @@ def sync(  # pragma: no cover
 
 
 @app.command()
-def log(  # pragma: no cover
-    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
+def log(
     limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Limit number of snapshots to show"),
     since: Optional[str] = typer.Option(None, "--since", help="Show snapshots since date (YYYY-MM-DD)"),
     author: Optional[str] = typer.Option(None, "--author", help="Filter by author/user"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information")
 ):
     """
     [bold magenta]History[/bold magenta]: Show snapshot history for the repository.
@@ -590,32 +591,30 @@ def log(  # pragma: no cover
     - dsg log --limit=10                # Show last 10 snapshots
     - dsg log --since=2023-01-01        # Show snapshots since date
     - dsg log --author=alice            # Show snapshots by alice
-    - dsg log --repo=BB                 # Show snapshots for BB repository
 
     Similar to 'git log' - shows the history of repository changes.
     """
-    # TODO: Implement log command
-    # 1. Resolve repository (--repo arg or auto-detect)
-    # 2. Load current snapshot from .dsg/last-sync.json
-    # 3. Walk backwards through snapshot chain using .dsg/archive/
-    # 4. For each snapshot in chain:
-    #    - Extract metadata: snapshot_id, timestamp, user, message
-    #    - Count changed files (compare with previous snapshot)
-    #    - Apply filters: --since date, --author name
-    # 5. Display as rich.table:
-    #    - Snapshot | Date | Author | Message | Files Changed
-    # 6. Respect --limit for number of snapshots shown
-    # 7. Handle edge cases:
-    #    - No snapshots (new repository)
-    #    - Corrupted archive files
-    #    - Invalid date formats in --since
-    raise NotImplementedError("The log command has not been implemented yet")
+    try:
+        config = validate_repository_command_prerequisites(console, verbose=verbose)
+        
+        from dsg.history import get_repository_log
+        
+        log_entries = get_repository_log(
+            config=config,
+            limit=limit,
+            since=since,
+            author=author
+        )
+        
+        display_repository_log(console, log_entries, verbose=verbose)
+        
+    except Exception as e:
+        handle_operation_error(console, "retrieving repository history", e)
 
 
 @app.command()
-def blame(  # pragma: no cover
+def blame(
     file: str = typer.Argument(..., help="File path to show modification history"),
-    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
 ):
     """
     [bold magenta]History[/bold magenta]: Show modification history for a file.
@@ -630,23 +629,17 @@ def blame(  # pragma: no cover
 
     This command scans archived manifests to build a complete modification history.
     """
-    # TODO: Implement blame command
-    # TODO: review scripts/dsg-blame.py most of the work is already there
-    # 1. Verify file exists in current manifest (.dsg/last-sync.json)
-    # 2. Scan .dsg/archive/*.json.gz files in reverse chronological order
-    # 3. For each archived manifest:
-    #    - Check if file exists
-    #    - Track user changes (when user attribution changes)
-    #    - Extract timestamp and sync message from manifest metadata
-    # 4. Build history list of modifications
-    # 5. Display as rich.table:
-    #    - User | Timestamp | Sync Message | Hash (first 8 chars)
-    # 6. Consider showing file state changes (added/modified/deleted)
-    # 7. Handle edge cases:
-    #    - File doesn't exist
-    #    - No history found (new file)
-    #    - Corrupted archive files
-    raise NotImplementedError("The blame command has not been implemented yet")
+    try:
+        config = validate_repository_command_prerequisites(console)
+        
+        from dsg.history import get_file_blame
+        
+        blame_entries = get_file_blame(config=config, file_path=file)
+        
+        display_file_blame(console, blame_entries, file)
+        
+    except Exception as e:
+        handle_operation_error(console, "retrieving file history", e)
 
 
 @app.command()
