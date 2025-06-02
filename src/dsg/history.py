@@ -16,6 +16,11 @@ import loguru
 
 from dsg.manifest import Manifest, ManifestMetadata, FileRef, parse_manifest_timestamp
 from dsg.config_manager import Config
+from dsg.manifest_comparison import (
+    ManifestComparator,
+    TemporalSyncState,
+    BlameDisplay
+)
 
 logger = loguru.logger
 
@@ -211,76 +216,65 @@ class HistoryWalker:
     def get_file_blame(self, file_path: str) -> List[BlameEntry]:
         """Get blame/change history for a specific file across all snapshots."""
         blame_entries = []
-        previous_hash = None
-        file_exists_in_previous = False
-
+        previous_manifest = None
+        
         manifests_to_process = []
-
+        
+        # Load all manifests
         for _, archive_path in self.get_archive_files():
-            result = self._load_manifest_from_archive(archive_path)
-            if result:
+            if result := self._load_manifest_from_archive(archive_path):
                 manifests_to_process.append(result)
-
-        current_result = self._load_current_manifest()
-        if current_result:
+        
+        if current_result := self._load_current_manifest():
             manifests_to_process.append(current_result)
-
+        
+        # Process chronologically
         for manifest, metadata in manifests_to_process:
-            blame_entry = self._create_blame_entry_if_changed(
-                file_path, manifest, metadata, previous_hash, file_exists_in_previous
-            )
-            if blame_entry:
+            if blame_entry := self._create_blame_entry_if_changed(
+                file_path, manifest, metadata, previous_manifest
+            ):
                 blame_entries.append(blame_entry)
-
-            if file_path in manifest.entries:
-                entry = manifest.entries[file_path]
-                if isinstance(entry, FileRef):
-                    previous_hash = entry.hash
-                file_exists_in_previous = True
-            else:
-                if file_exists_in_previous:
-                    file_exists_in_previous = False
-
+            
+            previous_manifest = manifest
+        
         return blame_entries
 
     def _create_blame_entry_if_changed(
             self, file_path: str, manifest: Manifest, metadata: ManifestMetadata,
-            previous_hash: Optional[str], file_exists_in_previous: bool) -> Optional[BlameEntry]:
-        """Create a blame entry if the file changed in this manifest, otherwise return None."""
-        file_in_manifest = file_path in manifest.entries
-        current_hash = None
-
-        if file_in_manifest:
+            previous_manifest: Optional[Manifest]) -> Optional[BlameEntry]:
+        """Create a blame entry if the file changed in this manifest."""
+        
+        # Use the new comparison utilities
+        result = ManifestComparator.classify_2way(
+            previous_manifest, manifest,
+            file_path,
+            labels=("prev", "curr")
+        )
+        
+        # Determine temporal state
+        state = TemporalSyncState.from_comparison(result)
+        
+        # Map to blame event
+        event_type = BlameDisplay.temporal_to_blame_event(state)
+        
+        if event_type is None:
+            return None  # No change to track
+        
+        # Get the current file hash if it exists
+        file_hash = None
+        if file_path in manifest.entries:
             entry = manifest.entries[file_path]
             if isinstance(entry, FileRef):
-                current_hash = entry.hash
-
-        event_type = None
-        file_hash = None
-
-        # FIXME: this logic is really hairy. and it already exists in manifest_merger, in part. we should
-        # think HARD about how to refactor to use that or extend it rather than reinventing it here.
-        if not file_in_manifest:
-            if file_exists_in_previous:
-                event_type = "delete"
-                file_hash = None
-        elif not file_exists_in_previous:
-            event_type = "add"
-            file_hash = current_hash
-        elif current_hash != previous_hash and current_hash is not None:
-            event_type = "modify"
-            file_hash = current_hash
-
-        if event_type:
-            return BlameEntry(
-                snapshot_id=metadata.snapshot_id,
-                created_at=metadata.created_at,
-                created_by=metadata.created_by,
-                event_type=event_type,
-                file_hash=file_hash,
-                snapshot_message=metadata.snapshot_message
-            )
-        return None
+                file_hash = entry.hash
+        
+        return BlameEntry(
+            snapshot_id=metadata.snapshot_id,
+            created_at=metadata.created_at,
+            created_by=metadata.created_by,
+            event_type=event_type,
+            file_hash=file_hash,
+            snapshot_message=metadata.snapshot_message
+        )
 
 
 def get_repository_log(config: Config, limit: Optional[int] = None,
