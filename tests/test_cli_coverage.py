@@ -21,7 +21,7 @@ def test_list_files_nonexistent_path():
     # Use a path that definitely doesn't exist
     result = runner.invoke(app, ["list-files", "/path/that/definitely/does/not/exist"])
     assert result.exit_code == 1
-    assert "Error" in result.output
+    assert "Configuration error" in result.output
 
 # This test is added to cover the main() function in cli.py
 def test_main_function_exists():
