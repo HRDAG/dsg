@@ -159,7 +159,7 @@ class Backend(ABC):
         raise NotImplementedError("copy_file() not implemented")
     
     @abstractmethod
-    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
         """Clone entire repository to local destination using metadata-first approach:
         1. Copy remote:.dsg/ → local/.dsg/ (get metadata first)
         2. Parse local/.dsg/last-sync.json for file list
@@ -169,6 +169,7 @@ class Backend(ABC):
             dest_path: Local directory to clone repository into
             resume: Continue interrupted transfer if True
             progress_callback: Optional callback for progress updates
+            verbose: Show detailed output if True
         """
         raise NotImplementedError("clone() not implemented")
     
@@ -236,7 +237,7 @@ class LocalhostBackend(Backend):
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, dest_path)
     
-    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
         """Clone repository from local source to destination directory."""
         source_path = self.full_path
         
@@ -396,7 +397,7 @@ class SSHBackend(Backend):
         # TODO: Implement SSH file copying
         raise NotImplementedError("SSH file copying not yet implemented")
     
-    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None) -> None:
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
         """Clone repository from SSH source to destination directory using rsync.
         
         Implements metadata-first approach:
@@ -434,10 +435,15 @@ class SSHBackend(Backend):
             if show_progress:
                 rsync_cmd.append("--progress")
             
-            # Don't capture output if showing progress (let rsync progress show through)
-            if show_progress:
+            # Handle different output modes:
+            # - quiet: capture all output
+            # - default: capture output but show progress
+            # - verbose: show all rsync output
+            if verbose:
+                # Verbose: show all rsync output
                 subprocess.run(rsync_cmd, check=True)
             else:
+                # Default/quiet: capture output
                 subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
             
         except subprocess.CalledProcessError as e:
@@ -495,16 +501,19 @@ class SSHBackend(Backend):
             if resume:
                 rsync_cmd.append("--partial")
             
-            # Don't capture output if showing progress (let rsync progress show through)
-            if show_progress:
+            # Handle different output modes and track progress
+            if verbose:
+                # Verbose: show all rsync output
                 subprocess.run(rsync_cmd, check=True)
+                # Update progress to 100% when done
+                if progress_callback:
+                    progress_callback("update_files", completed=total_files)
+            elif show_progress:
+                # Default: parse rsync output for file counting
+                self._run_rsync_with_progress(rsync_cmd, total_files, progress_callback)
             else:
+                # Quiet: capture all output
                 subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
-            
-            # For SSH, we can't easily track individual file progress like localhost backend,
-            # but we can report completion of the bulk transfer
-            if progress_callback:
-                progress_callback("update_files", completed=total_files)
             
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
@@ -519,6 +528,56 @@ class SSHBackend(Backend):
         # Notify progress: file sync complete
         if progress_callback:
             progress_callback("complete_files")
+            
+    def _run_rsync_with_progress(self, rsync_cmd, total_files, progress_callback):
+        """Run rsync and parse output to track file progress."""
+        import re
+        
+        try:
+            # Run rsync and capture output line by line
+            process = subprocess.Popen(
+                rsync_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            
+            files_completed = 0
+            
+            for line in process.stdout:
+                # Look for lines indicating file transfers
+                # rsync file lines: "dir/file.txt" or "file.txt"
+                # Skip progress lines like: "    1,234  100%  500.00kB/s    0:00:00"
+                # Skip summary lines like: "sent 1,234 bytes  received 73 bytes"
+                stripped = line.strip()
+                if (stripped and 
+                    not re.match(r'^\s*[\d.,]+\s+\d+%', line) and  # Progress indicators
+                    not re.match(r'^sent\s+[\d.,]+\s+bytes', line) and  # Summary lines
+                    not stripped.startswith('sending incremental') and
+                    not stripped == '' and
+                    '/' in stripped):  # Only count files with paths
+                    files_completed += 1
+                    if progress_callback:
+                        progress_callback("update_files", completed=1)
+            
+            # Wait for completion
+            process.wait()
+            
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, rsync_cmd)
+                
+            # Ensure we show 100% completion
+            if files_completed < total_files and progress_callback:
+                remaining = total_files - files_completed
+                progress_callback("update_files", completed=remaining)
+                
+        except Exception:
+            # Fallback to simple execution if parsing fails
+            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            if progress_callback:
+                progress_callback("update_files", completed=total_files)
 
 
 def create_backend(cfg: Config) -> Backend:

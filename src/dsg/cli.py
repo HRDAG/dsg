@@ -341,7 +341,8 @@ def list_repos(
 @app.command()
 def clone(
     force: bool = typer.Option(False, "--force", help="Overwrite existing .dsg directory"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output")
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress progress output"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed rsync output")
 ):
     """
     [bold blue]Setup[/bold blue]: Clone data from existing dsg repository.
@@ -363,13 +364,15 @@ def clone(
     - Validates backend connectivity before starting download
 
     Examples:
-    - dsg clone                     # Clone data repository
-    - dsg clone --quiet             # Silent operation without progress
+    - dsg clone                     # Clone with progress bars
+    - dsg clone --quiet             # Silent operation
+    - dsg clone --verbose           # Progress bars + detailed rsync output
     - dsg clone --force             # Overwrite existing .dsg directory
     """
 
-    console.print("[bold]dsg Repository Clone[/bold]")
-    console.print()
+    if not quiet:
+        console.print("[bold]dsg Repository Clone[/bold]")
+        console.print()
 
     # Validate all prerequisites for cloning
     config = validate_clone_prerequisites(console, force=force, verbose=not quiet)
@@ -379,7 +382,7 @@ def clone(
 
     backend = create_backend(config)
 
-    # Create progress reporter (show progress by default, suppress with --quiet)
+    # Create progress reporter 
     show_progress = not quiet
     progress_reporter = CloneProgressReporter(console, show_progress)
     
@@ -406,7 +409,8 @@ def clone(
         backend.clone(
             dest_path=Path("."),
             resume=force,  # If --force, can resume/overwrite
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            verbose=verbose
         )
         console.print("[green]✓[/green] Repository cloned successfully")
         console.print("Use 'dsg sync' for ongoing updates")
