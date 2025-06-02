@@ -30,7 +30,7 @@ from unittest.mock import patch, MagicMock
 # legacy_format_config_objects fixture replaced with legacy_format_config_objects from conftest.py
 
 
-# new_format_config_objects fixture replaced with new_format_config_objects from conftest.py
+# new_format_config_objects_objects fixture replaced with new_format_config_objects from conftest.py
 
 
 # repo_with_dsg_dir fixture replaced with repo_with_dsg_dir from conftest.py
@@ -53,69 +53,69 @@ def test_backend_access_local_repo_dir_missing(legacy_format_config_objects):
     assert "not a valid repository" in msg
 
 
-def test_backend_access_local_missing_dsg_subdir(base_config, tmp_path):
+def test_backend_access_local_missing_dsg_subdir(legacy_format_config_objects, tmp_path):
     """Verify proper error when .dsg subdirectory is missing"""
     (tmp_path / "KO").mkdir()
-    ok, msg = can_access_backend(base_config)
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     assert "missing .dsg" in msg.lower()
 
 
-def test_backend_access_local_success(base_config, tmp_path):
+def test_backend_access_local_success(legacy_format_config_objects, tmp_path):
     """Verify success when repository structure is valid"""
     repo_dir = tmp_path / "KO"
     repo_dir.mkdir()
     (repo_dir / ".dsg").mkdir()
-    ok, msg = can_access_backend(base_config)
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert ok
     assert msg == "OK"
 
 
-def test_backend_access_unsupported_type(base_config):
+def test_backend_access_unsupported_type(legacy_format_config_objects):
     """Verify proper error for unsupported backend types"""
     # In the new design, unsupported types are caught at config validation
     # This test now verifies transport types not yet implemented
-    base_config.project.transport = "ipfs"  # IPFS backend not implemented
-    ok, msg = can_access_backend(base_config)
+    legacy_format_config_objects.project.transport = "ipfs"  # IPFS backend not implemented
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     assert "not supported" in msg or "not yet implemented" in msg
 
 
-def test_remote_backend_valid(base_config):
+def test_remote_backend_valid(legacy_format_config_objects):
     """Test remote backend path (SSH connection attempt)"""
-    base_config.project.ssh.host = "remote-host"
-    ok, msg = can_access_backend(base_config)
+    legacy_format_config_objects.project.ssh.host = "remote-host"
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     # Should get DNS resolution failure or connection error for non-existent host
     assert "Connection failed" in msg or "SSH connection error" in msg
 
 
-def test_remote_backend_invalid(base_config):
+def test_remote_backend_invalid(legacy_format_config_objects):
     """Test remote backend with invalid repo (SSH connection attempt)"""
-    base_config.project.ssh.host = "remote-host"
-    ok, msg = can_access_backend(base_config)
+    legacy_format_config_objects.project.ssh.host = "remote-host"
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     # Should get DNS resolution failure or connection error for non-existent host
     assert "Connection failed" in msg or "SSH connection error" in msg
 
 
-def test_remote_backend_ssh_error(base_config):
+def test_remote_backend_ssh_error(legacy_format_config_objects):
     """Test remote backend with SSH error (SSH connection attempt)"""
-    base_config.project.ssh.host = "remote-host"
-    ok, msg = can_access_backend(base_config)
+    legacy_format_config_objects.project.ssh.host = "remote-host"
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     # Should get DNS resolution failure or connection error for non-existent host
     assert "Connection failed" in msg or "SSH connection error" in msg
 
 
-def test_localhost_backend_creation(base_config):
+def test_localhost_backend_creation(legacy_format_config_objects):
     """Test creating a localhost backend from configuration"""
-    base_config.project.ssh.type = "local"
-    backend = create_backend(base_config)
+    legacy_format_config_objects.project.ssh.type = "local"
+    backend = create_backend(legacy_format_config_objects)
     
     assert isinstance(backend, LocalhostBackend)
-    assert backend.repo_path == base_config.project.ssh.path
-    assert backend.repo_name == base_config.project.ssh.name
+    assert backend.repo_path == legacy_format_config_objects.project.ssh.path
+    assert backend.repo_name == legacy_format_config_objects.project.ssh.name
 
 
 def test_localhost_backend_is_accessible(repo_with_dsg_dir):
@@ -171,15 +171,15 @@ def test_localhost_backend_write_file(repo_with_dsg_dir):
     
     # Create file in non-existent subdirectory
     backend.write_file("subdir/nested_file.txt", b"Nested file content")
-    nested_file_path = local_repo_setup["full_path"] / "subdir" / "nested_file.txt"
+    nested_file_path = repo_with_dsg_dir["repo_dir"] / "subdir" / "nested_file.txt"
     assert nested_file_path.read_bytes() == b"Nested file content"
 
 
 def test_localhost_backend_file_exists(repo_with_dsg_dir):
     """Test file existence checking"""
     backend = LocalhostBackend(
-        local_repo_setup["repo_path"], 
-        local_repo_setup["repo_name"]
+        repo_with_dsg_dir["repo_dir"].parent, 
+        repo_with_dsg_dir["repo_name"]
     )
     
     assert backend.file_exists("test_file.txt")
@@ -208,37 +208,37 @@ def test_localhost_backend_copy_file(repo_with_dsg_dir, tmp_path):
     assert nested_copy_path.read_text() == "Source file content"
 
 
-def test_create_backend_local_type(base_config):
+def test_create_backend_local_type(legacy_format_config_objects):
     """Test explicit local backend creation"""
     # In new design, 'local' is not a valid type - use 'xfs' with localhost
-    base_config.project.ssh.type = "xfs"
-    base_config.project.ssh.host = socket.gethostname()
-    backend = create_backend(base_config)
+    legacy_format_config_objects.project.ssh.type = "xfs"
+    legacy_format_config_objects.project.ssh.host = socket.gethostname()
+    backend = create_backend(legacy_format_config_objects)
     assert isinstance(backend, LocalhostBackend)
 
 
-def test_create_backend_local_host(base_config):
+def test_create_backend_local_host(legacy_format_config_objects):
     """Test local host backend fallback for zfs/xfs types"""
     # ZFS type but with local host should use LocalhostBackend
-    backend = create_backend(base_config)
+    backend = create_backend(legacy_format_config_objects)
     assert isinstance(backend, LocalhostBackend)
 
 
-def test_create_backend_remote_host(base_config):
+def test_create_backend_remote_host(legacy_format_config_objects):
     """Test remote host backend creation (SSH backend)"""
-    base_config.project.ssh.host = "remote-host"
+    legacy_format_config_objects.project.ssh.host = "remote-host"
     from dsg.backends import SSHBackend
-    backend = create_backend(base_config)
+    backend = create_backend(legacy_format_config_objects)
     assert isinstance(backend, SSHBackend)
     assert backend.host == "remote-host"
 
 
-def test_create_backend_unsupported_type(base_config):
+def test_create_backend_unsupported_type(legacy_format_config_objects):
     """Test unsupported backend type handling"""
     # Change transport to something not implemented
-    base_config.project.transport = "rclone"
+    legacy_format_config_objects.project.transport = "rclone"
     with pytest.raises(NotImplementedError, match="Rclone backend not yet implemented"):
-        create_backend(base_config)
+        create_backend(legacy_format_config_objects)
 
 def test_localhost_backend_clone_basic(tmp_path):
     """Test basic clone functionality with manifest-driven file copying"""
@@ -682,7 +682,7 @@ def test_ssh_backend_clone_manifest_parse_error(tmp_path):
 class TestNewFormatBackends:
     """Test backend functionality with new config format (top-level name)."""
     
-    def test_create_backend_with_new_format_localhost(self, new_format_config, tmp_path):
+    def test_create_backend_with_new_format_localhost(self, new_format_config_objects, tmp_path):
         """Test create_backend works with new format for localhost."""
         # Create repository structure
         repo_dir = tmp_path / "KO"
@@ -697,7 +697,7 @@ class TestNewFormatBackends:
         assert backend.repo_path == tmp_path
         assert backend.full_path == repo_dir
 
-    def test_create_backend_with_new_format_ssh(self, new_format_config):
+    def test_create_backend_with_new_format_ssh(self, new_format_config_objects):
         """Test create_backend works with new format for SSH."""
         # Make SSH config point to remote host
         new_format_config.project.ssh.host = "remote-host"
@@ -749,7 +749,7 @@ class TestNewFormatBackends:
         assert ok
         assert msg == "OK"
 
-    def test_backend_access_with_new_format_success(self, new_format_config, tmp_path):
+    def test_backend_access_with_new_format_success(self, new_format_config_objects, tmp_path):
         """Test can_access_backend works with new format."""
         # Create repository structure
         repo_dir = tmp_path / "KO"
@@ -760,7 +760,7 @@ class TestNewFormatBackends:
         assert ok
         assert msg == "OK"
 
-    def test_backend_access_with_new_format_missing_repo(self, new_format_config):
+    def test_backend_access_with_new_format_missing_repo(self, new_format_config_objects):
         """Test can_access_backend error handling with new format."""
         # Repository directory doesn't exist
         ok, msg = can_access_backend(new_format_config)

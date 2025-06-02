@@ -72,6 +72,8 @@ def test_missing_project_config_exits(tmp_path, monkeypatch):
 ])
 def test_missing_required_fields(complete_config_setup, section, field):
     """Test missing required project fields - user fields tested in TestUserConfig"""
+    from tests.conftest import load_config_with_paths
+    
     project_cfg_path = complete_config_setup["project_cfg"]
     project_data = yaml.safe_load(project_cfg_path.read_text())
     
@@ -81,7 +83,10 @@ def test_missing_required_fields(complete_config_setup, section, field):
     project_cfg_path.write_text(yaml.dump(project_data))
 
     with pytest.raises(Exception) as excinfo:
-        Config.load()
+        load_config_with_paths(
+            complete_config_setup["project_root"],
+            complete_config_setup["user_config_dir"]
+        )
     assert field in str(excinfo.value) or "validation error" in str(excinfo.value).lower()
 
 
@@ -392,48 +397,45 @@ def test_validate_config_missing_project_config(tmp_path, monkeypatch):
     assert "Missing project config file" in errors[0]
 
 
-def test_validate_config_invalid_project_config(basic_repo_structure, monkeypatch):
+def test_validate_config_invalid_project_config(complete_config_setup):
     """Test validate_config with invalid project config."""
     from dsg.config_manager import validate_config
-    
-    # Change to project directory
-    monkeypatch.chdir(basic_project_config["repo_dir"])
+    from tests.conftest import with_config_paths
     
     # Corrupt the project config by removing a required field
-    config_path = basic_project_config["config_path"]
+    config_path = complete_config_setup["project_cfg"]
     project_data = yaml.safe_load(config_path.read_text())
     # Remove required field from ssh section
     if "ssh" in project_data and "type" in project_data["ssh"]:
         project_data["ssh"].pop("type")
     config_path.write_text(yaml.dump(project_data))
     
-    # Run validation
-    errors = validate_config()
+    # Run validation with proper config paths
+    with with_config_paths(complete_config_setup["project_root"], complete_config_setup["user_config_dir"]):
+        errors = validate_config()
     
     # Should contain an error about the missing field
     assert len(errors) >= 1
     assert any("type" in error or "validation" in error.lower() for error in errors)
 
 
-def test_validate_config_invalid_user_config(basic_repo_structure, monkeypatch, tmp_path):
+def test_validate_config_invalid_user_config(basic_repo_structure, tmp_path):
     """Test validate_config with valid project config but invalid user config."""
     from dsg.config_manager import validate_config
+    from tests.conftest import with_config_paths
     
     # Set up invalid user config with bad email
     user_dir = tmp_path / "usercfg"
     user_dir.mkdir()
     user_cfg = user_dir / "dsg.yml"
     user_cfg.write_text("""
-    user_name: Joe
-    user_id: invalid-email  # Not a valid email
-    """)
-    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
+user_name: Joe
+user_id: invalid-email  # Not a valid email
+""")
     
-    # Change to project directory
-    monkeypatch.chdir(basic_project_config["repo_dir"])
-    
-    # Run validation
-    errors = validate_config()
+    # Run validation with proper config paths
+    with with_config_paths(basic_repo_structure["repo_dir"], user_dir):
+        errors = validate_config()
     
     # Should contain an error about the invalid email
     assert len(errors) >= 1
@@ -442,9 +444,10 @@ def test_validate_config_invalid_user_config(basic_repo_structure, monkeypatch, 
 
 
 @patch("dsg.backends.can_access_backend")
-def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tmp_path, monkeypatch):
+def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tmp_path):
     """Test validate_config with check_backend=True."""
     from dsg.config_manager import validate_config
+    from tests.conftest import with_config_paths
     
     # Create a real user config file
     user_dir = tmp_path / "userconfig"
@@ -454,16 +457,13 @@ def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tm
 user_name: Test User
 user_id: test@example.com
 """)
-    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
     
     # Mock the backend check to fail
     mock_can_access.return_value = (False, "Backend not accessible: Test error message")
     
-    # Change to project directory
-    monkeypatch.chdir(basic_project_config["repo_dir"])
-    
-    # Run validation with backend check
-    errors = validate_config(check_backend=True)
+    # Run validation with backend check using proper config paths
+    with with_config_paths(basic_repo_structure["repo_dir"], user_dir):
+        errors = validate_config(check_backend=True)
     
     # Should contain an error from backend check
     assert len(errors) == 1
@@ -474,19 +474,18 @@ user_id: test@example.com
     mock_can_access.assert_called_once()
 
 
-def test_validate_config_project_file_error(basic_repo_structure, monkeypatch):
+def test_validate_config_project_file_error(complete_config_setup):
     """Test validate_config with a project config file that can't be read."""
     from dsg.config_manager import validate_config
-    
-    # Change to project directory
-    monkeypatch.chdir(basic_project_config["repo_dir"])
+    from tests.conftest import with_config_paths
     
     # Corrupt the project config file (make it unreadable YAML)
-    config_path = basic_project_config["config_path"]
+    config_path = complete_config_setup["project_cfg"]
     config_path.write_text(": invalid: yaml: content: ")
     
-    # Run validation
-    errors = validate_config()
+    # Run validation with proper config paths
+    with with_config_paths(complete_config_setup["project_root"], complete_config_setup["user_config_dir"]):
+        errors = validate_config()
     
     # Should contain an error about reading the project config
     assert len(errors) == 1
