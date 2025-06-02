@@ -39,6 +39,21 @@ def _dt(tm: datetime | None = None) -> str:
     return datetime.now(LA_TIMEZONE).isoformat(timespec="seconds")
 
 
+def parse_manifest_timestamp(timestamp_str: Optional[str]) -> Optional[datetime]:
+    """Parse ISO timestamp string from manifest back to datetime object."""
+    if not timestamp_str:
+        return None
+    try:
+        return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return None
+
+
+def create_manifest_timestamp(tm: datetime | None = None) -> str:
+    """Public interface for creating manifest timestamps."""
+    return _dt(tm)
+
+
 class FileRef(BaseModel):
     """File reference representing a regular file in the manifest"""
 

@@ -10,72 +10,71 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Iterator, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 
 import loguru
 
-from dsg.manifest import Manifest, ManifestMetadata, FileRef
+from dsg.manifest import Manifest, ManifestMetadata, FileRef, parse_manifest_timestamp
 from dsg.config_manager import Config
 
 logger = loguru.logger
 
+# Type alias for manifest loading return type
+ManifestWithMetadata = Optional[tuple[Manifest, ManifestMetadata]]
 
-# TOTHINK: are LogEntry and BlameEntry subclasses of some parent? they share lots
+
+def _compare_datetimes_normalized(dt1: datetime, dt2: datetime) -> bool:
+    """Compare two datetimes, normalizing timezone info if needed."""
+    # Normalize for comparison - remove tzinfo from both if one is naive
+    if dt1.tzinfo is None and dt2.tzinfo is not None:
+        dt2 = dt2.replace(tzinfo=None)
+    elif dt1.tzinfo is not None and dt2.tzinfo is None:
+        dt1 = dt1.replace(tzinfo=None)
+    return dt1 < dt2
+
+
+
 
 @dataclass
-class LogEntry:
+class BaseEntry:
     snapshot_id: str
     created_at: str
     created_by: Optional[str]
+
+    @property
+    def snapshot_num(self) -> int:
+        try:
+            if self.snapshot_id.startswith('s'):
+                return int(self.snapshot_id[1:])
+            return int(self.snapshot_id)
+        except ValueError:
+            return 0
+
+    @property
+    def formatted_datetime(self) -> str:
+        try:
+            dt = parse_manifest_timestamp(self.created_at)
+            if dt:
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            return self.created_at
+        except (ValueError, TypeError):
+            return self.created_at
+
+
+@dataclass
+class LogEntry(BaseEntry):
     entry_count: int
     entries_hash: str
-    snapshot_message: Optional[str] = None
-    snapshot_previous: Optional[str] = None
-    snapshot_hash: Optional[str] = None
-
-    @property
-    def snapshot_num(self) -> int:
-        try:
-            if self.snapshot_id.startswith('s'):
-                return int(self.snapshot_id[1:])
-            return int(self.snapshot_id)
-        except ValueError:
-            return 0
-
-    @property
-    def formatted_datetime(self) -> str:
-        try:
-            dt = datetime.fromisoformat(self.created_at)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            return self.created_at
+    snapshot_message: Optional[str] = field(default=None)
+    snapshot_previous: Optional[str] = field(default=None)
+    snapshot_hash: Optional[str] = field(default=None)
 
 
 @dataclass
-class BlameEntry:
-    snapshot_id: str
-    created_at: str
-    created_by: Optional[str]
+class BlameEntry(BaseEntry):
     event_type: str  # "add", "modify", "delete"
-    file_hash: Optional[str] = None
-    snapshot_message: Optional[str] = None
-
-    @property
-    def snapshot_num(self) -> int:
-        try:
-            if self.snapshot_id.startswith('s'):
-                return int(self.snapshot_id[1:])
-            return int(self.snapshot_id)
-        except ValueError:
-            return 0
-
-    @property
-    def formatted_datetime(self) -> str:
-        try:
-            dt = datetime.fromisoformat(self.created_at)
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            return self.created_at
+    file_hash: Optional[str] = field(default=None)
+    snapshot_message: Optional[str] = field(default=None)
 
 
 class HistoryWalker:
@@ -93,9 +92,6 @@ class HistoryWalker:
             logger.debug(f"Archive directory not found: {self.archive_dir}")
             return archive_files
 
-        # TODO: no obvious comments like this one
-        # Look for compressed archive files (both .gz and .lz4 formats)
-        # TODO: we don't look for jzon.gz, there never will be any. 
         for pattern in ["*.json.gz", "*.json.lz4"]:
             for file_path in self.archive_dir.glob(pattern):
                 snapshot_num = self._parse_snapshot_number(file_path.name)
@@ -107,8 +103,8 @@ class HistoryWalker:
 
         return archive_files
 
-    # TODO: we don't look for jzon.gz, there never will be any. 
     def _parse_snapshot_number(self, filename: str) -> Optional[int]:
+        """Extract snapshot number from compressed manifest filename."""
         patterns = [
             r"s(\d+)-sync\.json\.gz",
             r"s(\d+)\.json\.gz",
@@ -128,8 +124,8 @@ class HistoryWalker:
         logger.warning(f"Could not parse snapshot number from filename: {filename}")
         return None
 
-    def _load_manifest_from_archive(
-            self, archive_path: Path) -> Optional[Tuple[Manifest, ManifestMetadata]]:
+    def _load_manifest_from_archive(self, archive_path: Path) -> ManifestWithMetadata:
+        """Load manifest and metadata from compressed archive file."""
         try:
             manifest = Manifest.from_compressed(archive_path)
             if manifest.metadata:
@@ -142,15 +138,13 @@ class HistoryWalker:
             logger.error(f"Failed to load archive {archive_path}: {e}")
             return None
 
-    # TOTHINK: maybe extract this hint, give it a name to use here and above? Optional[Tuple[Manifest, ManifestMetadata]]
-    def _load_current_manifest(self) -> Optional[Tuple[Manifest, ManifestMetadata]]:
+    def _load_current_manifest(self) -> ManifestWithMetadata:
         try:
             if not self.current_manifest_path.exists():
                 logger.debug("No current manifest found")
                 return None
 
             manifest = Manifest.from_json(self.current_manifest_path)
-            # TODO: type error in next line, let's think about it 
             return manifest, manifest.metadata
 
         except Exception as e:
@@ -164,19 +158,12 @@ class HistoryWalker:
         since_dt = None
 
         if since:
-            # TODO: there should never be timezone naive timestamps. mtimes are epoch, right?
-            # review the manifest timestamp spec and if appropriate remove this check
-            try:
-                since_dt = datetime.fromisoformat(since)
-                # Make timezone-naive if no timezone specified
-                if since_dt.tzinfo is None:
-                    since_dt = since_dt.replace(tzinfo=None)
-            except ValueError:
+            since_dt = parse_manifest_timestamp(since)
+            if since_dt is None:
                 logger.warning(f"Invalid since date format: {since}")
 
         current_result = self._load_current_manifest()
         if current_result:
-            # CLAUDE: if we're not going to use it, don't name the variable
             _, metadata = current_result
             entry = self._metadata_to_log_entry(metadata)
 
@@ -187,15 +174,13 @@ class HistoryWalker:
                     return
 
         archive_files = self.get_archive_files()
-        # CLAUDE: if we're not going to use it, don't name the variable, use _
-        for snapshot_num, archive_path in reversed(archive_files):
+        for _, archive_path in reversed(archive_files):
             if limit and count >= limit:
                 break
 
             result = self._load_manifest_from_archive(archive_path)
             if result:
-                # CLAUDE: if we're not going to use it, don't name the variable, use _
-                manifest, metadata = result
+                _, metadata = result
                 entry = self._metadata_to_log_entry(metadata)
 
                 if self._matches_filters(entry, since_dt, author):
@@ -203,33 +188,19 @@ class HistoryWalker:
                     count += 1
 
     def _metadata_to_log_entry(self, metadata: ManifestMetadata) -> LogEntry:
-        return LogEntry(
-            snapshot_id=metadata.snapshot_id,
-            created_at=metadata.created_at,
-            created_by=metadata.created_by,
-            entry_count=metadata.entry_count,
-            entries_hash=metadata.entries_hash,
-            snapshot_message=metadata.snapshot_message,
-            snapshot_previous=metadata.snapshot_previous,
-            snapshot_hash=metadata.snapshot_hash
-        )
+        """Convert ManifestMetadata to LogEntry - LogEntry is a subset of ManifestMetadata fields."""
+        common_fields = {f.name: getattr(metadata, f.name) 
+                        for f in fields(LogEntry) 
+                        if hasattr(metadata, f.name)}
+        return LogEntry(**common_fields)
 
     def _matches_filters(self, entry: LogEntry, since_dt: Optional[datetime],
                          author: Optional[str]) -> bool:
+        """Check if log entry matches the provided filters."""
         if since_dt:
-            try:
-                # TODO: look at TZ comment above, apply here
-                entry_dt = datetime.fromisoformat(entry.created_at)
-                # Normalize timezones for comparison
-                if since_dt.tzinfo is None and entry_dt.tzinfo is not None:
-                    entry_dt = entry_dt.replace(tzinfo=None)
-                elif since_dt.tzinfo is not None and entry_dt.tzinfo is None:
-                    since_dt = since_dt.replace(tzinfo=None)
-
-                if entry_dt < since_dt:
-                    return False
-            except ValueError:
-                pass
+            entry_dt = parse_manifest_timestamp(entry.created_at)
+            if entry_dt and _compare_datetimes_normalized(entry_dt, since_dt):
+                return False
 
         if author and entry.created_by:
             if author.lower() not in entry.created_by.lower():
@@ -238,44 +209,29 @@ class HistoryWalker:
         return True
 
     def get_file_blame(self, file_path: str) -> List[BlameEntry]:
+        """Get blame/change history for a specific file across all snapshots."""
         blame_entries = []
         previous_hash = None
         file_exists_in_previous = False
 
-        # no dumb comments! and this is a dumb comment.
-        # Collect all manifests to process (archives + current)
         manifests_to_process = []
 
-        # no dumb comments! and this is a dumb comment.
-        # Add archive manifests
-        for snapshot_num, archive_path in self.get_archive_files():
+        for _, archive_path in self.get_archive_files():
             result = self._load_manifest_from_archive(archive_path)
             if result:
                 manifests_to_process.append(result)
 
-        # no dumb comments! and this is a dumb comment.
-        # Add current manifest
         current_result = self._load_current_manifest()
         if current_result:
             manifests_to_process.append(current_result)
 
-        # no dumb comments! and this is a dumb comment.
-        # Process each manifest
         for manifest, metadata in manifests_to_process:
-            # Determine what happened to the file in this snapshot
-            event_type, file_hash = self._determine_file_event(
-                file_path, manifest, previous_hash, file_exists_in_previous
+            blame_entry = self._create_blame_entry_if_changed(
+                file_path, manifest, metadata, previous_hash, file_exists_in_previous
             )
+            if blame_entry:
+                blame_entries.append(blame_entry)
 
-            # no dumb comments! and this is a dumb comment.
-            # Create blame entry if something happened
-            if event_type:
-                blame_entries.append(self._create_blame_entry(
-                    metadata, event_type, file_hash
-                ))
-
-            # no dumb comments! and this is a dumb comment.
-            # Update state for next iteration
             if file_path in manifest.entries:
                 entry = manifest.entries[file_path]
                 if isinstance(entry, FileRef):
@@ -287,15 +243,10 @@ class HistoryWalker:
 
         return blame_entries
 
-    def _determine_file_event(
-            self, file_path: str, manifest: Manifest,
-            previous_hash: Optional[str],
-            file_exists_in_previous: bool) -> tuple[Optional[str], Optional[str]]:
-        """Determine what event occurred for a file in this manifest.
-
-        Returns:
-            Tuple of (event_type, file_hash) or (None, None) if no event
-        """
+    def _create_blame_entry_if_changed(
+            self, file_path: str, manifest: Manifest, metadata: ManifestMetadata,
+            previous_hash: Optional[str], file_exists_in_previous: bool) -> Optional[BlameEntry]:
+        """Create a blame entry if the file changed in this manifest, otherwise return None."""
         file_in_manifest = file_path in manifest.entries
         current_hash = None
 
@@ -304,42 +255,62 @@ class HistoryWalker:
             if isinstance(entry, FileRef):
                 current_hash = entry.hash
 
-        # no dumb comments! and this is a dumb comment.
-        # Dispatch logic
+        event_type = None
+        file_hash = None
+
+        # FIXME: this logic is really hairy. and it already exists in manifest_merger, in part. we should
+        # think HARD about how to refactor to use that or extend it rather than reinventing it here.
         if not file_in_manifest:
             if file_exists_in_previous:
-                return "delete", None
+                event_type = "delete"
+                file_hash = None
         elif not file_exists_in_previous:
-            return "add", current_hash
+            event_type = "add"
+            file_hash = current_hash
         elif current_hash != previous_hash and current_hash is not None:
-            return "modify", current_hash
-        return None, None
+            event_type = "modify"
+            file_hash = current_hash
 
-    # FIXME: why do we even need the factory fn here? we could just emit the BlameEntry
-    # with a unified _determine_file_event + _create_blame_entry? 
-    def _create_blame_entry(self, metadata: ManifestMetadata,
-                            event_type: str, file_hash: Optional[str]) -> BlameEntry:
-        """Create a blame entry with the given event type and file hash."""
-        return BlameEntry(
-            snapshot_id=metadata.snapshot_id,
-            created_at=metadata.created_at,
-            created_by=metadata.created_by,
-            event_type=event_type,
-            file_hash=file_hash,
-            snapshot_message=metadata.snapshot_message
-        )
+        if event_type:
+            return BlameEntry(
+                snapshot_id=metadata.snapshot_id,
+                created_at=metadata.created_at,
+                created_by=metadata.created_by,
+                event_type=event_type,
+                file_hash=file_hash,
+                snapshot_message=metadata.snapshot_message
+            )
+        return None
 
 
 def get_repository_log(config: Config, limit: Optional[int] = None,
                        since: Optional[str] = None,
                        author: Optional[str] = None) -> List[LogEntry]:
-    # FIXME: add docstring
+    """Get repository history log with optional filtering.
+
+    Args:
+        config: DSG configuration containing project root
+        limit: Maximum number of entries to return
+        since: Only show entries since this date (ISO format)
+        author: Only show entries by this author
+
+    Returns:
+        List of LogEntry objects in reverse chronological order
+    """
     walker = HistoryWalker(config.project_root)
     return list(walker.walk_history(limit=limit, since=since, author=author))
 
 
 def get_file_blame(config: Config, file_path: str) -> List[BlameEntry]:
-    # FIXME: add docstring
+    """Get blame/history information for a specific file.
+
+    Args:
+        config: DSG configuration containing project root
+        file_path: Relative path to the file within the project
+
+    Returns:
+        List of BlameEntry objects showing add/modify/delete events
+    """
     walker = HistoryWalker(config.project_root)
     return walker.get_file_blame(file_path)
 
