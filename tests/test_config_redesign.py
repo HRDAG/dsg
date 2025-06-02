@@ -362,67 +362,13 @@ project:
 # ADAPTED EXISTING TESTS (showing how they would change)
 # =============================================================================
 
-@pytest.fixture
-def basic_project_config_redesigned(tmp_path):
-    """Create a basic project config file using new structure."""
-    repo_name = "test-project"
-    repo_dir = tmp_path / repo_name
-    repo_dir.mkdir()
-    project_cfg = repo_dir / ".dsgconfig.yml"  # New location
-    
-    # Create project config with new structure
-    project_cfg.write_text(f"""
-transport: ssh
-ssh:
-  host: scott
-  path: /var/repos/dsg
-  name: {repo_name}
-  type: zfs
-project:
-  data_dirs:
-    - input
-    - output
-    - frozen
-  ignore:
-    paths:
-      - graphs/plot1.png
-      - temp.log
-""")
-    
-    return {
-        "repo_name": repo_name,
-        "repo_dir": repo_dir,
-        "config_path": project_cfg
-    }
+# basic_repo_structure fixture replaced with basic_repo_structure from conftest.py
 
 
-@pytest.fixture
-def config_files_redesigned(basic_project_config_redesigned, tmp_path, monkeypatch):
-    """Create both user and project config files with new structure."""
-    # User config (same location, slightly different fields)
-    user_dir = tmp_path / "usercfg"
-    user_dir.mkdir()
-    user_cfg = user_dir / "dsg.yml"
-    user_cfg.write_text("""
-user_name: Joe
-user_id: joe@example.org
-ssh:
-  key_path: ~/.ssh/id_rsa
-""")
-
-    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
-    monkeypatch.chdir(basic_project_config_redesigned["repo_dir"])
-
-    return {
-        "project_root": basic_project_config_redesigned["repo_dir"],
-        "repo_dir": basic_project_config_redesigned["repo_dir"],
-        "user_cfg": user_cfg,
-        "project_cfg": basic_project_config_redesigned["config_path"],
-        "repo_name": basic_project_config_redesigned["repo_name"],
-    }
+# complete_config_setup fixture replaced with complete_config_setup from conftest.py
 
 
-def test_config_load_success_redesigned(config_files_redesigned):
+def test_config_load_success_redesigned(complete_config_setup):
     """Test successful config loading with new structure."""
     cfg = Config.load()
     

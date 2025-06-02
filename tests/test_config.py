@@ -22,116 +22,32 @@ from dsg.config_manager import (
 )
 
 
-@pytest.fixture
-def basic_project_config(tmp_path):
-    """Create a basic project config file in a temporary directory."""
-    repo_name = "test-project"
-    repo_dir = tmp_path / repo_name
-    repo_dir.mkdir()
-    project_cfg = repo_dir / ".dsgconfig.yml"
+# basic_repo_structure fixture replaced with basic_repo_structure from conftest.py
+
+
+# complete_config_setup fixture replaced with complete_config_setup from conftest.py
+
+
+# base_config fixture replaced with legacy_format_config_objects from conftest.py
+
+
+def test_config_load_success(complete_config_setup):
+    from tests.conftest import load_config_with_paths
     
-    # Create project config with new structure
-    project_cfg.write_text(f"""
-transport: ssh
-ssh:
-  host: scott
-  path: /var/repos/dsg
-  name: {repo_name}
-  type: zfs
-project:
-  data_dirs:
-    - input
-    - output
-    - frozen
-  ignore:
-    paths:
-      - graphs/plot1.png
-      - temp.log
-""")
-    
-    return {
-        "repo_name": repo_name,
-        "repo_dir": repo_dir,
-        "config_path": project_cfg
-    }
-
-
-@pytest.fixture
-def config_files(basic_project_config, tmp_path, monkeypatch):
-    """Create both user and project config files."""
-    # User config
-    user_dir = tmp_path / "usercfg"
-    user_dir.mkdir()
-    user_cfg = user_dir / "dsg.yml"
-    user_cfg.write_text("""
-user_name: Joe
-user_id: joe@example.org
-default_host: localhost
-default_project_path: /var/repos/dgs
-""")
-
-    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
-    monkeypatch.chdir(basic_project_config["repo_dir"])
-
-    return {
-        "project_root": basic_project_config["repo_dir"],
-        "repo_dir": basic_project_config["repo_dir"],
-        "user_cfg": user_cfg,
-        "project_cfg": basic_project_config["config_path"],
-        "repo_name": basic_project_config["repo_name"],
-    }
-
-
-@pytest.fixture
-def base_config(basic_project_config, tmp_path):
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),  # this is the local host
-        path=tmp_path,
-        name=basic_project_config["repo_name"],
-        type="zfs"
+    cfg = load_config_with_paths(
+        complete_config_setup["project_root"],
+        complete_config_setup["user_config_dir"]
     )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/plot1.png"},
-        names=set(),
-        suffixes=set()
-    )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    project = ProjectConfig(
-        transport="ssh",
-        ssh=ssh_config,
-        project=project_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    return cfg
-
-
-def test_config_load_success(config_files):
-    cfg = Config.load()
     assert cfg.user is not None
     assert cfg.user.user_name == "Joe"
     assert cfg.user.user_id == "joe@example.org"
     # Default fields are now optional in user config
     assert cfg.project is not None
     assert cfg.project.transport == "ssh"
-    assert cfg.project.ssh.name == config_files["repo_name"]
+    assert cfg.project.ssh.name == complete_config_setup["repo_name"]
     assert cfg.project.ssh.type == "zfs"
     assert isinstance(cfg.project_root, Path)
-    assert cfg.project_root == config_files["project_root"]
+    assert cfg.project_root == complete_config_setup["project_root"]
 
 
 def test_missing_user_config_exits(monkeypatch):
@@ -154,9 +70,9 @@ def test_missing_project_config_exits(tmp_path, monkeypatch):
     ("ssh", "host"),
     ("ssh", "path"),
 ])
-def test_missing_required_fields(config_files, section, field):
+def test_missing_required_fields(complete_config_setup, section, field):
     """Test missing required project fields - user fields tested in TestUserConfig"""
-    project_cfg_path = config_files["project_cfg"]
+    project_cfg_path = complete_config_setup["project_cfg"]
     project_data = yaml.safe_load(project_cfg_path.read_text())
     
     # Remove the field from the ssh section
@@ -259,7 +175,7 @@ def test_project_config_path_handling():
     assert PurePosixPath("../parent.txt") in cfg.project.ignore._ignored_exact
 
 
-def test_config_load_project_only(basic_project_config, monkeypatch):
+def test_config_load_project_only(basic_repo_structure, monkeypatch):
     """Test that Config.load() requires both project and user config."""
     from unittest.mock import patch
     
@@ -268,7 +184,7 @@ def test_config_load_project_only(basic_project_config, monkeypatch):
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Should fail without user config in the new design
         with pytest.raises(FileNotFoundError, match="No dsg.yml found"):
@@ -363,18 +279,23 @@ ssh:
         assert cfg.ssh.key_path == Path("~/.ssh/id_rsa")
 
 
-def test_config_with_user_config(config_files):
+def test_config_with_user_config(complete_config_setup):
     """Test loading Config with both project and user config."""
-    cfg = Config.load()
+    from tests.conftest import load_config_with_paths
+    
+    cfg = load_config_with_paths(
+        complete_config_setup["project_root"],
+        complete_config_setup["user_config_dir"]
+    )
     assert cfg.user is not None
     assert cfg.user.user_name == "Joe"
     assert cfg.user.user_id == "joe@example.org"
     assert cfg.project is not None
-    assert cfg.project.ssh.name == config_files["repo_name"]
-    assert cfg.project_root == config_files["project_root"]
+    assert cfg.project.ssh.name == complete_config_setup["repo_name"]
+    assert cfg.project_root == complete_config_setup["project_root"]
 
 
-def test_config_without_user_config(basic_project_config, monkeypatch):
+def test_config_without_user_config(basic_repo_structure, monkeypatch):
     """Test that Config.load() requires user config in new design."""
     from unittest.mock import patch
     
@@ -382,14 +303,14 @@ def test_config_without_user_config(basic_project_config, monkeypatch):
     with patch('dsg.config_manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Should fail without user config in the new design
         with pytest.raises(FileNotFoundError, match="No dsg.yml found"):
             Config.load()
 
 
-def test_project_root_computation(basic_project_config, tmp_path, monkeypatch):
+def test_project_root_computation(basic_repo_structure, tmp_path, monkeypatch):
     """Test that project_root is correctly computed from config location."""
     # Set up user config
     user_dir = tmp_path / "userconfig"
@@ -402,11 +323,11 @@ user_id: test@example.com
     monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
     
     # Change to project directory before test
-    monkeypatch.chdir(basic_project_config["repo_dir"])
+    monkeypatch.chdir(basic_repo_structure["repo_dir"])
     
     cfg = Config.load()
-    assert cfg.project_root == basic_project_config["repo_dir"]
-    assert cfg.project_root.name == basic_project_config["repo_name"]
+    assert cfg.project_root == basic_repo_structure["repo_dir"]
+    assert cfg.project_root.name == basic_repo_structure["repo_name"]
     assert (cfg.project_root / ".dsgconfig.yml").is_file()
 
 
@@ -443,28 +364,17 @@ def test_project_config_handles_directory_paths():
     assert PurePosixPath("temp/files") in cfg.project.ignore._ignored_exact
 
 
-def test_validate_config_valid_configuration(basic_project_config, tmp_path, monkeypatch):
+def test_validate_config_valid_configuration(complete_config_setup):
     """Test validate_config with a valid configuration."""
     from dsg.config_manager import validate_config
+    from tests.conftest import with_config_paths
     
-    # Set up user config
-    user_dir = tmp_path / "userconfig"
-    user_dir.mkdir()
-    user_config = user_dir / "dsg.yml"
-    user_config.write_text("""
-user_name: Test User
-user_id: test@example.com
-""")
-    monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
-    
-    # Change to project directory
-    monkeypatch.chdir(basic_project_config["repo_dir"])
-    
-    # Run validation
-    errors = validate_config(check_backend=False)
-    
-    # Should return empty list (no errors)
-    assert errors == []
+    # Run validation with proper config paths
+    with with_config_paths(complete_config_setup["project_root"], complete_config_setup["user_config_dir"]):
+        errors = validate_config(check_backend=False)
+        
+        # Should return empty list (no errors)
+        assert errors == []
 
 
 def test_validate_config_missing_project_config(tmp_path, monkeypatch):
@@ -482,7 +392,7 @@ def test_validate_config_missing_project_config(tmp_path, monkeypatch):
     assert "Missing project config file" in errors[0]
 
 
-def test_validate_config_invalid_project_config(basic_project_config, monkeypatch):
+def test_validate_config_invalid_project_config(basic_repo_structure, monkeypatch):
     """Test validate_config with invalid project config."""
     from dsg.config_manager import validate_config
     
@@ -505,7 +415,7 @@ def test_validate_config_invalid_project_config(basic_project_config, monkeypatc
     assert any("type" in error or "validation" in error.lower() for error in errors)
 
 
-def test_validate_config_invalid_user_config(basic_project_config, monkeypatch, tmp_path):
+def test_validate_config_invalid_user_config(basic_repo_structure, monkeypatch, tmp_path):
     """Test validate_config with valid project config but invalid user config."""
     from dsg.config_manager import validate_config
     
@@ -532,7 +442,7 @@ def test_validate_config_invalid_user_config(basic_project_config, monkeypatch, 
 
 
 @patch("dsg.backends.can_access_backend")
-def test_validate_config_check_backend(mock_can_access, basic_project_config, tmp_path, monkeypatch):
+def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tmp_path, monkeypatch):
     """Test validate_config with check_backend=True."""
     from dsg.config_manager import validate_config
     
@@ -564,7 +474,7 @@ user_id: test@example.com
     mock_can_access.assert_called_once()
 
 
-def test_validate_config_project_file_error(basic_project_config, monkeypatch):
+def test_validate_config_project_file_error(basic_repo_structure, monkeypatch):
     """Test validate_config with a project config file that can't be read."""
     from dsg.config_manager import validate_config
     
@@ -761,7 +671,7 @@ class TestSystemConfigValidation:
 class TestValidateConfigLocalLog:
     """Test validate_config function with local_log field validation."""
     
-    def test_validate_config_with_valid_local_log(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_valid_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with valid local_log directory."""
         from dsg.config_manager import validate_config
         
@@ -789,7 +699,7 @@ local_log: {log_dir}
         # Should return empty list (no errors)
         assert errors == []
 
-    def test_validate_config_with_nonexistent_local_log_creatable(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_nonexistent_local_log_creatable(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with nonexistent but creatable local_log directory."""
         from dsg.config_manager import validate_config
         
@@ -816,7 +726,7 @@ local_log: {log_dir}
         # Should return empty list (no errors)
         assert errors == []
 
-    def test_validate_config_with_relative_local_log_path(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_relative_local_log_path(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with relative local_log path (should fail)."""
         from dsg.config_manager import validate_config
         
@@ -841,7 +751,7 @@ local_log: ./logs
         assert len(errors) >= 1
         assert any("local_log path must be absolute" in error for error in errors)
 
-    def test_validate_config_with_local_log_file_not_directory(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_local_log_file_not_directory(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config when local_log points to a file instead of directory."""
         from dsg.config_manager import validate_config
         
@@ -870,7 +780,7 @@ local_log: {log_file}
         assert len(errors) >= 1
         assert any("local_log path exists but is not a directory" in error for error in errors)
 
-    def test_validate_config_with_unwritable_local_log(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_unwritable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with unwritable local_log directory."""
         from dsg.config_manager import validate_config
         import os
@@ -908,7 +818,7 @@ local_log: {log_dir}
             assert len(errors) >= 1
             assert any("local_log directory is not writable" in error for error in errors)
 
-    def test_validate_config_with_uncreatable_local_log(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_with_uncreatable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with local_log that cannot be created."""
         from dsg.config_manager import validate_config
         import os
@@ -941,7 +851,7 @@ local_log: {log_dir}
         assert len(errors) >= 1
         assert any("Cannot create or write to local_log directory" in error for error in errors)
 
-    def test_validate_config_without_local_log(self, basic_project_config, tmp_path, monkeypatch):
+    def test_validate_config_without_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config when local_log is not specified (should work normally)."""
         from dsg.config_manager import validate_config
         

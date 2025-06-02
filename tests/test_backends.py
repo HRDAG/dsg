@@ -27,121 +27,13 @@ from dsg.host_utils import is_local_host
 from unittest.mock import patch, MagicMock
 
 
-@pytest.fixture
-def base_config(tmp_path):
-    """Create standard config for backend testing (legacy format for backward compatibility)"""
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),
-        path=tmp_path,
-        name="KO",  # Legacy: name still in transport config for existing tests
-        type="zfs"
-    )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/"},
-        names=set(),
-        suffixes=set()
-    )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    project = ProjectConfig(
-        name="KO",  # Also add top-level name for new format
-        transport="ssh",
-        ssh=ssh_config,
-        project=project_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    return cfg
+# legacy_format_config_objects fixture replaced with legacy_format_config_objects from conftest.py
 
 
-@pytest.fixture 
-def new_format_config(tmp_path):
-    """Create config using new format with top-level name (no migration needed)"""
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),
-        path=tmp_path,
-        name=None,  # New format: no name in transport config
-        type="zfs"
-    )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/"},
-        names=set(),
-        suffixes=set()
-    )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    project = ProjectConfig(
-        name="KO",  # New format: top-level name
-        transport="ssh",
-        ssh=ssh_config,
-        project=project_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    return cfg
+# new_format_config_objects fixture replaced with new_format_config_objects from conftest.py
 
 
-@pytest.fixture
-def local_repo_setup(tmp_path):
-    """Create a minimal valid repository structure with test files"""
-    repo_dir = tmp_path / "test_repo"
-    repo_dir.mkdir()
-    dsg_dir = repo_dir / ".dsg"
-    dsg_dir.mkdir()
-    
-    test_file = repo_dir / "test_file.txt"
-    test_file.write_text("This is a test file")
-    
-    # Create new-style config file in repo root
-    config_file = repo_dir / ".dsgconfig.yml"
-    config_file.write_text("""
-transport: ssh
-ssh:
-  host: localhost
-  path: /tmp/test
-  name: test_repo
-  type: local
-project:
-  data_dirs:
-    - input
-  ignore:
-    paths: []
-""")
-    
-    return {
-        "repo_path": tmp_path,
-        "repo_name": "test_repo",
-        "full_path": repo_dir,
-        "dsg_dir": dsg_dir,
-        "test_file": test_file,
-        "config_file": config_file
-    }
+# repo_with_dsg_dir fixture replaced with repo_with_dsg_dir from conftest.py
 
 
 def test_is_local_host():
@@ -154,9 +46,9 @@ def test_is_local_host():
     assert not is_local_host("some-other-host.example.com")
 
 
-def test_backend_access_local_repo_dir_missing(base_config):
+def test_backend_access_local_repo_dir_missing(legacy_format_config_objects):
     """Verify proper error when repository directory doesn't exist"""
-    ok, msg = can_access_backend(base_config)
+    ok, msg = can_access_backend(legacy_format_config_objects)
     assert not ok
     assert "not a valid repository" in msg
 
@@ -226,11 +118,11 @@ def test_localhost_backend_creation(base_config):
     assert backend.repo_name == base_config.project.ssh.name
 
 
-def test_localhost_backend_is_accessible(local_repo_setup):
+def test_localhost_backend_is_accessible(repo_with_dsg_dir):
     """Test repository accessibility validation"""
     backend = LocalhostBackend(
-        local_repo_setup["repo_path"], 
-        local_repo_setup["repo_name"]
+        repo_with_dsg_dir["repo_dir"].parent, 
+        repo_with_dsg_dir["repo_name"]
     )
     
     # Valid repository should return OK
@@ -239,18 +131,18 @@ def test_localhost_backend_is_accessible(local_repo_setup):
     assert msg == "OK"
     
     # Breaking repository structure should cause validation failure
-    os.unlink(local_repo_setup["config_file"])
-    os.rmdir(local_repo_setup["dsg_dir"])
+    os.unlink(repo_with_dsg_dir["config_path"])
+    os.rmdir(repo_with_dsg_dir["dsg_dir"])
     ok, msg = backend.is_accessible()
     assert not ok
     assert "not a valid repository" in msg
 
 
-def test_localhost_backend_read_file(local_repo_setup):
+def test_localhost_backend_read_file(repo_with_dsg_dir):
     """Test file reading functionality"""
     backend = LocalhostBackend(
-        local_repo_setup["repo_path"], 
-        local_repo_setup["repo_name"]
+        repo_with_dsg_dir["repo_dir"].parent, 
+        repo_with_dsg_dir["repo_name"]
     )
     
     content = backend.read_file("test_file.txt")
@@ -260,21 +152,21 @@ def test_localhost_backend_read_file(local_repo_setup):
         backend.read_file("nonexistent.txt")
 
 
-def test_localhost_backend_write_file(local_repo_setup):
+def test_localhost_backend_write_file(repo_with_dsg_dir):
     """Test file writing with various scenarios"""
     backend = LocalhostBackend(
-        local_repo_setup["repo_path"], 
-        local_repo_setup["repo_name"]
+        repo_with_dsg_dir["repo_dir"].parent, 
+        repo_with_dsg_dir["repo_name"]
     )
     
     # New file creation
     backend.write_file("new_file.txt", b"New file content")
-    new_file_path = local_repo_setup["full_path"] / "new_file.txt"
+    new_file_path = repo_with_dsg_dir["repo_dir"] / "new_file.txt"
     assert new_file_path.read_bytes() == b"New file content"
     
     # Overwrite existing file
     backend.write_file("test_file.txt", b"Updated content")
-    test_file_path = local_repo_setup["full_path"] / "test_file.txt"
+    test_file_path = repo_with_dsg_dir["repo_dir"] / "test_file.txt"
     assert test_file_path.read_bytes() == b"Updated content"
     
     # Create file in non-existent subdirectory
@@ -283,7 +175,7 @@ def test_localhost_backend_write_file(local_repo_setup):
     assert nested_file_path.read_bytes() == b"Nested file content"
 
 
-def test_localhost_backend_file_exists(local_repo_setup):
+def test_localhost_backend_file_exists(repo_with_dsg_dir):
     """Test file existence checking"""
     backend = LocalhostBackend(
         local_repo_setup["repo_path"], 
@@ -295,7 +187,7 @@ def test_localhost_backend_file_exists(local_repo_setup):
     assert not backend.file_exists(".dsg")  # Directories return false
 
 
-def test_localhost_backend_copy_file(local_repo_setup, tmp_path):
+def test_localhost_backend_copy_file(repo_with_dsg_dir, tmp_path):
     """Test file copying functionality"""
     backend = LocalhostBackend(
         local_repo_setup["repo_path"], 
