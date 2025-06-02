@@ -28,6 +28,68 @@ PERSONAL_FIELDS: Final[frozenset[str]] = frozenset({
     "user_id",
 })
 
+def _get_user_config_search_paths() -> tuple[Path, ...]:
+    """Get config file search paths (ordered by priority: lowest to highest).
+    
+    Dynamic function to ensure environment variables are evaluated at runtime,
+    not at module import time (important for test isolation).
+    """
+    return (
+        Path("/etc/dsg") / USER_CFG,  # System defaults
+        Path.home() / ".config" / "dsg" / USER_CFG,  # User config
+        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
+        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
+    )
+
+
+def _load_merged_config_data(
+    candidates: tuple[Path, ...], 
+    field_filter: Optional[set[str]] = None
+) -> dict:
+    """Load and merge config data from candidate paths.
+    
+    Args:
+        candidates: Paths to check for config files
+        field_filter: If provided, only include these fields in merged data
+        
+    Returns:
+        Merged configuration data
+        
+    Raises:
+        FileNotFoundError: If no config files found
+    """
+    merged_data = {}
+    found_configs = []
+
+    for candidate in candidates:
+        if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
+            try:
+                with candidate.open("r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+
+                # Validate system config for personal fields
+                data = _validate_system_config(data, candidate)
+
+                # Apply field filter if provided
+                if field_filter is not None:
+                    data = {
+                        key: value for key, value in data.items()
+                        if key in field_filter
+                    }
+
+                merged_data.update(data)  # Later configs override earlier ones
+                found_configs.append(str(candidate))
+                logger.debug(f"Loaded config from {candidate}")
+            except Exception as e:
+                logger.warning(f"Failed to load config from {candidate}: {e}")
+
+    if not found_configs:
+        logger.error(f"No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
+        raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
+
+    logger.debug(f"Merged config from: {', '.join(found_configs)}")
+    return merged_data
+
 
 # ---- Transport-Specific Repository Configs ----
 
@@ -37,6 +99,10 @@ class SSHRepositoryConfig(BaseModel):
     path: Path  # Repository path on remote host
     name: Optional[str] = None  # Legacy field, use top-level name instead
     type: Literal["zfs", "xfs"]
+    
+    def validate_required_for_transport(self) -> None:
+        """Validate that all required fields are present for SSH transport."""
+        pass  # All required fields are enforced by pydantic
 
 
 class RcloneRepositoryConfig(BaseModel):
@@ -44,6 +110,10 @@ class RcloneRepositoryConfig(BaseModel):
     remote: str
     path: Path  # Path within the rclone remote
     name: Optional[str] = None  # Legacy field, use top-level name instead
+    
+    def validate_required_for_transport(self) -> None:
+        """Validate that all required fields are present for rclone transport."""
+        pass  # All required fields are enforced by pydantic
 
 
 class IPFSRepositoryConfig(BaseModel):
@@ -51,6 +121,10 @@ class IPFSRepositoryConfig(BaseModel):
     did: str
     name: Optional[str] = None  # Legacy field, use top-level name instead
     encrypted: bool = True
+    
+    def validate_required_for_transport(self) -> None:
+        """Validate that all required fields are present for IPFS transport."""
+        pass  # All required fields are enforced by pydantic
 
 
 # ---- Project Settings ----
@@ -114,15 +188,19 @@ class ProjectConfig(BaseModel):
         if len(set_configs) != 1:
             raise ValueError("Exactly one transport config must be set")
 
-        # TODO: can't this be deleaged to the transport-specific config class?
-        if self.transport == "ssh" and self.ssh is None:
-            raise ValueError("SSH config required when transport=ssh")
-        elif self.transport == "rclone" and self.rclone is None:  # pragma: no cover
-            # TODO: Implement rclone transport support
-            raise ValueError("rclone config required when transport=rclone")
-        elif self.transport == "ipfs" and self.ipfs is None:  # pragma: no cover
-            # TODO: Implement IPFS transport support
-            raise ValueError("IPFS config required when transport=ipfs")
+        # Delegate transport-specific validation to config classes
+        transport_config_map = {
+            "ssh": self.ssh,
+            "rclone": self.rclone,
+            "ipfs": self.ipfs
+        }
+        
+        transport_config = transport_config_map.get(self.transport)
+        if transport_config is None:
+            raise ValueError(f"{self.transport.upper()} config required when transport={self.transport}")
+        
+        # Let the transport config validate its own requirements
+        transport_config.validate_required_for_transport()
 
         # Then auto-migrate: extract name from transport section if missing at top level
         if not self.name:
@@ -236,37 +314,8 @@ def _validate_system_config(config_data: dict, config_path: Path) -> dict:
 
 def load_merged_user_config() -> UserConfig:
     """Load and merge user config from all locations (system defaults + user overrides)."""
-    # FIXME: this search should be a module_level constant pls refactor
-    candidates = [
-        Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
-        Path.home() / ".config" / "dsg" / USER_CFG,  # User config
-        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
-        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
-    ]
-
-    merged_data = {}
-    found_configs = []
-
-    for candidate in candidates:
-        if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
-            try:
-                with candidate.open("r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-
-                # Validate system config for personal fields
-                data = _validate_system_config(data, candidate)
-
-                merged_data.update(data)  # Later configs override earlier ones
-                found_configs.append(str(candidate))
-                logger.debug(f"Loaded config from {candidate}")
-            except Exception as e:
-                logger.warning(f"Failed to load config from {candidate}: {e}")
-
-    if not found_configs:
-        logger.error(f"No user config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
-        raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
-
-    logger.debug(f"Merged config from: {', '.join(found_configs)}")
+    candidates = _get_user_config_search_paths()
+    merged_data = _load_merged_config_data(candidates)
     return UserConfig.model_validate(merged_data)
 
 
@@ -282,41 +331,9 @@ def load_repository_discovery_config() -> RepositoryDiscoveryConfig:
     Raises:
         FileNotFoundError: If no config files are found
     """
-    # FIXME: this search should be a module_level constant pls refactor
-    candidates = [
-        Path("/etc/dsg") / USER_CFG,  # System defaults (checked first)
-        Path.home() / ".config" / "dsg" / USER_CFG,  # User config
-        Path(os.getenv("XDG_CONFIG_HOME", "")) / "dsg" / USER_CFG,  # XDG override
-        Path(os.getenv("DSG_CONFIG_HOME", "")) / USER_CFG,  # Explicit override (highest priority)
-    ]
-
-    merged_data = {}
-    found_configs = []
-
-    for candidate in candidates:
-        if candidate.exists() and candidate != Path("") / USER_CFG:  # Skip empty env vars
-            try:
-                with candidate.open("r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f) or {}
-
-                # Validate system config for personal fields
-                data = _validate_system_config(data, candidate)
-
-                # Only extract repository discovery fields
-                discovery_fields = {
-                    key: value for key, value in data.items()
-                    if key in {"default_host", "default_project_path"}
-                }
-
-                merged_data.update(discovery_fields)  # Later configs override earlier ones
-                found_configs.append(str(candidate))
-            except Exception as e:
-                logger.warning(f"Failed to load config from {candidate}: {e}")
-
-    if not found_configs:
-        logger.error(f"No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
-        raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
-
+    candidates = _get_user_config_search_paths()
+    discovery_fields = {"default_host", "default_project_path"}
+    merged_data = _load_merged_config_data(candidates, discovery_fields)
     return RepositoryDiscoveryConfig.model_validate(merged_data)
 
 
