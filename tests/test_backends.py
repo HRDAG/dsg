@@ -190,8 +190,8 @@ def test_localhost_backend_file_exists(repo_with_dsg_dir):
 def test_localhost_backend_copy_file(repo_with_dsg_dir, tmp_path):
     """Test file copying functionality"""
     backend = LocalhostBackend(
-        local_repo_setup["repo_path"], 
-        local_repo_setup["repo_name"]
+        repo_with_dsg_dir["repo_dir"].parent, 
+        repo_with_dsg_dir["repo_name"]
     )
     
     source_file = tmp_path / "source_file.txt"
@@ -199,12 +199,12 @@ def test_localhost_backend_copy_file(repo_with_dsg_dir, tmp_path):
     
     # Copy to root location
     backend.copy_file(source_file, "copied_file.txt")
-    copied_file_path = local_repo_setup["full_path"] / "copied_file.txt"
+    copied_file_path = repo_with_dsg_dir["repo_dir"] / "copied_file.txt"
     assert copied_file_path.read_text() == "Source file content"
     
     # Copy to nested location with auto-create directories
     backend.copy_file(source_file, "nested/copy.txt")
-    nested_copy_path = local_repo_setup["full_path"] / "nested" / "copy.txt"
+    nested_copy_path = repo_with_dsg_dir["repo_dir"] / "nested" / "copy.txt"
     assert nested_copy_path.read_text() == "Source file content"
 
 
@@ -689,7 +689,7 @@ class TestNewFormatBackends:
         repo_dir.mkdir()
         (repo_dir / ".dsg").mkdir()
         
-        backend = create_backend(new_format_config)
+        backend = create_backend(new_format_config_objects)
         
         # Should create LocalhostBackend with correct repo name from top-level config
         assert isinstance(backend, LocalhostBackend)
@@ -700,15 +700,15 @@ class TestNewFormatBackends:
     def test_create_backend_with_new_format_ssh(self, new_format_config_objects):
         """Test create_backend works with new format for SSH."""
         # Make SSH config point to remote host
-        new_format_config.project.ssh.host = "remote-host"
+        new_format_config_objects.project.ssh.host = "remote-host"
         
-        backend = create_backend(new_format_config)
+        backend = create_backend(new_format_config_objects)
         
         # Should create SSHBackend with correct repo name from top-level config
         assert isinstance(backend, SSHBackend)
         assert backend.repo_name == "KO"  # From top-level config.project.name
         assert backend.host == "remote-host"
-        assert backend.repo_path == new_format_config.project.ssh.path
+        assert backend.repo_path == new_format_config_objects.project.ssh.path
 
     def test_ssh_backend_constructor_with_new_format(self, tmp_path):
         """Test SSHBackend constructor with new format (repo_name parameter)."""
@@ -756,14 +756,14 @@ class TestNewFormatBackends:
         repo_dir.mkdir()
         (repo_dir / ".dsg").mkdir()
         
-        ok, msg = can_access_backend(new_format_config)
+        ok, msg = can_access_backend(new_format_config_objects)
         assert ok
         assert msg == "OK"
 
     def test_backend_access_with_new_format_missing_repo(self, new_format_config_objects):
         """Test can_access_backend error handling with new format."""
         # Repository directory doesn't exist
-        ok, msg = can_access_backend(new_format_config)
+        ok, msg = can_access_backend(new_format_config_objects)
         assert not ok
         assert "not a valid repository" in msg
 

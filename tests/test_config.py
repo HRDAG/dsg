@@ -690,7 +690,7 @@ local_log: {log_dir}
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -717,7 +717,7 @@ local_log: {log_dir}
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -741,7 +741,7 @@ local_log: ./logs
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -770,7 +770,7 @@ local_log: {log_file}
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -803,7 +803,7 @@ local_log: {log_dir}
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -841,7 +841,7 @@ local_log: {log_dir}
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
@@ -865,7 +865,7 @@ user_id: test@example.com
         monkeypatch.setenv("DSG_CONFIG_HOME", str(user_dir))
         
         # Change to project directory
-        monkeypatch.chdir(basic_project_config["repo_dir"])
+        monkeypatch.chdir(basic_repo_structure["repo_dir"])
         
         # Run validation
         errors = validate_config(check_backend=False)
