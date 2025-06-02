@@ -65,8 +65,19 @@ DSG_DIR: Final = ".dsg"
 MANIFEST_FILE: Final = "last-sync.json"
 ```
 
+## Current Status (2025.06.02)
+
+### 🔄 IN PROGRESS
+**CLI Error Handling Standardization** - Mixed patterns identified:
+- Some commands use `handle_config_error()` and `handle_operation_error()` from cli_utils
+- Others use direct `console.print + typer.Exit`
+- 9 total error handling calls found in CLI
+- Standardization needed for consistency
+
+### 📋 REMAINING TASKS
+
 ## Priority
 
-1. **HIGH**: CLI error handling standardization
+1. **HIGH**: CLI error handling standardization (NEXT)
 2. **MEDIUM**: Command structure template pattern
-3. **LOW**: Magic string constants (easy to find/replace later)
+3. **LOW**: Magic string constants (some constants exist, more needed)

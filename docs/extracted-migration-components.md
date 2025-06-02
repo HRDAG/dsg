@@ -10,6 +10,10 @@
 
 This document describes the components extracted from the migration code for potential reuse in the main DSG codebase. All extracted code is located in `src/dsg/extracted/` and is **UNTESTED** in its current form.
 
+## Status: Available but Not Integrated
+
+These components were extracted from migration work but have not been integrated into the main DSG functionality. They represent potential utilities for future enhancement but are not part of the current production codebase.
+
 ## Overview
 
 During the weeks-long migration from btrfs to ZFS, we developed several utilities and patterns that may be useful for the main DSG functionality. These components have been extracted but require proper testing before production use.

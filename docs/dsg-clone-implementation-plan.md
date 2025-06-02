@@ -259,33 +259,28 @@ dsg clone --verbose          # Show progress bars and details
 
 ## Current Status
 
-### ✅ Completed
+### ✅ Completed (2025.06.02)
 - **LocalhostBackend.clone()** - Full implementation with comprehensive tests
-- **CLI Integration** - Updated `dsg clone` command to use backend
-- **Unit & Integration Tests** - 5 tests covering core functionality and edge cases
-- **Abstract Interface** - Backend.clone() method defined with proper documentation
+- **SSHBackend.clone()** - Complete rsync-based implementation with metadata-first approach
+- **CLI Integration** - Updated `dsg clone` command fully functional
+- **Unit & Integration Tests** - Complete test coverage for both backends
+- **Abstract Interface** - Backend.clone() method with concrete implementations
 
-### 🔄 Next Steps (Priority Order)
+### 🔄 Next Steps (Updated Priority Order)
 
 #### 1. Real-World Validation (HIGH PRIORITY)
-- Test localhost clone with actual project repositories
-- Validate with `example/tmpx` data and larger repositories  
+- Test localhost clone with actual project repositories (`example/tmpx`)
+- Validate SSH clone with remote repositories
 - Confirm cross-platform compatibility (container vs host)
 - Performance testing with various repository sizes
 
-#### 2. SSH Backend Implementation (HIGH PRIORITY)
-- Implement `SSHBackend.clone()` using rsync approach
-- Add SSH clone tests (unit + integration)
-- Test with real remote repositories
-- Handle SSH authentication and connection failures
+#### 2. Enhanced Features (MEDIUM PRIORITY)
+- **Progress Callbacks**: Rich progress bars for clone operations (infrastructure exists)
+- **Resume Functionality**: Improve handling of interrupted transfers
+- **Error Handling**: Enhance rsync error reporting and recovery
+- **Bandwidth Limiting**: Add rsync --bwlimit for network-conscious transfers
 
-#### 3. Enhanced Features (MEDIUM PRIORITY)
-- **Progress Callbacks**: Rich progress bars and file transfer notifications
-- **Resume Functionality**: Better handling of interrupted transfers
-- **Force Flag Logic**: Cleaner handling of existing .dsg directories
-- **Bandwidth Limiting**: rsync --bwlimit for network-conscious transfers
-
-#### 4. Advanced Features (LOW PRIORITY)
+#### 3. Advanced Features (LOW PRIORITY)
 - **Parallel Transfers**: Multiple rsync processes for large repositories
 - **Cloud Backends**: Extend pattern to rclone, IPFS implementations
 - **Validation Integration**: Post-clone integrity checking
