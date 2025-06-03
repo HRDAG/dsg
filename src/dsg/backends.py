@@ -292,7 +292,7 @@ class LocalhostBackend(Backend):
             dst_file.parent.mkdir(parents=True, exist_ok=True)
             
             if src_file.exists():
-                shutil.copy2(src_file, dst_file)
+                shutil.copy2(src_file, dst_file, follow_symlinks=False)
                 files_copied += 1
                 
                 # Update progress for each file

@@ -11,10 +11,14 @@ from typing import Optional, Set, Dict, Any
 from collections import OrderedDict
 from dataclasses import dataclass
 
+import loguru
+
 from dsg.config_manager import Config
 from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
 from dsg.manifest import Manifest
 from dsg.manifest_merger import ManifestMerger, SyncState
+
+logger = loguru.logger
 
 
 def list_directory(
@@ -116,42 +120,80 @@ class SyncStatusResult:
     warnings: list[str]
 
 
-def get_sync_status(config: Config, include_remote: bool = True) -> SyncStatusResult:
+def get_sync_status(config: Config, include_remote: bool = True, verbose: bool = False) -> SyncStatusResult:
     """Shared logic for both 'dsg status' and 'dsg sync --dry-run'."""
     warnings = []
     
+    logger.debug(f"Starting get_sync_status with include_remote={include_remote}")
+    
     # Load local manifest (current directory scan)
-    scan_result = scan_directory(config)
+    logger.debug(f"Scanning local directory: {config.project_root}")
+    scan_result = scan_directory(config, include_dsg_files=False)
     local_manifest = scan_result.manifest
+    logger.debug(f"Local manifest loaded with {len(local_manifest.entries)} entries")
     
     # Load cache manifest (.dsg/last-sync.json)
     cache_path = config.project_root / ".dsg" / "last-sync.json"
+    logger.debug(f"Loading cache manifest from: {cache_path}")
+    logger.debug(f"Cache file exists: {cache_path.exists()}")
     if cache_path.exists():
-        cache_manifest = Manifest.from_json(cache_path)
+        logger.debug(f"Cache file size: {cache_path.stat().st_size} bytes")
+    
+    if cache_path.exists():
+        try:
+            logger.debug("Attempting to load cache manifest...")
+            cache_manifest = Manifest.from_json(cache_path)
+            logger.debug(f"Cache manifest loaded successfully with {len(cache_manifest.entries)} entries")
+            if cache_manifest.metadata:
+                logger.debug(f"Cache metadata: snapshot_id={cache_manifest.metadata.snapshot_id}")
+        except Exception as e:
+            logger.error(f"Cache manifest loading failed: {type(e).__name__}: {e}")
+            if verbose:
+                import traceback
+                logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            raise  # Re-raise the original error
     else:
         warnings.append("No .dsg/last-sync.json found. Run 'dsg sync' first.")
-        cache_manifest = Manifest()
+        cache_manifest = Manifest(entries=OrderedDict())
+        logger.debug("Using empty cache manifest")
     
     # Load remote manifest if requested
     remote_manifest = None
     if include_remote:
+        logger.debug("Loading remote manifest...")
         try:
             from dsg.backends import create_backend
             backend = create_backend(config)
+            logger.debug(f"Backend created: {type(backend).__name__}")
             remote_data = backend.read_file(".dsg/last-sync.json")
             if remote_data:
-                remote_manifest = Manifest.from_json_str(remote_data)
+                logger.debug(f"Remote data received, size: {len(remote_data)} bytes")
+                # Parse remote data using orjson like from_json does
+                import orjson
+                remote_manifest_data = orjson.loads(remote_data)
+                remote_manifest = Manifest._from_data(remote_manifest_data)
+                logger.debug(f"Remote manifest loaded with {len(remote_manifest.entries)} entries")
             else:
                 warnings.append("No remote manifest found.")
-                remote_manifest = Manifest()
+                remote_manifest = Manifest(entries=OrderedDict())
+                logger.debug("No remote data received, using empty manifest")
         except Exception as e:
             warnings.append(f"Could not fetch remote manifest: {e}")
-            remote_manifest = Manifest()
+            remote_manifest = Manifest(entries=OrderedDict())
+            logger.debug(f"Remote manifest loading failed: {e}")
     else:
-        remote_manifest = Manifest()  # Empty manifest for 2-way comparison
+        remote_manifest = Manifest(entries=OrderedDict())  # Empty manifest for 2-way comparison
+        logger.debug("Skipping remote manifest (include_remote=False)")
     
     # Use ManifestMerger for comparison
+    logger.debug("Creating ManifestMerger...")
+    logger.debug(f"Local entries: {len(local_manifest.entries)}")
+    logger.debug(f"Cache entries: {len(cache_manifest.entries)}")
+    logger.debug(f"Remote entries: {len(remote_manifest.entries) if remote_manifest else 0}")
+    
     merger = ManifestMerger(local_manifest, cache_manifest, remote_manifest, config)
+    logger.debug("ManifestMerger created successfully")
+    logger.debug(f"Total sync states: {len(merger.get_sync_states())}")
     
     return SyncStatusResult(
         sync_states=merger.get_sync_states(),

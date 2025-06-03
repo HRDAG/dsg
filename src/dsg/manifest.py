@@ -89,24 +89,24 @@ class FileRef(BaseModel):
 
     def __eq__(self, other) -> bool:
         """
-        Two FileRef objects are equal if they have the same path and hash.
-        This ensures that files with same content are considered equal,
-        regardless of metadata differences.
-
-        Raises a ValueError if either object is missing a hash value,
-        as all files should have complete metadata at comparison time.
+        Two FileRef objects are equal if they have the same path and either:
+        1. Both have hashes and the hashes match, OR
+        2. Either is missing a hash and metadata matches (fallback to eq_shallow)
+        
+        This provides strict hash-based equality when possible while being practical
+        for comparisons during sync operations where hashes may not be computed yet.
         """
         if not isinstance(other, FileRef):
             return False
-
         if self.path != other.path:
             return False
-
-        # Ensure hashes exist - this is a strict requirement for equality checks
-        if not self.hash or not other.hash:
-            raise ValueError(f"Cannot compare FileRef objects with missing hash values: {self.path}")
-
-        return self.hash == other.hash
+        
+        # If both have hashes, use strict hash comparison
+        if self.hash and other.hash:
+            return self.hash == other.hash
+        
+        # If either is missing hash, fall back to metadata comparison
+        return self.eq_shallow(other)
 
 
 class LinkRef(BaseModel):
@@ -147,14 +147,9 @@ class LinkRef(BaseModel):
     def __eq__(self, other) -> bool:
         """
         Two LinkRef objects are equal if they have the same path and reference.
-        This matches the behavior of eq_shallow since links don't have hash values.
+        This already matches eq_shallow behavior since links don't have hash values.
         """
-        if not isinstance(other, LinkRef):
-            return False
-        return (
-            self.path == other.path and
-            self.reference == other.reference
-        )
+        return self.eq_shallow(other)
 
     @classmethod
     def _from_path(cls, full_path: Path, path: str, project_root: Path) -> LinkRef:

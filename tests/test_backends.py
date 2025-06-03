@@ -312,6 +312,85 @@ def test_localhost_backend_clone_no_manifest(tmp_path):
     assert not (dest_repo / ".dsg" / "last-sync.json").exists()
 
 
+def test_localhost_backend_clone_symlinks(tmp_path):
+    """Test that clone preserves symlinks instead of dereferencing them"""
+    import os
+    from collections import OrderedDict
+    from dsg.manifest import Manifest, LinkRef
+    
+    # Create source repository with test files and symlinks
+    source_repo = tmp_path / "source" / "test_repo"
+    source_dsg = source_repo / ".dsg"
+    source_dsg.mkdir(parents=True)
+    
+    # Create target file
+    target_dir = source_repo / "output"
+    target_dir.mkdir()
+    target_file = target_dir / "target.txt"
+    target_file.write_text("Target file content")
+    
+    # Create symlink that points to the target file
+    link_dir = source_repo / "input"
+    link_dir.mkdir()
+    link_file = link_dir / "link.txt"
+    
+    # Create relative symlink (as would be in manifest)
+    relative_target = "../output/target.txt"
+    os.symlink(relative_target, link_file)
+    
+    # Verify symlink was created correctly
+    assert link_file.is_symlink()
+    assert os.readlink(link_file) == relative_target
+    assert link_file.read_text() == "Target file content"  # Can read through symlink
+    
+    # Create manifest with both file and symlink
+    entries = OrderedDict()
+    entries["output/target.txt"] = Manifest.create_entry(target_file, source_repo)
+    entries["input/link.txt"] = Manifest.create_entry(link_file, source_repo)
+    
+    # Verify the symlink entry is correctly identified as LinkRef
+    link_entry = entries["input/link.txt"]
+    assert isinstance(link_entry, LinkRef)
+    assert link_entry.reference == relative_target
+    
+    manifest = Manifest(entries=entries)
+    manifest.generate_metadata(snapshot_id="test_snapshot", user_id="test@example.com")
+    
+    # Write last-sync.json
+    last_sync_path = source_dsg / "last-sync.json"
+    manifest.to_json(last_sync_path, include_metadata=True)
+    
+    # Create destination directory
+    dest_repo = tmp_path / "dest"
+    dest_repo.mkdir()
+    
+    # Test clone
+    backend = LocalhostBackend(source_repo.parent, source_repo.name)
+    backend.clone(dest_repo)
+    
+    # Verify .dsg directory was copied
+    assert (dest_repo / ".dsg").exists()
+    assert (dest_repo / ".dsg" / "last-sync.json").exists()
+    
+    # Verify target file was copied as regular file
+    dest_target = dest_repo / "output" / "target.txt"
+    assert dest_target.exists()
+    assert dest_target.is_file()
+    assert not dest_target.is_symlink()
+    assert dest_target.read_text() == "Target file content"
+    
+    # CRITICAL TEST: Verify symlink was preserved as symlink, not dereferenced
+    dest_link = dest_repo / "input" / "link.txt"
+    assert dest_link.exists()
+    
+    # This is the bug - currently this will fail because clone dereferences symlinks
+    assert dest_link.is_symlink(), f"Expected symlink but got regular file. os.readlink would fail."
+    assert os.readlink(dest_link) == relative_target, f"Symlink target incorrect"
+    
+    # Verify symlink still works (can read through it)
+    assert dest_link.read_text() == "Target file content"
+
+
 def test_localhost_backend_clone_errors(tmp_path):
     """Test clone error conditions"""
     # Create source repository

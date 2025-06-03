@@ -444,6 +444,58 @@ class TestManifestMergerEdgeCases:
         # Test directly calling _classify with a non-existent path
         assert merger._classify(impossible_path) == SyncState.sxLxCxR__none
 
+    def test_hash_comparison_fix_verification(self, test_config):
+        """
+        Test that verifies the fix for the hash mismatch issue in dsg-status-todo.md.
+        
+        This test confirms that ManifestMerger now works correctly when comparing
+        local FileRefs (which may not have hashes) with cache FileRefs (which do have hashes)
+        by using the new fallback behavior in FileRef.__eq__.
+        """
+        from datetime import datetime
+        from dsg.manifest import _dt
+        
+        # Create a FileRef with a hash (like from cache)
+        cache_file = FileRef(
+            type="file",
+            path="data/test.txt", 
+            filesize=100,
+            mtime=_dt(datetime.now(LA_TIMEZONE)),
+            hash="abc123def456"
+        )
+        
+        # Create a FileRef without a hash (like from local scan before hash computation)
+        local_file = FileRef(
+            type="file",
+            path="data/test.txt",
+            filesize=100, 
+            mtime=_dt(datetime.now(LA_TIMEZONE)),
+            hash=""  # No hash computed yet
+        )
+        
+        # Create manifests
+        local_manifest = Manifest(entries=OrderedDict({"data/test.txt": local_file}))
+        cache_manifest = Manifest(entries=OrderedDict({"data/test.txt": cache_file}))
+        remote_manifest = Manifest(entries=OrderedDict())
+        
+        # This should now work without raising ValueError
+        merger = ManifestMerger(
+            local=local_manifest,
+            cache=cache_manifest, 
+            remote=remote_manifest,
+            config=test_config
+        )
+        
+        # Verify the sync state is correctly determined
+        states = merger.get_sync_states()
+        # Since local and cache have same metadata but local is missing hash,
+        # they should be considered equal via eq_shallow fallback
+        assert states["data/test.txt"] == SyncState.sLCxR__L_eq_C
+        
+        # Direct equality test should also work now
+        assert local_file == cache_file  # Uses eq_shallow fallback
+        assert local_file.eq_shallow(cache_file) == True
+
 
 # These tests for LocalVsLastComparator were already commented out and are no longer needed
 # since the related code has been permanently removed from the source.

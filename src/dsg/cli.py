@@ -488,6 +488,7 @@ def list_files(
 def status(
     repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
     remote: bool = typer.Option(True, "--remote/--no-remote", help="Compare with remote manifest (default: True)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed debugging information"),
 ):
     """
     [bold green]Core Operations[/bold green]: Show sync status by comparing local files with last sync.
@@ -502,15 +503,27 @@ def status(
     Similar to 'git status' - shows what would be synced.
     """
     try:
-        config = validate_repository_command_prerequisites(console)
+        config = validate_repository_command_prerequisites(console, verbose=verbose)
         
         from dsg.operations import get_sync_status
         from dsg.display import display_sync_status
         
-        status_result = get_sync_status(config, include_remote=remote)
+        if verbose:
+            from dsg.logging_setup import enable_debug_logging
+            enable_debug_logging()
+            console.print(f"[dim]Project root: {config.project_root}[/dim]")
+            console.print(f"[dim]Cache manifest path: {config.project_root / '.dsg' / 'last-sync.json'}[/dim]")
+            console.print(f"[dim]Include remote: {remote}[/dim]")
+            console.print()
+        
+        status_result = get_sync_status(config, include_remote=remote, verbose=verbose)
         display_sync_status(console, status_result)
         
     except Exception as e:
+        if verbose:
+            import traceback
+            console.print(f"[red]Full error traceback:[/red]")
+            console.print(traceback.format_exc())
         handle_operation_error(console, "checking sync status", e)
 
 

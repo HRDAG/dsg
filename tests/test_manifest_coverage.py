@@ -64,13 +64,21 @@ class TestFileRefExtended:
         file_ref2 = FileRef(type="file", path="test2.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="abc123")
         assert (file_ref1 == file_ref2) is False
 
-    def test_fileref_eq_with_missing_hash(self):
-        """Test FileRef.__eq__ with missing hash raises ValueError."""
+    def test_fileref_eq_with_missing_hash_fallback(self):
+        """Test FileRef.__eq__ with missing hash falls back to eq_shallow comparison."""
         file_ref1 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="abc123")
         file_ref2 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="")
         
-        with pytest.raises(ValueError, match="Cannot compare FileRef objects with missing hash values"):
-            file_ref1 == file_ref2
+        # Should fallback to eq_shallow since file_ref2 has no hash
+        assert (file_ref1 == file_ref2) == True
+        
+        # Test with different metadata - should be False
+        file_ref3 = FileRef(type="file", path="test.txt", filesize=200, mtime="2025-05-10T12:00:00-07:00", hash="")
+        assert (file_ref1 == file_ref3) == False
+        
+        # Test with both having hashes - should use strict hash comparison
+        file_ref4 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="def456")
+        assert (file_ref1 == file_ref4) == False  # Different hashes
 
 # Tests for LinkRef class
 class TestLinkRefExtended:
