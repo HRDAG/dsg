@@ -235,14 +235,32 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
         modify_file_content, 
         regenerate_manifest,
         create_new_file,
-        delete_file
+        delete_file,
+        # Three-state manipulation helpers
+        modify_local_file,
+        create_local_file,
+        delete_local_file,
+        modify_cache_entry,
+        add_cache_entry,
+        remove_cache_entry,
+        regenerate_cache_from_current_local,
+        modify_remote_file,
+        create_remote_file,
+        delete_remote_file,
+        regenerate_remote_manifest,
+        # Illegal filename helpers
+        create_illegal_filename_examples,
+        create_local_file_with_illegal_name
     )
     
     setup = bb_local_remote_setup
     local_path = setup["local_path"]
+    remote_path = setup["remote_path"]
     local_config = setup["local_config"]
+    remote_config = setup["remote_config"]
+    last_sync_path = setup["last_sync_path"]
     
-    # Test modify_file_content
+    # Test basic file manipulation helpers
     test_file = local_path / "task1" / "import" / "input" / "some-data.csv"
     original_content = test_file.read_text()
     
@@ -264,5 +282,86 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
     delete_file(new_file_path)
     assert not new_file_path.exists()
     
-    # Restore original content
+    # Test three-state manipulation helpers
+    
+    # Test local state manipulation (L)
+    test_rel_path = "task1/import/input/test-local.csv"
+    modify_local_file(local_path, test_rel_path, "local,content\n1,local_value")
+    assert (local_path / test_rel_path).exists()
+    assert "local_value" in (local_path / test_rel_path).read_text()
+    
+    create_local_file(local_path, "task1/import/input/new-local.csv", "new,local\n1,created")
+    assert (local_path / "task1/import/input/new-local.csv").exists()
+    
+    delete_local_file(local_path, "task1/import/input/new-local.csv")
+    assert not (local_path / "task1/import/input/new-local.csv").exists()
+    
+    # Test remote state manipulation (R)
+    remote_rel_path = "task1/import/input/test-remote.csv"
+    modify_remote_file(remote_path, remote_rel_path, "remote,content\n1,remote_value")
+    assert (remote_path / remote_rel_path).exists()
+    assert "remote_value" in (remote_path / remote_rel_path).read_text()
+    
+    create_remote_file(remote_path, "task1/import/input/new-remote.csv", "new,remote\n1,created", remote_config)
+    assert (remote_path / "task1/import/input/new-remote.csv").exists()
+    
+    delete_remote_file(remote_path, "task1/import/input/new-remote.csv")
+    assert not (remote_path / "task1/import/input/new-remote.csv").exists()
+    
+    # Test cache manifest manipulation (C)
+    from dsg.manifest import Manifest
+    
+    # First ensure we have a cache manifest with current local files
+    regenerate_cache_from_current_local(local_config, last_sync_path)
+    
+    original_manifest = Manifest.from_json(last_sync_path)
+    original_entry_count = len(original_manifest.entries)
+    
+    # Test adding cache entry
+    test_mtime = "2022-01-01T00:00:00-08:00"
+    add_cache_entry(last_sync_path, "task1/import/input/cache-only.csv", "fake_hash_123", 100, test_mtime)
+    
+    modified_manifest = Manifest.from_json(last_sync_path)
+    assert len(modified_manifest.entries) == original_entry_count + 1
+    
+    # Find the added entry
+    cache_entry = modified_manifest.entries.get("task1/import/input/cache-only.csv")
+    
+    assert cache_entry is not None
+    assert cache_entry.hash == "fake_hash_123"
+    assert cache_entry.filesize == 100
+    
+    # Test modifying cache entry
+    new_mtime = "2022-01-01T00:05:00-08:00"
+    modify_cache_entry(last_sync_path, "task1/import/input/cache-only.csv", "modified_hash_456", new_mtime)
+    
+    updated_manifest = Manifest.from_json(last_sync_path)
+    updated_entry = updated_manifest.entries.get("task1/import/input/cache-only.csv")
+    
+    assert updated_entry is not None
+    assert updated_entry.hash == "modified_hash_456"
+    assert updated_entry.mtime == new_mtime
+    
+    # Test removing cache entry
+    remove_cache_entry(last_sync_path, "task1/import/input/cache-only.csv")
+    
+    final_manifest = Manifest.from_json(last_sync_path)
+    assert len(final_manifest.entries) == original_entry_count
+    
+    # Verify entry was removed
+    assert "task1/import/input/cache-only.csv" not in final_manifest.entries
+    
+    # Test illegal filename helpers
+    illegal_examples = create_illegal_filename_examples()
+    assert len(illegal_examples) > 0
+    assert "control_chars" in illegal_examples
+    assert "windows_illegal" in illegal_examples
+    
+    # Test creating illegal filename (may not work on all filesystems)
+    illegal_file = create_local_file_with_illegal_name(local_path, "test_file.csv", "illegal content")
+    # Note: This may return UNCREATABLE_ILLEGAL_FILE if filesystem doesn't allow the name
+    
+    # Cleanup: restore original content and remove test files
     modify_file_content(test_file, original_content)
+    delete_local_file(local_path, test_rel_path)
+    delete_remote_file(remote_path, remote_rel_path)
