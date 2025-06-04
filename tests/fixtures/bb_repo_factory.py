@@ -283,13 +283,8 @@ def bb_repo_structure():
     import atexit
     import shutil
 
-    # Use project's tmp directory instead of system tmp
-    project_root = Path("/workspace/dsg")
-    project_tmp = project_root / "tmp"
-    project_tmp.mkdir(exist_ok=True)
-
-    # Create unique directory for this test
-    bb_base = tempfile.mkdtemp(prefix="bb_repo_", dir=project_tmp)
+    # Use portable temporary directory creation that works in any environment
+    bb_base = tempfile.mkdtemp(prefix="bb_repo_")
     bb_path = Path(bb_base) / "BB"
     bb_path.mkdir()
 
@@ -773,7 +768,7 @@ def modify_remote_file(
         relative_path: str,
         new_content: str,
         remote_config: Config) -> None:
-    """Change file content in remote repository and update manifest (R state)."""
+    """Change file content in remote, update manifest (R state)."""
     file_path = remote_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(new_content)
