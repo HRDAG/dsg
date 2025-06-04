@@ -17,7 +17,10 @@ Creates a realistic repository structure with:
 - Local/remote repository pairs for testing
 
 
-  TODO: remove all extraneous comments, we don't need to describe what the code is doing.
+  TODO: remove all extraneous or obvious comments, we don't need to describe what the code is doing. comments are useful to say why but not what. 
+  TODO: reformat func defns to use one-line-per-arg
+  TODO: consolidate and organize import statements at top: be careful! some imports are literal in strings! keep those where they are.
+  TODO: remove unused imports
 
 """
 
@@ -610,12 +613,12 @@ def bb_local_remote_setup(bb_repo_with_config):
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     remote_scan_result = scan_directory(remote_config, compute_hashes=True)
 
-    # Create last-sync.json (cache manifest) 
+    # Create last-sync.json (cache manifest)
     last_sync_path = local_path / ".dsg" / "last-sync.json"
     local_scan_result.manifest.to_json(last_sync_path, include_metadata=True)
-    
+
     # Create remote last-sync.json (remote manifest) - CRITICAL for DSG functionality
-    remote_manifest_path = remote_base / ".dsg" / "last-sync.json" 
+    remote_manifest_path = remote_base / ".dsg" / "last-sync.json"
     remote_scan_result.manifest.to_json(remote_manifest_path, include_metadata=True)
 
     # If KEEP_TEST_DIR is set, display paths
@@ -712,7 +715,12 @@ def modify_cache_entry(cache_manifest_path: Path, relative_path: str, new_hash: 
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
-def add_cache_entry(cache_manifest_path: Path, relative_path: str, file_hash: str, file_size: int, mtime_str: str) -> None:
+def add_cache_entry(
+        cache_manifest_path: Path,
+        relative_path: str,
+        file_hash: str,
+        file_size: int,
+        mtime_str: str) -> None:
     """Add entry to cache manifest (.dsg/last-sync.json) (C state)."""
     import json
     from dsg.manifest import Manifest, FileRef
@@ -772,7 +780,7 @@ def modify_remote_file(
     file_path = remote_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(new_content)
-    
+
     # Immediately regenerate remote manifest to maintain state integrity
     remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
     new_manifest = regenerate_manifest(remote_config)
