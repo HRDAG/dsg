@@ -13,12 +13,43 @@ These tests validate that the status command runs without crashing
 and provides basic user-facing functionality.
 """
 
+import os
+import shutil
+from contextlib import contextmanager
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
-from pathlib import Path
 
 from dsg.cli import app
 from tests.fixtures.bb_repo_factory import bb_repo_structure
+
+
+@contextmanager
+def safe_chdir(path):
+    """
+    Context manager for safely changing directories.
+    
+    Handles the case where the current working directory no longer exists
+    (common in test environments with temporary directories).
+    """
+    old_cwd = None
+    try:
+        old_cwd = os.getcwd()
+    except FileNotFoundError:
+        # Current directory was deleted, use a safe fallback
+        old_cwd = str(Path.home())
+    
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        try:
+            if old_cwd:
+                os.chdir(old_cwd)
+        except (FileNotFoundError, OSError):
+            # If old_cwd no longer exists, change to a safe directory
+            os.chdir(Path.home())
 
 
 def test_status_command_basic_functionality(bb_repo_structure, tmp_path):
@@ -31,15 +62,10 @@ def test_status_command_basic_functionality(bb_repo_structure, tmp_path):
     
     # Create a test directory and copy the repo structure
     test_repo_path = tmp_path / "test_repo"
-    import shutil
-    import os
     shutil.copytree(local_path, test_repo_path)
     
-    # Change to the repository directory
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(test_repo_path)
-        
+    # Change to the repository directory using safe context manager
+    with safe_chdir(test_repo_path):
         # Run status command from within repository
         result = runner.invoke(app, ["status"])
         
@@ -49,10 +75,6 @@ def test_status_command_basic_functionality(bb_repo_structure, tmp_path):
         
         # Check that we got some output (even if it's an error message)
         assert len(result.stdout) > 0
-        
-    finally:
-        # Always restore original directory
-        os.chdir(old_cwd)
 
 
 def test_status_command_help():
