@@ -22,10 +22,52 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    ```
 
 3. **Run tests**
+
+   DSG has several types of tests with different performance characteristics:
+
+   **Quick unit tests (recommended for development):**
    ```bash
+   # Run all unit tests (excludes integration tests)
+   uv run pytest tests/ --ignore=tests/integration/
+   
+   # Run tests with coverage
+   uv run pytest tests/ --ignore=tests/integration/ --cov=src/dsg --cov-report=term-missing
+   ```
+
+   **All tests including integration (slower):**
+   ```bash
+   # Run everything including integration tests
    uv run pytest
-   # or with coverage
+   
+   # With coverage
    uv run pytest --cov=src/dsg tests/ --cov-report=term-missing
+   ```
+
+   **Integration tests only:**
+   ```bash
+   # Run only integration tests (these test real file operations and can be slower)
+   uv run pytest tests/integration/
+   ```
+
+   **Running specific tests:**
+   ```bash
+   # Run a specific test file
+   uv run pytest tests/test_filename_validation.py -v
+   
+   # Run a specific test function
+   uv run pytest tests/test_scanner.py::test_scan_directory -v
+   
+   # Run tests matching a pattern
+   uv run pytest -k "validation" -v
+   ```
+
+   **Test debugging with preserved directories:**
+   ```bash
+   # Preserve test directories for inspection (useful for debugging)
+   KEEP_TEST_DIR=1 uv run pytest tests/test_manifest_integration.py -v
+   
+   # For specific tests with custom temp directory
+   mkdir -p /tmp/dsg-debug && KEEP_TEST_DIR=1 TMPDIR=/tmp/dsg-debug uv run pytest tests/integration/ -v
    ```
 
 4. **Use the CLI**
@@ -79,31 +121,55 @@ A data versioning system based on Scott's `snap`. But generalized across backend
 
 Not implemented yet! hang on.
 
-## A few decisions
+## Testing Strategy
+
 * see `pyproject.toml` for project dependencies (managed with UV)
 * data objects to be shared will be pydantic classes for validation
 * we strive for 100% test coverage with pytest
 * integration tests are crucial! There are some here and more in [dsg-dummies](https://github.com/HRDAG/dsg-dummies)
 
-#### Reviewing Integration Tests
+### Test Categories
 
-To review the remote-local file integration tests, you can preserve the test directories by running:
+**Unit Tests (`tests/test_*.py`)**: Fast tests for individual modules and functions
+- Filename validation, configuration loading, manifest operations
+- Use mocked dependencies and temporary files
+- Run with: `uv run pytest tests/ --ignore=tests/integration/`
+
+**Integration Tests (`tests/integration/`)**: Slower tests that exercise real file operations
+- Full workflow testing with realistic repository structures
+- Test status, sync, and clone operations end-to-end
+- Use the comprehensive BB repository fixture from `tests/fixtures/bb_repo_factory.py`
+- Run with: `uv run pytest tests/integration/`
+
+**External Integration Tests**: In the [dsg-dummies](https://github.com/HRDAG/dsg-dummies) repository
+- Tests against real-world repository structures and scenarios
+- Performance testing with larger datasets
+
+### Debugging Integration Tests
+
+To preserve test directories for manual inspection:
 
 ```bash
-# Set a recognizable name for the temporary test directory
-PYTESTTMP=dsg-review-test
+# Basic test directory preservation
+KEEP_TEST_DIR=1 uv run pytest tests/test_manifest_integration.py::test_multiple_sync_states -v
 
-# Create the directory and run the test with the environment variables
-mkdir -p /tmp/$PYTESTTMP && PYTHONPATH=. KEEP_TEST_DIR=1 TMPDIR=/tmp/$PYTESTTMP pytest -v tests/test_manifest_integration.py::test_multiple_sync_states
+# With custom location and descriptive name
+PYTESTTMP=dsg-debug-session
+mkdir -p /tmp/$PYTESTTMP && KEEP_TEST_DIR=1 TMPDIR=/tmp/$PYTESTTMP uv run pytest tests/integration/ -v
 ```
 
-This will run the integration test and preserve the test directories. You can then examine the local and remote repositories at:
+When `KEEP_TEST_DIR=1` is set, test directories are preserved and their locations are printed:
 
 ```
-/tmp/dsg-review-test/pytest-of-<username>/pytest-*/test_multiple_sync_states*/local/tmpx
-/tmp/dsg-review-test/pytest-of-<username>/pytest-*/test_multiple_sync_states*/remote/tmpx
+/tmp/dsg-debug-session/pytest-of-<username>/pytest-*/test_name*/local/tmpx
+/tmp/dsg-debug-session/pytest-of-<username>/pytest-*/test_name*/remote/tmpx  
 ```
 
-These directories represent the local and remote repositories with their respective file states, allowing you to manually review the file changes and manifests.
+These directories contain the actual repository structures created during testing, including:
+- File contents and directory structures
+- DSG configuration files (`.dsgconfig.yml`, `.dsg/` directories)
+- Generated manifests and sync state files
+
+This is invaluable for debugging complex sync scenarios and understanding how DSG handles different file states.
 
 <!-- done -->
