@@ -15,17 +15,13 @@ Creates a realistic repository structure with:
 - Symlinks between tasks
 - Proper .dsg structure with manifests
 - Local/remote repository pairs for testing
-
-
-  TODO: remove all extraneous or obvious comments, we don't need to describe what the code is doing. comments are useful to say why but not what. 
-  TODO: reformat func defns to use one-line-per-arg
-  TODO: consolidate and organize import statements at top: be careful! some imports are literal in strings! keep those where they are.
-  TODO: remove unused imports
-
 """
 
+import atexit
+import json
 import os
 import shutil
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Dict, Any
@@ -36,7 +32,7 @@ from dsg.backends import LocalhostBackend
 from dsg.config_manager import (
     Config, ProjectConfig, SSHRepositoryConfig,
     ProjectSettings, IgnoreSettings, UserConfig)
-from dsg.manifest import Manifest
+from dsg.manifest import Manifest, FileRef
 from dsg.scanner import scan_directory
 
 
@@ -46,10 +42,7 @@ KEEP_TEST_DIR = os.environ.get("KEEP_TEST_DIR", "").lower() in ("1", "true", "ye
 
 def create_bb_file_content() -> Dict[str, str]:
     """Generate realistic file content for BB repository."""
-
     content = {}
-
-    # CSV files with realistic data
     content["some-data.csv"] = """id,name,category,value,date
 1,Alice Smith,analyst,85.2,2024-01-15
 2,Bob Johnson,researcher,92.7,2024-01-16
@@ -66,7 +59,6 @@ P004,Widget Delta,42.00,67
 P005,Widget Epsilon,29.99,123
 """
 
-    # Python script for import task
     content["script1.py"] = """#!/usr/bin/env python3
 # Data processing script for import task
 
@@ -99,7 +91,6 @@ if __name__ == "__main__":
     process_data()
 """
 
-    # R script for analysis task
     content["processor.R"] = """#!/usr/bin/env Rscript
 # Analysis processor for BB project
 
@@ -141,7 +132,6 @@ if (!interactive()) {
 }
 """
 
-    # YAML configuration
     content["config-data.yaml"] = """# Configuration for BB project
 project_name: "BB Analysis Pipeline"
 version: "1.0"
@@ -167,7 +157,6 @@ paths:
   temp_dir: "temp"
 """
 
-    # Makefiles
     content["import_makefile"] = """# Makefile for import task
 .PHONY: all clean check
 
@@ -208,20 +197,17 @@ clean:
 
 def create_binary_files(bb_path: Path) -> None:
     """Create mock binary files (H5 and Parquet) with realistic binary content."""
-
-    # Create mock HDF5 file
     h5_path = bb_path / "task1" / "import" / "output" / "combined-data.h5"
     h5_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create binary content that looks like HDF5 (starts with HDF5 signature)
     h5_content = (
-        b'\x89HDF\r\n\x1a\n'  # HDF5 signature
-        b'\x00\x00\x00\x00\x00\x08\x08\x00'  # Format signature
-        b'PEOPLE_DATA_MOCK' + b'\x00' * 100 +  # Mock people dataset
-        b'PRODUCTS_DATA_MOCK' + b'\x00' * 100 +  # Mock products dataset
-        b'created_by: BB Repository Factory\x00' +  # Mock attributes
+        b'\x89HDF\r\n\x1a\n'
+        b'\x00\x00\x00\x00\x00\x08\x08\x00'
+        b'PEOPLE_DATA_MOCK' + b'\x00' * 100 +
+        b'PRODUCTS_DATA_MOCK' + b'\x00' * 100 +
+        b'created_by: BB Repository Factory\x00' +
         b'version: 1.0\x00' +
-        b'\x00' * 500  # Padding to make it look substantial
+        b'\x00' * 500
     )
 
     h5_path.write_bytes(h5_content)
@@ -229,16 +215,15 @@ def create_binary_files(bb_path: Path) -> None:
     parquet_path = bb_path / "task1" / "analysis" / "output" / "result.parquet"
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create binary content that looks like Parquet (starts with PAR1 signature)
     parquet_content = (
-        b'PAR1' +  # Parquet signature
-        b'\x15\x00\x15\x6c\x15\x18' +  # Mock Parquet metadata
+        b'PAR1' +
+        b'\x15\x00\x15\x6c\x15\x18' +
         b'analysis_type\x00people_summary\x00product_summary\x00correlation_analysis\x00' +
         b'count\x00\x03\x00\x00\x00\x03\x00\x00\x00\x06\x00\x00\x00' +
-        b'score\x00\x00\x00\xab\x42\x00\x00\xb8\x42\x00\x00\x9c\x42' +  # Mock float data
+        b'score\x00\x00\x00\xab\x42\x00\x00\xb8\x42\x00\x00\x9c\x42' +
         b'timestamp\x002024-01-20T00:00:00\x00' * 3 +
-        b'\x00' * 300 +  # Padding
-        b'PAR1'  # Parquet footer signature
+        b'\x00' * 300 +
+        b'PAR1'
     )
 
     parquet_path.write_bytes(parquet_content)
@@ -246,15 +231,11 @@ def create_binary_files(bb_path: Path) -> None:
 
 def create_dsg_structure(bb_path: Path) -> None:
     """Create .dsg directory structure with archive and sync messages."""
-
     dsg_dir = bb_path / ".dsg"
     dsg_dir.mkdir(exist_ok=True)
 
-    # Create archive directory
     archive_dir = dsg_dir / "archive"
     archive_dir.mkdir(exist_ok=True)
-
-    # Create mock sync-messages.json
     sync_messages = {
         "format_version": "1.0",
         "messages": [
@@ -270,10 +251,8 @@ def create_dsg_structure(bb_path: Path) -> None:
 
     sync_messages_path = dsg_dir / "sync-messages.json"
     with open(sync_messages_path, 'w') as f:
-        import json
         json.dump(sync_messages, f, indent=2)
 
-    # Create mock compressed archive file (just touch it for now)
     archive_file = archive_dir / "s1-sync.json.lz4"
     archive_file.touch()
 
@@ -281,20 +260,11 @@ def create_dsg_structure(bb_path: Path) -> None:
 @pytest.fixture
 def bb_repo_structure():
     """Create comprehensive BB repository structure with realistic content."""
-    from pathlib import Path
-    import tempfile
-    import atexit
-    import shutil
-
-    # Use portable temporary directory creation that works in any environment
     bb_base = tempfile.mkdtemp(prefix="bb_repo_")
     bb_path = Path(bb_base) / "BB"
     bb_path.mkdir()
 
-    # Generate file content
     bb_repo_content = create_bb_file_content()
-
-    # Create directory structure
     directories = [
         "task1/import/input",
         "task1/import/src",
@@ -307,8 +277,6 @@ def bb_repo_structure():
 
     for dir_path in directories:
         (bb_path / dir_path).mkdir(parents=True, exist_ok=True)
-
-    # Create text files
     file_mappings = {
         "task1/import/input/some-data.csv": bb_repo_content["some-data.csv"],
         "task1/import/input/more-data.csv": bb_repo_content["more-data.csv"],
@@ -323,26 +291,19 @@ def bb_repo_structure():
         full_path = bb_path / file_path
         full_path.write_text(content)
 
-    # Make scripts executable
     (bb_path / "task1/import/src/script1.py").chmod(0o755)
     (bb_path / "task1/analysis/src/processor.R").chmod(0o755)
 
-    # Create binary files
     create_binary_files(bb_path)
 
-    # Create symlink from analysis/input to import/output
     symlink_target = "../../import/output/combined-data.h5"
     symlink_path = bb_path / "task1/analysis/input/combined-data.h5"
     symlink_path.symlink_to(symlink_target)
 
-    # Create .dsg structure
     create_dsg_structure(bb_path)
-
-    # Register cleanup function (but skip if KEEP_TEST_DIR is set)
     if not KEEP_TEST_DIR:
         atexit.register(lambda: shutil.rmtree(bb_base, ignore_errors=True))
 
-    # If KEEP_TEST_DIR is set, display the path
     if KEEP_TEST_DIR:
         test_info_path = Path(bb_base) / "BB_REPO_INFO.txt"
         with open(test_info_path, "w") as f:
@@ -359,12 +320,9 @@ def bb_repo_with_config(bb_repo_structure):
 
     bb_path = bb_repo_structure
 
-    # Use same base directory as the BB repo for remote
     bb_base = bb_path.parent
     remote_base = bb_base / "remote"
     remote_path = remote_base / "BB"
-
-    # Create .dsgconfig.yml for localhost backend
     config_dict = {
         "name": "BB",
         "transport": "ssh",
@@ -491,7 +449,6 @@ Use `dsg clone` to get the data files from the remote repository.
     (local_bb / "README.md").write_text(readme_content)
 
     # Generate proper manifest for remote
-    from dsg.config_manager import Config, UserConfig, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
 
     remote_project_config = ProjectConfig(
         name="BB",
@@ -524,7 +481,7 @@ Use `dsg clone` to get the data files from the remote repository.
     )
 
     # Scan remote and generate manifest
-    remote_scan_result = scan_directory(remote_config, compute_hashes=True)
+    remote_scan_result = scan_directory(remote_config, compute_hashes=True, include_dsg_files=False)
     remote_manifest_path = remote_bb / ".dsg" / "last-sync.json"
     remote_scan_result.manifest.to_json(remote_manifest_path, include_metadata=True)
 
@@ -610,8 +567,8 @@ def bb_local_remote_setup(bb_repo_with_config):
     )
 
     # Generate initial manifests
-    local_scan_result = scan_directory(local_config, compute_hashes=True)
-    remote_scan_result = scan_directory(remote_config, compute_hashes=True)
+    local_scan_result = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
+    remote_scan_result = scan_directory(remote_config, compute_hashes=True, include_dsg_files=False)
 
     # Create last-sync.json (cache manifest)
     last_sync_path = local_path / ".dsg" / "last-sync.json"
@@ -647,18 +604,22 @@ def bb_local_remote_setup(bb_repo_with_config):
     }
 
 
-def modify_file_content(file_path: Path, new_content: str) -> None:
+def modify_file_content(
+        file_path: Path,
+        new_content: str) -> None:
     """Helper to modify file content for state generation."""
     file_path.write_text(new_content)
 
 
 def regenerate_manifest(config: Config) -> Manifest:
     """Helper to regenerate manifest after file changes."""
-    scan_result = scan_directory(config, compute_hashes=True)
+    scan_result = scan_directory(config, compute_hashes=True, include_dsg_files=False)
     return scan_result.manifest
 
 
-def create_new_file(file_path: Path, content: str) -> None:
+def create_new_file(
+        file_path: Path,
+        content: str) -> None:
     """Helper to create new file for state generation."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
@@ -672,36 +633,42 @@ def delete_file(file_path: Path) -> None:
 
 # ---- Three-State Manipulation Helpers ----
 
-def modify_local_file(repo_path: Path, relative_path: str, new_content: str) -> None:
+def modify_local_file(
+        repo_path: Path,
+        relative_path: str,
+        new_content: str) -> None:
     """Change file content in the local working directory (L state)."""
     file_path = repo_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(new_content)
 
 
-def create_local_file(repo_path: Path, relative_path: str, content: str) -> None:
+def create_local_file(
+        repo_path: Path,
+        relative_path: str,
+        content: str) -> None:
     """Add new file to local working directory (L state)."""
     file_path = repo_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
 
 
-def delete_local_file(repo_path: Path, relative_path: str) -> None:
+def delete_local_file(
+        repo_path: Path,
+        relative_path: str) -> None:
     """Remove file from local working directory (L state)."""
     file_path = repo_path / relative_path
     if file_path.exists():
         file_path.unlink()
 
 
-def modify_cache_entry(cache_manifest_path: Path, relative_path: str, new_hash: str, new_mtime_str: str) -> None:
+def modify_cache_entry(
+        cache_manifest_path: Path,
+        relative_path: str,
+        new_hash: str,
+        new_mtime_str: str) -> None:
     """Change specific entry in cache manifest (.dsg/last-sync.json) (C state)."""
-    import json
-    from dsg.manifest import Manifest
-
-    # Load existing manifest
     manifest = Manifest.from_json(cache_manifest_path)
-
-    # Find and modify the entry
     if relative_path in manifest.entries:
         entry = manifest.entries[relative_path]
         if hasattr(entry, 'hash'):
@@ -711,7 +678,6 @@ def modify_cache_entry(cache_manifest_path: Path, relative_path: str, new_hash: 
     else:
         raise ValueError(f"Entry {relative_path} not found in cache manifest")
 
-    # Save modified manifest
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
@@ -722,13 +688,7 @@ def add_cache_entry(
         file_size: int,
         mtime_str: str) -> None:
     """Add entry to cache manifest (.dsg/last-sync.json) (C state)."""
-    import json
-    from dsg.manifest import Manifest, FileRef
-
-    # Load existing manifest
     manifest = Manifest.from_json(cache_manifest_path)
-
-    # Create new FileRef entry
     new_entry = FileRef(
         type="file",
         path=relative_path,
@@ -738,11 +698,9 @@ def add_cache_entry(
         hash=file_hash
     )
 
-    # Add to manifest (avoid duplicates)
     if relative_path not in manifest.entries:
         manifest.entries[relative_path] = new_entry
 
-    # Save modified manifest
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
@@ -750,16 +708,11 @@ def remove_cache_entry(
         cache_manifest_path: Path,
         relative_path: str) -> None:
     """Remove entry from cache manifest (.dsg/last-sync.json) (C state)."""
-    from dsg.manifest import Manifest
-
-    # Load existing manifest
     manifest = Manifest.from_json(cache_manifest_path)
 
-    # Remove the entry
     if relative_path in manifest.entries:
         del manifest.entries[relative_path]
 
-    # Save modified manifest
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
@@ -781,7 +734,6 @@ def modify_remote_file(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(new_content)
 
-    # Immediately regenerate remote manifest to maintain state integrity
     remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
     new_manifest = regenerate_manifest(remote_config)
     new_manifest.to_json(remote_manifest_path, include_metadata=True)
@@ -797,20 +749,23 @@ def create_remote_file(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(content)
 
-    # Immediately regenerate remote manifest to maintain state integrity
     remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
     new_manifest = regenerate_manifest(remote_config)
     new_manifest.to_json(remote_manifest_path, include_metadata=True)
 
 
-def delete_remote_file(remote_path: Path, relative_path: str) -> None:
+def delete_remote_file(
+        remote_path: Path,
+        relative_path: str) -> None:
     """Remove file from remote repository (R state)."""
     file_path = remote_path / relative_path
     if file_path.exists():
         file_path.unlink()
 
 
-def regenerate_remote_manifest(remote_config: Config, remote_manifest_path: Path) -> None:
+def regenerate_remote_manifest(
+        remote_config: Config,
+        remote_manifest_path: Path) -> None:
     """Update remote manifest after file changes (R state)."""
     new_manifest = regenerate_manifest(remote_config)
     new_manifest.to_json(remote_manifest_path, include_metadata=True)
