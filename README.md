@@ -21,6 +21,12 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    uv sync
    ```
 
+   **Optional: Set up development git hooks**
+   ```bash
+   # Install pre-commit hook to auto-update README CLI help
+   ./scripts/setup-hooks.sh
+   ```
+
 3. **Run tests**
 
    DSG has several types of tests with different performance characteristics:
