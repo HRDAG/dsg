@@ -65,7 +65,14 @@ DSG_DIR: Final = ".dsg"
 MANIFEST_FILE: Final = "last-sync.json"
 ```
 
-## Current Status (2025.06.02)
+## Current Status (2025.06.04)
+
+### ✅ COMPLETED WORK
+**Manifest API Cleanup** - eq_shallow() methods deprecated and removed:
+- Replaced all eq_shallow() usage with == operator throughout codebase
+- Inlined eq_shallow() logic directly into __eq__() methods
+- Simplified manifest entry API - developers now only use ==
+- All 435 tests pass, confirming successful refactoring
 
 ### 🔄 IN PROGRESS
 **CLI Error Handling Standardization** - Mixed patterns identified:
