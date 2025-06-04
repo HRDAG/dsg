@@ -509,7 +509,7 @@ def test_user_attribution_preservation(temp_repo_setup, manifest_setup):
     unmodified_files_checked = 0
     for path, entry in local_manifest.entries.items():
         if path != modified_file_rel_path and path in cache_manifest.entries:
-            if entry.eq_shallow(cache_manifest.entries[path]):
+            if entry == cache_manifest.entries[path]:
                 assert entry.user == user1.user_id, \
                     f"Unmodified file {path} should maintain user1 attribution"
                 unmodified_files_checked += 1

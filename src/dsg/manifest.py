@@ -73,25 +73,11 @@ class FileRef(BaseModel):
             type="file", path=path, filesize=stat_info.st_size, mtime=mtime_iso, hash=""
         )
 
-    def eq_shallow(self, other) -> bool:
-        """
-        Compare FileRef objects ignoring the hash value.
-        Used for situations where we want to check if metadata matches
-        but hash hasn't been computed yet.
-        """
-        if not isinstance(other, FileRef):
-            return False
-        return (
-            self.path == other.path and
-            self.filesize == other.filesize and
-            self.mtime == other.mtime
-        )
-
     def __eq__(self, other) -> bool:
         """
         Two FileRef objects are equal if they have the same path and either:
         1. Both have hashes and the hashes match, OR
-        2. Either is missing a hash and metadata matches (fallback to eq_shallow)
+        2. Either is missing a hash and metadata matches (fallback to metadata comparison)
         
         This provides strict hash-based equality when possible while being practical
         for comparisons during sync operations where hashes may not be computed yet.
@@ -106,7 +92,10 @@ class FileRef(BaseModel):
             return self.hash == other.hash
         
         # If either is missing hash, fall back to metadata comparison
-        return self.eq_shallow(other)
+        return (
+            self.filesize == other.filesize and
+            self.mtime == other.mtime
+        )
 
 
 class LinkRef(BaseModel):
@@ -132,10 +121,10 @@ class LinkRef(BaseModel):
             raise ValueError("Symlink target attempts to escape project directory")
         return v
 
-    def eq_shallow(self, other) -> bool:
+    def __eq__(self, other) -> bool:
         """
-        Compare LinkRef objects to see if they reference the same target.
-        Used for situations where we want to check if the symlink targets match.
+        Two LinkRef objects are equal if they have the same path and reference.
+        Links don't have hash values, so this is always a metadata comparison.
         """
         if not isinstance(other, LinkRef):
             return False
@@ -143,13 +132,6 @@ class LinkRef(BaseModel):
             self.path == other.path and
             self.reference == other.reference
         )
-
-    def __eq__(self, other) -> bool:
-        """
-        Two LinkRef objects are equal if they have the same path and reference.
-        This already matches eq_shallow behavior since links don't have hash values.
-        """
-        return self.eq_shallow(other)
 
     @classmethod
     def _from_path(cls, full_path: Path, path: str, project_root: Path) -> LinkRef:
@@ -333,7 +315,7 @@ class Manifest(BaseModel):
             other_entry = other_manifest.entries.get(path)
 
             # Try to recover attribution from matching entries
-            if other_entry and entry.eq_shallow(other_entry):
+            if other_entry and entry == other_entry:
                 entry.user = other_entry.user
                 if isinstance(entry, FileRef):
                     entry.hash = other_entry.hash

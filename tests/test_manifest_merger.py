@@ -293,7 +293,7 @@ class TestManifestMerger:
         assert states["data/local_cache_only.txt"] == SyncState.sLCxR__L_eq_C
         
         # For this test, we need to adjust our expectations due to hash differences
-        # Our eq_shallow method says these are equal, but hash comparison says they're not
+        # Metadata comparison says these are equal, but hash comparison says they're not
         assert states["data/local_remote_only.txt"] == SyncState.sLxCR__L_ne_R
         
         assert states["data/cache_remote_only.txt"] == SyncState.sxLCR__C_eq_R
@@ -319,7 +319,7 @@ class TestManifestMerger:
         assert states["data/local_cache_match.txt"] == SyncState.sLCR__L_eq_C_ne_R
         
         # Due to hash differences in the test fixture, we need to adjust expectations
-        # Our eq_shallow method says these are equal, but hash comparison says they're not
+        # Metadata comparison says these are equal, but hash comparison says they're not
         assert states["data/local_remote_match.txt"] == SyncState.sLCR__all_ne
         
         assert states["data/cache_remote_match.txt"] == SyncState.sLCR__C_eq_R_ne_L
@@ -335,7 +335,7 @@ class TestManifestMerger:
         logger.debug(f"Remote hash: {remote_entry.hash}")
         
         # Adjust expectations based on actual hash values in test fixture
-        assert states["data/all_different.txt"] == SyncState.sLCR__L_eq_C_ne_R
+        assert states["data/all_different.txt"] == SyncState.sLCR__all_ne
         
         # Verify "none" state is properly classified
         assert states["nonexistent/path.txt"] == SyncState.sxLxCxR__none
@@ -489,12 +489,11 @@ class TestManifestMergerEdgeCases:
         # Verify the sync state is correctly determined
         states = merger.get_sync_states()
         # Since local and cache have same metadata but local is missing hash,
-        # they should be considered equal via eq_shallow fallback
+        # they should be considered equal via metadata fallback
         assert states["data/test.txt"] == SyncState.sLCxR__L_eq_C
         
         # Direct equality test should also work now
-        assert local_file == cache_file  # Uses eq_shallow fallback
-        assert local_file.eq_shallow(cache_file) == True
+        assert local_file == cache_file  # Uses metadata fallback when hash missing
 
 
 # These tests for LocalVsLastComparator were already commented out and are no longer needed

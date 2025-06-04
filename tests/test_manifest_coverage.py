@@ -48,11 +48,6 @@ def non_nfc_file(tmp_path):
 
 # Tests for FileRef class
 class TestFileRefExtended:
-    def test_fileref_eq_shallow_with_non_fileref(self):
-        """Test FileRef.eq_shallow with non-FileRef object."""
-        file_ref = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00")
-        assert file_ref.eq_shallow("not a FileRef") is False
-
     def test_fileref_eq_with_non_fileref(self):
         """Test FileRef.__eq__ with non-FileRef object."""
         file_ref = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="abc123")
@@ -65,11 +60,11 @@ class TestFileRefExtended:
         assert (file_ref1 == file_ref2) is False
 
     def test_fileref_eq_with_missing_hash_fallback(self):
-        """Test FileRef.__eq__ with missing hash falls back to eq_shallow comparison."""
+        """Test FileRef.__eq__ with missing hash falls back to metadata comparison."""
         file_ref1 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="abc123")
         file_ref2 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="")
         
-        # Should fallback to eq_shallow since file_ref2 has no hash
+        # Should fallback to metadata comparison since file_ref2 has no hash
         assert (file_ref1 == file_ref2) == True
         
         # Test with different metadata - should be False
@@ -82,11 +77,6 @@ class TestFileRefExtended:
 
 # Tests for LinkRef class
 class TestLinkRefExtended:
-    def test_linkref_eq_shallow_with_non_linkref(self):
-        """Test LinkRef.eq_shallow with non-LinkRef object."""
-        link_ref = LinkRef(type="link", path="link.txt", reference="target.txt")
-        assert link_ref.eq_shallow("not a LinkRef") is False
-
     def test_linkref_eq_with_non_linkref(self):
         """Test LinkRef.__eq__ with non-LinkRef object."""
         link_ref = LinkRef(type="link", path="link.txt", reference="target.txt")
