@@ -298,7 +298,7 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
     
     # Test remote state manipulation (R)
     remote_rel_path = "task1/import/input/test-remote.csv"
-    modify_remote_file(remote_path, remote_rel_path, "remote,content\n1,remote_value")
+    modify_remote_file(remote_path, remote_rel_path, "remote,content\n1,remote_value", remote_config)
     assert (remote_path / remote_rel_path).exists()
     assert "remote_value" in (remote_path / remote_rel_path).read_text()
     

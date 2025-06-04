@@ -771,11 +771,17 @@ def regenerate_cache_from_current_local(
 def modify_remote_file(
         remote_path: Path,
         relative_path: str,
-        new_content: str) -> None:
-    """Change file content in remote repository (R state)."""
+        new_content: str,
+        remote_config: Config) -> None:
+    """Change file content in remote repository and update manifest (R state)."""
     file_path = remote_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(new_content)
+    
+    # Immediately regenerate remote manifest to maintain state integrity
+    remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
+    new_manifest = regenerate_manifest(remote_config)
+    new_manifest.to_json(remote_manifest_path, include_metadata=True)
 
 
 def create_remote_file(
