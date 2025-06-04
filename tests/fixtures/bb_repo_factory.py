@@ -315,6 +315,61 @@ def bb_repo_structure():
 
 
 @pytest.fixture
+def bb_repo_with_validation_issues(bb_repo_structure):
+    """BB repository with additional problematic directory paths for validation testing."""
+    bb_path = bb_repo_structure
+    
+    # Add problematic directory structures that should trigger validation warnings
+    problematic_files = {
+        "task2/import/project<illegal>/input/test-data.csv": "id,value\n1,100\n2,200\n",
+        "task2/analysis/CON/output/results.txt": "Analysis results here",
+        "task3/import/backup_dir~/input/archived.csv": "archived,data\n1,old\n2,data\n"
+    }
+    
+    # Create the problematic directories and files
+    for file_path, content in problematic_files.items():
+        full_path = bb_path / file_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(content)
+    
+    return bb_path
+
+
+@pytest.fixture 
+def bb_repo_with_validation_issues_and_config(bb_repo_with_validation_issues):
+    """BB repository with validation issues AND proper .dsgconfig.yml setup."""
+    bb_path = bb_repo_with_validation_issues
+    
+    # Add the same config as bb_repo_with_config
+    bb_base = bb_path.parent
+    remote_base = bb_base / "remote"
+    config_dict = {
+        "name": "BB",
+        "transport": "ssh", 
+        "ssh": {
+            "host": "localhost",
+            "path": str(remote_base),
+            "name": "BB",
+            "type": "xfs"
+        },
+        "project": {
+            "data_dirs": ["input", "output", "hand", "src"],
+            "ignore": {
+                "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
+                "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
+                "paths": []
+            }
+        }
+    }
+    
+    config_path = bb_path / ".dsgconfig.yml" 
+    with open(config_path, 'w') as f:
+        yaml.dump(config_dict, f, default_flow_style=False)
+    
+    return bb_path
+
+
+@pytest.fixture
 def bb_repo_with_config(bb_repo_structure):
     """BB repository with .dsgconfig.yml for localhost backend testing."""
 

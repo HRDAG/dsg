@@ -36,6 +36,7 @@ class ScanResult(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     manifest: Manifest
     ignored: list[str] = []
+    validation_warnings: list[dict[str, str]] = []
 
 
 def manifest_from_scan_result(scan_result: ScanResult) -> Manifest:
@@ -198,6 +199,7 @@ def _scan_directory_internal(
     """
     entries: OrderedDict[str, ManifestEntry] = OrderedDict()
     ignored: list[str] = []
+    validation_warnings: list[dict[str, str]] = []
 
     logger.debug(f"Scanning directory: {root_path}")
     logger.debug(f"Data directories: {data_dirs}")
@@ -240,6 +242,16 @@ def _scan_directory_internal(
             logger.debug("  Adding to ignored list")
             continue
 
+        # Check for filename validation issues before creating manifest entry
+        from dsg.filename_validation import validate_path
+        is_valid, validation_message = validate_path(str_path)
+        if not is_valid:
+            validation_warnings.append({
+                'path': str_path,
+                'message': validation_message
+            })
+            logger.debug(f"  Validation warning for {str_path}: {validation_message}")
+
         if entry := Manifest.create_entry(full_path, root_path, normalize_paths):
             # TODO: The create_entry method now validates paths and warns about invalid ones.
             # Consider collecting validation warnings for reporting to CLI commands.
@@ -265,7 +277,12 @@ def _scan_directory_internal(
         # else: create_entry returned None - should not happen  # pragma: no cover
 
     logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
-    return ScanResult(manifest=Manifest(entries=entries), ignored=ignored)
+    logger.debug(f"Found {len(validation_warnings)} validation warnings")
+    return ScanResult(
+        manifest=Manifest(entries=entries), 
+        ignored=ignored,
+        validation_warnings=validation_warnings
+    )
 
 
 def compute_hashes_for_manifest(manifest: Manifest, root_path: Path) -> None:

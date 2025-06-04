@@ -132,6 +132,13 @@ def get_sync_status(config: Config, include_remote: bool = True, verbose: bool =
     local_manifest = scan_result.manifest
     logger.debug(f"Local manifest loaded with {len(local_manifest.entries)} entries")
     
+    # Collect filename validation warnings from scan
+    if scan_result.validation_warnings:
+        for validation_warning in scan_result.validation_warnings:
+            warning_msg = f"Invalid filename '{validation_warning['path']}': {validation_warning['message']}"
+            warnings.append(warning_msg)
+        logger.debug(f"Added {len(scan_result.validation_warnings)} filename validation warnings")
+    
     # Load cache manifest (.dsg/last-sync.json)
     cache_path = config.project_root / ".dsg" / "last-sync.json"
     logger.debug(f"Loading cache manifest from: {cache_path}")
