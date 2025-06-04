@@ -615,9 +615,13 @@ def bb_local_remote_setup(bb_repo_with_config):
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     remote_scan_result = scan_directory(remote_config, compute_hashes=True)
 
-    # Create last-sync.json (cache manifest)
+    # Create last-sync.json (cache manifest) 
     last_sync_path = local_path / ".dsg" / "last-sync.json"
     local_scan_result.manifest.to_json(last_sync_path, include_metadata=True)
+    
+    # Create remote last-sync.json (remote manifest) - CRITICAL for DSG functionality
+    remote_manifest_path = remote_base / ".dsg" / "last-sync.json" 
+    remote_scan_result.manifest.to_json(remote_manifest_path, include_metadata=True)
 
     # If KEEP_TEST_DIR is set, display paths
     if KEEP_TEST_DIR:
@@ -739,7 +743,9 @@ def add_cache_entry(cache_manifest_path: Path, relative_path: str, file_hash: st
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
-def remove_cache_entry(cache_manifest_path: Path, relative_path: str) -> None:
+def remove_cache_entry(
+        cache_manifest_path: Path,
+        relative_path: str) -> None:
     """Remove entry from cache manifest (.dsg/last-sync.json) (C state)."""
     from dsg.manifest import Manifest
 
@@ -754,13 +760,18 @@ def remove_cache_entry(cache_manifest_path: Path, relative_path: str) -> None:
     manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
-def regenerate_cache_from_current_local(local_config: Config, cache_manifest_path: Path) -> None:
+def regenerate_cache_from_current_local(
+        local_config: Config,
+        cache_manifest_path: Path) -> None:
     """Reset cache manifest to match current local files (C state)."""
     new_manifest = regenerate_manifest(local_config)
     new_manifest.to_json(cache_manifest_path, include_metadata=True)
 
 
-def modify_remote_file(remote_path: Path, relative_path: str, new_content: str) -> None:
+def modify_remote_file(
+        remote_path: Path,
+        relative_path: str,
+        new_content: str) -> None:
     """Change file content in remote repository (R state)."""
     file_path = remote_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)

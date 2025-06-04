@@ -365,3 +365,30 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
     modify_file_content(test_file, original_content)
     delete_local_file(local_path, test_rel_path)
     delete_remote_file(remote_path, remote_rel_path)
+
+
+def test_bb_local_remote_manifests_exist(bb_local_remote_setup):
+    """Test that both local and remote repositories have manifest files."""
+    setup = bb_local_remote_setup
+    local_path = setup["local_path"]
+    remote_path = setup["remote_path"]
+    
+    # Verify local manifest exists (cache)
+    local_manifest_path = local_path / ".dsg" / "last-sync.json"
+    assert local_manifest_path.exists(), "Local .dsg/last-sync.json must exist"
+    
+    # Verify remote manifest exists - CRITICAL for DSG functionality
+    remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
+    assert remote_manifest_path.exists(), "Remote .dsg/last-sync.json must exist"
+    
+    # Verify both manifests can be loaded
+    from dsg.manifest import Manifest
+    
+    local_manifest = Manifest.from_json(local_manifest_path)
+    assert len(local_manifest.entries) > 0, "Local manifest should contain entries"
+    
+    remote_manifest = Manifest.from_json(remote_manifest_path) 
+    assert len(remote_manifest.entries) > 0, "Remote manifest should contain entries"
+    
+    # Since bb_local_remote_setup creates identical local/remote, manifests should match
+    assert len(local_manifest.entries) == len(remote_manifest.entries), "Local and remote should have same number of entries initially"
