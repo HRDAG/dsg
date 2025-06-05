@@ -28,6 +28,7 @@ from dsg.cli_utils import (
     handle_operation_error
 )
 from dsg.config_manager import load_repository_discovery_config, Config, validate_config as validate_config_func
+from dsg.operations import sync_repository
 
 
 class CloneProgressReporter:
@@ -535,6 +536,7 @@ def sync(  # pragma: no cover
     message: Optional[str] = typer.Option(None, "-m", "--message", help="Sync message describing changes"),
     exclude_once: Optional[list[str]] = typer.Option(None, "--exclude-once", help="Temporarily exclude paths (this sync only)"),
     no_normalize: bool = typer.Option(False, "--no-normalize", help="Skip automatic path normalization"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed debugging information"),
 ):
     """
     [bold green]Core Operations[/bold green]: Synchronize local files with remote repository.
@@ -557,31 +559,28 @@ def sync(  # pragma: no cover
 
     If conflicts occur, writes to .dsg/conflicts.json for resolution.
     """
-    # TODO: Implement sync command
-    # 1. Load backend from config (create_backend(config))
-    # 2. Check backend accessibility
-    # 3. Fetch remote manifest from backend.read_file('.dsg/last-sync.json')
-    # 4. Load local manifest (current scan) and cache (.dsg/last-sync.json)
-    # 5. Use ManifestMerger to determine sync states for each file
-    # 6. TODO: Check for invalid paths and handle based on options:
-    #    - If invalid paths found and not --normalize: abort with error message
-    #    - If --normalize: attempt to normalize invalid paths before sync
-    #    - Show warning/error messages for paths that cannot be normalized
-    # 7. If --dry-run: display planned operations and exit
-    # 8. Check for conflicts:
-    #    - If conflicts and not --force: write .dsg/conflicts.json and exit
-    #    - If --continue: read .dsg/conflicts.json for resolutions
-    # 9. If no message provided, prompt user for sync message
-    # 10. Execute sync operations based on SyncState:
-    #    - Upload: backend.copy_file() for local changes
-    #    - Download: backend.read_file() and write locally
-    #    - Delete: remove local files or mark for backend deletion
-    # 11. Generate sync-hash for merged manifest (TODO: add to Manifest class)
-    # 12. Update .dsg/last-sync.json locally and on backend
-    # 13. Archive old manifest in .dsg/archive/{timestamp}-{hash}.json.gz
-    # 14. Update .dsg/sync-messages.json with sync metadata and message
-    # 15. Verify local and remote .dsg/last-sync.json are identical
-    raise NotImplementedError("The sync command has not been implemented yet")
+    try:
+        config = validate_repository_command_prerequisites(console, verbose=verbose)
+        
+        if verbose:
+            from dsg.logging_setup import enable_debug_logging
+            enable_debug_logging()
+            console.print(f"[dim]Project root: {config.project_root}[/dim]")
+            console.print(f"[dim]Dry run: {dry_run}[/dim]")
+            console.print(f"[dim]No normalize: {no_normalize}[/dim]")
+            console.print()
+        
+        sync_repository(config, dry_run=dry_run, no_normalize=no_normalize)
+        
+        if not dry_run:
+            console.print("[green]✓[/green] Sync completed successfully")
+        
+    except Exception as e:
+        if verbose:
+            import traceback
+            console.print(f"[red]Full error traceback:[/red]")
+            console.print(traceback.format_exc())
+        handle_operation_error(console, "syncing repository", e)
 
 
 @app.command()

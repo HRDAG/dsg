@@ -212,4 +212,131 @@ def get_sync_status(config: Config, include_remote: bool = True, verbose: bool =
     )
 
 
+def sync_repository(config: Config, dry_run: bool = False, no_normalize: bool = False) -> None:
+    """
+    Synchronize local files with remote repository.
+    
+    Phase 1 implementation: validation blocking only.
+    
+    Args:
+        config: Loaded project configuration
+        dry_run: If True, show what would be done without syncing
+        no_normalize: If True, block on validation warnings instead of normalizing
+    
+    Raises:
+        ValueError: If validation warnings exist and no_normalize=True
+    """
+    logger.debug(f"Starting sync_repository with dry_run={dry_run}, no_normalize={no_normalize}")
+    
+    # Step 1: Scan local directory to check for validation warnings
+    logger.debug("Scanning local directory for validation warnings...")
+    scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
+    
+    # Step 2: Check for validation warnings and block if needed
+    if scan_result.validation_warnings:
+        logger.debug(f"Found {len(scan_result.validation_warnings)} validation warnings")
+        if no_normalize:
+            # Block sync - user must fix validation issues first
+            warning_paths = [w['path'] for w in scan_result.validation_warnings]
+            raise ValueError(
+                f"Sync blocked: {len(scan_result.validation_warnings)} files have validation issues. "
+                f"Use --normalize to fix automatically or manually fix these paths: {warning_paths[:3]}..."
+            )
+        else:
+            # Attempt to normalize validation issues
+            logger.debug("Attempting to normalize validation issues...")
+            try:
+                _normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
+                
+                # Re-scan to verify normalization worked
+                logger.debug("Re-scanning after normalization...")
+                scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
+                
+                if scan_result.validation_warnings:
+                    # Some issues couldn't be fixed
+                    warning_paths = [w['path'] for w in scan_result.validation_warnings]
+                    raise ValueError(
+                        f"Normalization failed: {len(scan_result.validation_warnings)} files still have validation issues. "
+                        f"Please manually fix these paths: {warning_paths[:3]}..."
+                    )
+                
+                logger.debug("Normalization completed successfully")
+            except Exception as e:
+                raise ValueError(f"Normalization failed: {e}")
+    
+    logger.debug("No validation warnings found, sync can proceed")
+    
+    # TODO: Implement actual sync operations
+    raise NotImplementedError("Sync operations not yet implemented")
+
+
+def _normalize_problematic_paths(project_root: Path, validation_warnings: list[dict[str, str]]) -> None:
+    """
+    Normalize paths that have validation issues.
+    
+    This function handles common validation problems by renaming files/directories:
+    - Removes trailing ~ from backup directory names
+    - Replaces illegal characters like < > with safe alternatives
+    - Renames Windows reserved names (CON, PRN, etc.)
+    
+    Args:
+        project_root: Root directory of the project
+        validation_warnings: List of validation warning dicts with 'path' and 'message' keys
+    """
+    import re
+    import os
+    
+    for warning in validation_warnings:
+        path_str = warning['path']
+        message = warning['message']
+        
+        full_path = project_root / path_str
+        logger.debug(f"Normalizing path: {path_str} (issue: {message})")
+        
+        # Parse the path to find the problematic component
+        path_parts = Path(path_str).parts
+        new_parts = []
+        needs_rename = False
+        
+        for part in path_parts:
+            new_part = part
+            
+            # Handle different types of validation issues
+            if "backup" in message.lower() and part.endswith('~'):
+                # Remove trailing ~
+                new_part = part.rstrip('~')
+                needs_rename = True
+                logger.debug(f"Removing backup suffix: {part} -> {new_part}")
+                
+            elif "illegal characters" in message.lower() and '<' in part:
+                # Replace illegal characters
+                new_part = re.sub(r'[<>"|?*]', '_', part)
+                needs_rename = True
+                logger.debug(f"Replacing illegal characters: {part} -> {new_part}")
+                
+            elif "reserved name" in message.lower() and part.upper() in ['CON', 'PRN', 'AUX', 'NUL']:
+                # Rename Windows reserved names
+                new_part = f"{part}_renamed"
+                needs_rename = True
+                logger.debug(f"Renaming reserved name: {part} -> {new_part}")
+            
+            new_parts.append(new_part)
+        
+        if needs_rename:
+            # Build new path
+            new_path_str = str(Path(*new_parts))
+            new_full_path = project_root / new_path_str
+            
+            # Ensure parent directory exists
+            new_full_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Rename the file/directory
+            logger.debug(f"Renaming: {full_path} -> {new_full_path}")
+            if full_path.exists():
+                os.rename(str(full_path), str(new_full_path))
+                logger.debug(f"Successfully renamed {path_str} to {new_path_str}")
+            else:
+                logger.warning(f"Path not found for renaming: {full_path}")
+
+
 # done.
