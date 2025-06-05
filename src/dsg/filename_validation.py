@@ -81,6 +81,120 @@ def normalize_path(path: Path) -> tuple[Path, bool]:
     return path, False
 
 
+def fix_structural_probs(path: Path) -> tuple[Path, bool]:
+    """
+    Fix structural path problems that validate_path() detects.
+    
+    Handles:
+    - Windows reserved names (CON, PRN, etc.) -> add "_renamed" suffix
+    - Backup file patterns (ending with ~) -> remove trailing ~
+    - Illegal characters (<, >, etc.) -> replace with _
+    
+    Args:
+        path: Path object to fix
+        
+    Returns:
+        Tuple of (fixed_path, was_modified)
+    """
+    was_modified = False
+    fixed_parts = []
+    
+    for part in path.parts:
+        fixed_part = part
+        
+        # Handle Windows reserved names
+        if part.lower() in _WINDOWS_RESERVED_NAMES:
+            fixed_part = f"{part}_renamed"
+            was_modified = True
+            
+        # Handle backup file patterns (ending with ~)
+        elif part.endswith('~'):
+            fixed_part = part.rstrip('~')
+            was_modified = True
+            
+        # Handle illegal characters
+        elif any(char in part for char in _ILLEGAL_CHARS):
+            # Replace illegal characters with underscore
+            import re
+            fixed_part = re.sub(r'[<>"|\?\*\x00-\x1f]', '_', part)
+            was_modified = True
+            
+        fixed_parts.append(fixed_part)
+    
+    if was_modified:
+        if path.is_absolute():
+            fixed_path = Path(*fixed_parts)
+        else:
+            fixed_path = Path(*fixed_parts)
+        return fixed_path, True
+    
+    return path, False
+
+
+def fix_problematic_path(path: Path) -> tuple[Path, bool]:
+    """
+    Complete path normalization: handles both Unicode and structural problems.
+    
+    This is the main function that should be used for normalizing problematic paths.
+    It combines Unicode NFC normalization with structural problem fixes, and 
+    actually renames directories on disk when needed.
+    
+    Args:
+        path: Path object to normalize and fix
+        
+    Returns:
+        Tuple of (fixed_path, was_modified)
+    """
+    # First apply Unicode NFC normalization
+    normalized_path, nfc_modified = normalize_path(path)
+    
+    # Then fix structural problems and rename directories if needed
+    fixed_path, struct_modified = fix_structural_probs(normalized_path)
+    
+    # If structural changes were needed, rename the actual directories on disk
+    if struct_modified and path.exists():
+        _rename_directories_for_structural_fixes(path, fixed_path)
+    
+    # Return the final path and whether any changes were made
+    return fixed_path, (nfc_modified or struct_modified)
+
+
+def _rename_directories_for_structural_fixes(original_path: Path, fixed_path: Path) -> None:
+    """
+    Rename directories on disk to match the structural fixes.
+    
+    Walks up the path components and renames any directories that need fixing.
+    """
+    original_parts = original_path.parts
+    fixed_parts = fixed_path.parts
+    
+    # Find the first component that changed
+    for i, (orig_part, fixed_part) in enumerate(zip(original_parts, fixed_parts)):
+        if orig_part != fixed_part:
+            # Found the problematic directory component
+            # Build the path to this directory
+            if original_path.is_absolute():
+                dir_path = Path(*original_parts[:i+1])
+                fixed_dir_path = Path(*fixed_parts[:i+1])
+            else:
+                dir_path = Path(*original_parts[:i+1])
+                fixed_dir_path = Path(*fixed_parts[:i+1])
+            
+            # Only rename if the directory exists and the target doesn't
+            if dir_path.exists() and not fixed_dir_path.exists():
+                try:
+                    # Ensure parent directory exists
+                    fixed_dir_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Rename the directory
+                    dir_path.rename(fixed_dir_path)
+                    break  # Stop after first rename - the rest will be handled recursively
+                    
+                except Exception as e:
+                    # If rename fails, that's ok - the caller will handle it
+                    pass
+
+
 def validate_path(path_str) -> tuple[bool, str]:
     """
     Validate a path string with:

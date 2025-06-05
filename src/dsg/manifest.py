@@ -78,7 +78,7 @@ class FileRef(BaseModel):
         Two FileRef objects are equal if they have the same path and either:
         1. Both have hashes and the hashes match, OR
         2. Either is missing a hash and metadata matches (fallback to metadata comparison)
-        
+
         This provides strict hash-based equality when possible while being practical
         for comparisons during sync operations where hashes may not be computed yet.
         """
@@ -86,11 +86,11 @@ class FileRef(BaseModel):
             return False
         if self.path != other.path:
             return False
-        
+
         # If both have hashes, use strict hash comparison
         if self.hash and other.hash:
             return self.hash == other.hash
-        
+
         # If either is missing hash, fall back to metadata comparison
         return (
             self.filesize == other.filesize and
@@ -248,7 +248,7 @@ class Manifest(BaseModel):
             # This case primarily occurs on macOS HFS+/APFS filesystems
             logger.info(f"Path {full_path} and {normalized_full_path} both exist - using NFC form for manifest")  # pragma: no cover
             return normalized_full_path, normalized_rel_path, True  # pragma: no cover
-        
+
         # Try to rename the file to the normalized form
         try:
             # Ensure parent directory exists
@@ -404,16 +404,25 @@ class Manifest(BaseModel):
         json_bytes = file_path.read_bytes()
         data = orjson.loads(json_bytes)
         return cls._from_data(data)
-    
+
+    @classmethod
+    def from_bytes(cls, json_bytes: bytes) -> Manifest:
+        """Load manifest from JSON bytes (e.g., from network/backend)"""
+        data = orjson.loads(json_bytes)
+        return cls._from_data(data)
+
     @classmethod
     def from_compressed(cls, file_path: Path) -> Manifest:
         """Load manifest from a compressed file (.gz or .lz4)"""
+        # FIXME: we will never, never need gzip. remove it from
+        # the docstring, the importa, and the if
         import gzip
-        
+
         if file_path.suffix == '.gz':
             with gzip.open(file_path, 'rb') as f:
                 data = orjson.loads(f.read())
         elif file_path.suffix == '.lz4':
+            # FIXME: move import to the top
             import lz4.frame
             with open(file_path, 'rb') as f:
                 compressed_data = f.read()
@@ -421,9 +430,9 @@ class Manifest(BaseModel):
                 data = orjson.loads(decompressed_data)
         else:
             raise ValueError(f"Unsupported compression format: {file_path.suffix}")
-        
+
         return cls._from_data(data)
-    
+
     @classmethod
     def _from_data(cls, data: dict) -> Manifest:
         """Create manifest from parsed JSON data"""
@@ -495,8 +504,10 @@ class Manifest(BaseModel):
         return True
 
     def generate_metadata(
-        self, snapshot_id: str = "", user_id: Optional[str] = None, timestamp: Optional[datetime] = None
-    ) -> None:
+            self,
+            snapshot_id: str = "",
+            user_id: Optional[str] = None,
+            timestamp: Optional[datetime] = None) -> None:
         """Generate metadata for this manifest"""
         self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp)
 

@@ -336,6 +336,40 @@ class TestManifest:
             elif entry.type == "link":
                 assert loaded_entry.reference == entry.reference
 
+    def test_from_bytes(self, sample_manifest, test_project_dir):
+        """Test loading manifest from JSON bytes (e.g., from network/backend)"""
+        manifest_file = test_project_dir["manifest_dir"] / "manifest_for_bytes.json"
+
+        # Save manifest to JSON first
+        sample_manifest.to_json(manifest_file)
+
+        # Read the JSON bytes
+        json_bytes = manifest_file.read_bytes()
+
+        # Load manifest from bytes
+        loaded_manifest = Manifest.from_bytes(json_bytes)
+
+        # Verify contents match original
+        assert loaded_manifest.metadata is not None
+        assert loaded_manifest.metadata.snapshot_id == "test_snapshot"
+        assert loaded_manifest.metadata.created_by == "test_user"
+        assert loaded_manifest.metadata.entry_count == len(sample_manifest.entries)
+        assert loaded_manifest.metadata.entries_hash == sample_manifest.metadata.entries_hash
+
+        # Verify entries
+        assert len(loaded_manifest.entries) == len(sample_manifest.entries)
+        for path, entry in sample_manifest.entries.items():
+            assert path in loaded_manifest.entries
+            loaded_entry = loaded_manifest.entries[path]
+            assert loaded_entry.type == entry.type
+            assert loaded_entry.path == entry.path
+
+            if entry.type == "file":
+                assert loaded_entry.filesize == entry.filesize
+                assert loaded_entry.mtime == entry.mtime
+            elif entry.type == "link":
+                assert loaded_entry.reference == entry.reference
+
     def test_from_json_with_invalid_entries(self, test_project_dir):
         """Test loading manifest with invalid entries"""
         manifest_file = test_project_dir["manifest_dir"] / "invalid_manifest.json"

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 from rich.table import Table
 from rich.console import Console
+from rich.panel import Panel
 import humanize
 from dsg.manifest import Manifest
 from dsg.repository_discovery import RepositoryInfo
@@ -359,6 +360,80 @@ def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_p
     console.print(table)
 
 
+def format_validation_warnings(warnings: List[str]) -> Panel:
+    """Format validation warnings as a Rich Panel with suggestions."""
+    if not warnings:
+        return None
+    
+    # Parse validation warnings to extract problematic paths and suggest fixes
+    problem_files = []
+    for warning in warnings:
+        # Extract filename from warning message format: "Invalid filename 'path': message"
+        if "Invalid filename '" in warning:
+            # Find the path between quotes
+            start = warning.find("'") + 1
+            end = warning.find("'", start)
+            if start > 0 and end > start:
+                path = warning[start:end]
+                
+                # Generate suggestion based on common patterns
+                suggestion = _suggest_filename_fix(path)
+                problem_files.append(f"• {path} → Use: {suggestion}")
+    
+    if not problem_files:
+        # Fallback for warnings that don't match expected format
+        problem_files = [f"• {warning}" for warning in warnings]
+    
+    # Build panel content
+    count = len(warnings)
+    file_word = "file" if count == 1 else "files"
+    
+    content_lines = [
+        f"⚠️  {count} {file_word} have naming issues that may cause problems:",
+        "",
+    ]
+    content_lines.extend(problem_files)
+    content_lines.extend([
+        "",
+        "💡 Run 'dsg sync' to auto-fix, or 'dsg sync --dry-run'",
+        "   to preview changes"
+    ])
+    
+    content = "\n".join(content_lines)
+    
+    return Panel(
+        content,
+        title="Validation Warnings",
+        border_style="yellow",
+        padding=(1, 2)
+    )
+
+
+def _suggest_filename_fix(path: str) -> str:
+    """Suggest a fixed filename for validation issues."""
+    import re
+    
+    # Remove trailing slash for processing, add back at end
+    has_trailing_slash = path.endswith('/')
+    clean_path = path.rstrip('/')
+    
+    if clean_path.endswith('~'):
+        suggestion = clean_path.rstrip('~')
+    elif '<' in clean_path or '>' in clean_path:
+        suggestion = re.sub(r'[<>]', '_', clean_path)
+    elif clean_path.upper() in ('CON', 'PRN', 'AUX', 'NUL'):
+        suggestion = clean_path + "_renamed"
+    else:
+        # Generic fix - replace problematic characters
+        suggestion = re.sub(r'[^\w\-_.]', '_', clean_path)
+    
+    # Add trailing slash back if original had it
+    if has_trailing_slash:
+        suggestion += "/"
+    
+    return suggestion
+
+
 def display_sync_status(console: Console, status_result) -> None:
     """Display sync status results in user-friendly format."""
     from dsg.operations import SyncStatusResult
@@ -369,12 +444,12 @@ def display_sync_status(console: Console, status_result) -> None:
         console.print("[red]Error: Invalid status result[/red]")
         return
     
-    # Show warnings first
-    for warning in status_result.warnings:
-        console.print(f"[yellow]Warning: {warning}[/yellow]")
-    
+    # Show validation warnings in Rich Panel format
     if status_result.warnings:
-        console.print()
+        warnings_panel = format_validation_warnings(status_result.warnings)
+        if warnings_panel:
+            console.print(warnings_panel)
+            console.print()
     
     # Group files by category
     local_changes = []
@@ -443,6 +518,63 @@ def display_sync_status(console: Console, status_result) -> None:
             console.print("Run 'dsg sync' to synchronize changes")
         else:
             console.print("Resolve conflicts before syncing")
+
+
+def display_sync_dry_run_preview(console: Console) -> None:
+    """Display what operations would be performed in a dry-run sync."""
+    console.print("\n[bold green]Dry Run Preview[/bold green]")
+    console.print("The following operations would be performed:\n")
+    
+    console.print("• Scan local files for changes")
+    console.print("• Compare with last sync state")
+    console.print("• Generate sync operations")
+    console.print("• Apply file operations")
+    
+    console.print(f"\n[dim]Note: No actual changes made in dry-run mode[/dim]")
+
+
+def display_normalization_preview(console: Console, normalization_results: list[dict[str, str]]) -> None:
+    """Display preview of normalization results (pure presentation, no business logic)."""
+    
+    if not normalization_results:
+        return
+    
+    # Build preview content from pre-computed results
+    preview_lines = [
+        "[bold yellow]Normalization Preview[/bold yellow]",
+        "",
+        f"Found {len(normalization_results)} problematic paths detected by scanner:",
+        ""
+    ]
+    
+    renames_count = 0
+    for result in normalization_results:
+        if result['status'] == 'not_found':
+            preview_lines.append(f"• [yellow]{result['original']}[/yellow] (path not found)")
+        elif result['status'] == 'can_fix':
+            preview_lines.append(f"• [red]{result['original']}[/red] → [green]{result['fixed']}[/green]")
+            renames_count += 1
+        elif result['status'] == 'cannot_fix':
+            preview_lines.append(f"• [yellow]{result['original']}[/yellow] (no normalization available)")
+    
+    if renames_count == 0:
+        preview_lines[2] = f"Found {len(normalization_results)} problematic paths, but normalize_path() cannot fix them:"
+    
+    preview_lines.extend([
+        "",
+        "[dim]Run 'dsg sync' to apply these changes[/dim]"
+    ])
+    
+    content = "\n".join(preview_lines)
+    
+    panel = Panel(
+        content,
+        title="Dry Run - File Normalization (UNIFIED Logic)",
+        border_style="blue",
+        padding=(1, 2)
+    )
+    
+    console.print(panel)
 
 
 # done.
