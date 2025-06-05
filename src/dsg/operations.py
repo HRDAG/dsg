@@ -22,6 +22,7 @@ from dsg.manifest import Manifest
 from dsg.manifest_merger import ManifestMerger, SyncState
 from dsg.backends import create_backend
 from dsg.filename_validation import fix_problematic_path
+from dsg.display import display_sync_dry_run_preview, display_normalization_preview
 
 logger = loguru.logger
 
@@ -251,7 +252,6 @@ def sync_repository(
                     _show_normalization_preview(scan_result.validation_warnings)
                     return  # Exit early for dry-run mode
                 else:
-                    # FIXME: isn't this a call to filename_validation fix_prob_paths??
                     _normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
 
                     logger.debug("Re-scanning after normalization...")
@@ -273,24 +273,10 @@ def sync_repository(
 
     logger.debug("No validation warnings found, sync can proceed")
 
-    # FIXME: Refactor so that all the display is in display.py, not here!
-    # even if we just call a fn to print this message, don't mix this here.
     if dry_run:
         logger.debug("Dry run mode - showing operations that would be performed")
-        from rich.console import Console
-        from rich.panel import Panel
-
         console = Console()
-        console.print("\n[bold green]Dry Run Preview[/bold green]")
-        console.print("The following operations would be performed:\n")
-
-        # For now, just show that sync would proceed
-        console.print("• Scan local files for changes")
-        console.print("• Compare with last sync state")
-        console.print("• Generate sync operations")
-        console.print("• Apply file operations")
-
-        console.print(f"\n[dim]Note: No actual changes made in dry-run mode[/dim]")
+        display_sync_dry_run_preview(console)
         return
 
     # TODO: Implement actual sync operations
@@ -304,33 +290,23 @@ def _show_normalization_preview(validation_warnings: list[dict[str, str]]) -> No
     Args:
         validation_warnings: List of validation warning dicts with 'path' and 'message' keys
     """
-    # FIXME: separate work from display, move display to display.py
-    from rich.console import Console
-    from rich.panel import Panel
-    from dsg.filename_validation import fix_problematic_path
-    from pathlib import Path
-
     if not validation_warnings:
         return
 
     project_root = Path.cwd()  # Assume current directory is project root
-    console = Console()
 
-    # Build preview content using UNIFIED validation logic
-    preview_lines = [
-        "[bold yellow]Normalization Preview[/bold yellow]",
-        "",
-        f"Found {len(validation_warnings)} problematic paths detected by scanner:",
-        ""
-    ]
-
-    renames_count = 0
+    # Compute normalization results (business logic)
+    normalization_results = []
     for warning in validation_warnings:
         path_str = warning['path']
         full_path = project_root / path_str
 
         if not full_path.exists():
-            preview_lines.append(f"• [yellow]{path_str}[/yellow] (path not found)")
+            normalization_results.append({
+                'status': 'not_found',
+                'original': path_str,
+                'fixed': ''
+            })
             continue
 
         # Use the UNIFIED fix function that handles all validation issues
@@ -339,29 +315,21 @@ def _show_normalization_preview(validation_warnings: list[dict[str, str]]) -> No
         if was_modified:
             rel_old = str(full_path.relative_to(project_root))
             rel_new = str(normalized_path.relative_to(project_root))
-            preview_lines.append(f"• [red]{rel_old}[/red] → [green]{rel_new}[/green]")
-            renames_count += 1
+            normalization_results.append({
+                'status': 'can_fix',
+                'original': rel_old,
+                'fixed': rel_new
+            })
         else:
-            preview_lines.append(f"• [yellow]{path_str}[/yellow] (no normalization available)")
+            normalization_results.append({
+                'status': 'cannot_fix',
+                'original': path_str,
+                'fixed': ''
+            })
 
-    if renames_count == 0:
-        preview_lines[2] = f"Found {len(validation_warnings)} problematic paths, but normalize_path() cannot fix them:"
-
-    preview_lines.extend([
-        "",
-        "[dim]Run 'dsg sync' to apply these changes[/dim]"
-    ])
-
-    content = "\n".join(preview_lines)
-
-    panel = Panel(
-        content,
-        title="Dry Run - File Normalization (UNIFIED Logic)",
-        border_style="blue",
-        padding=(1, 2)
-    )
-
-    console.print(panel)
+    # Display the results (presentation)
+    console = Console()
+    display_normalization_preview(console, normalization_results)
 
 
 def _normalize_problematic_paths(
@@ -374,13 +342,8 @@ def _normalize_problematic_paths(
         project_root: Root directory of the project
         validation_warnings: List of validation warning dicts with 'path' and 'message' keys
     """
-    # FIXME: move imports to the top
-    from dsg.filename_validation import fix_problematic_path
-
     logger.debug(f"Normalizing {len(validation_warnings)} problematic paths using UNIFIED validation logic")
 
-    # FIXME: this normalization and fix is piecemeal. We need a single place where the whole path gets fixed.
-    # is this that place? It doesn't seem like it to me. This feels accidental.
     normalized_count = 0
     for warning in validation_warnings:
         path_str = warning['path']
