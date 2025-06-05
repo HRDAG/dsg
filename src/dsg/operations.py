@@ -13,8 +13,6 @@ from dataclasses import dataclass
 import traceback
 
 import loguru
-from rich.console import Console
-from rich.panel import Panel
 
 from dsg.config_manager import Config
 from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
@@ -82,7 +80,7 @@ def list_directory(
 
         except Exception as e:
             if debug:
-                print(f"Could not load config, using minimal config: {e}")
+                logger.debug(f"Could not load config, using minimal config: {e}")
             # Branch 70->74: when debug is False  # pragma: no cover
 
     # Branch 52->74: when use_config is False  # pragma: no cover
@@ -214,6 +212,7 @@ def get_sync_status(
 
 def sync_repository(
         config: Config,
+        console: 'Console',
         dry_run: bool = False,
         no_normalize: bool = False) -> None:
     """
@@ -249,7 +248,7 @@ def sync_repository(
             logger.debug("Attempting to normalize validation issues...")
             try:
                 if dry_run:
-                    _show_normalization_preview(scan_result.validation_warnings)
+                    _show_normalization_preview(console, scan_result.validation_warnings)
                     return  # Exit early for dry-run mode
                 else:
                     _normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
@@ -275,7 +274,6 @@ def sync_repository(
 
     if dry_run:
         logger.debug("Dry run mode - showing operations that would be performed")
-        console = Console()
         display_sync_dry_run_preview(console)
         return
 
@@ -283,11 +281,12 @@ def sync_repository(
     raise NotImplementedError("Sync operations not yet implemented")
 
 
-def _show_normalization_preview(validation_warnings: list[dict[str, str]]) -> None:
+def _show_normalization_preview(console: 'Console', validation_warnings: list[dict[str, str]]) -> None:
     """
     Show a preview of what normalization would do using UNIFIED validation logic.
 
     Args:
+        console: Rich console instance for display
         validation_warnings: List of validation warning dicts with 'path' and 'message' keys
     """
     if not validation_warnings:
@@ -328,7 +327,6 @@ def _show_normalization_preview(validation_warnings: list[dict[str, str]]) -> No
             })
 
     # Display the results (presentation)
-    console = Console()
     display_normalization_preview(console, normalization_results)
 
 

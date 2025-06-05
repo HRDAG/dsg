@@ -570,7 +570,7 @@ def sync(  # pragma: no cover
             console.print(f"[dim]No normalize: {no_normalize}[/dim]")
             console.print()
         
-        sync_repository(config, dry_run=dry_run, no_normalize=no_normalize)
+        sync_repository(config, console, dry_run=dry_run, no_normalize=no_normalize)
         
         if not dry_run:
             console.print("[green]✓[/green] Sync completed successfully")
