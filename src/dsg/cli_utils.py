@@ -166,9 +166,14 @@ def validate_project_prerequisites(console: Console, verbose: bool = False, chec
     return config
 
 
-def validate_clone_prerequisites(console: Console, force: bool = False, verbose: bool = False) -> Config:
+def validate_repository_setup_prerequisites(console: Console, force: bool = False, verbose: bool = False) -> Config:
     """
-    Perform all validation steps for clone command.
+    Perform all validation steps for repository setup commands (clone and init).
+    
+    This validates that:
+    - .dsgconfig.yml exists and loads successfully
+    - Backend connectivity works
+    - .dsg directory doesn't exist (unless --force)
     
     Args:
         console: Rich console for output

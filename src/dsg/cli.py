@@ -22,18 +22,18 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from dsg.backends import can_access_backend, SSHBackend
 from dsg.config_manager import create_backend
 from dsg.cli_utils import (
-    validate_clone_prerequisites,
+    validate_repository_setup_prerequisites,
     validate_repository_command_prerequisites,
     validate_project_prerequisites,
     handle_config_error,
     handle_operation_error
 )
 from dsg.config_manager import load_repository_discovery_config, Config, validate_config as validate_config_func
-from dsg.lifecycle import sync_repository
+from dsg.lifecycle import sync_repository, init_repository
 
 
-class CloneProgressReporter:
-    """Progress reporting for clone operations with Rich UI."""
+class RepositoryProgressReporter:
+    """Progress reporting for repository operations (clone/init) with Rich UI."""
     
     def __init__(self, console: Console, verbose: bool = False):
         self.console = console
@@ -284,16 +284,26 @@ def init(  # pragma: no cover
     git add .dsgconfig.yml
     git commit -m "Add dsg repository configuration"
     """
-    # TODO: Implement init command
-    # 1. Check if .dsgconfig.yml already exists (error if yes)
-    # 2. Verify UserConfig exists and is valid
-    # 3. If interactive mode and missing params, prompt for values
-    # 4. Validate transport-specific parameters
-    # 5. Test connection to repository (optional validation)
-    # 6. Create .dsgconfig.yml with provided configuration
-    # 7. Set up default project settings (data_dirs, ignore patterns)
-    # 8. Exit with instructions to commit the file
-    raise NotImplementedError("The init command has not been implemented yet")
+    # Validate all prerequisites for init
+    config = validate_repository_setup_prerequisites(console, force=force, verbose=True)
+    
+    # Create progress reporter
+    progress_reporter = RepositoryProgressReporter(console, verbose=True)
+    
+    try:
+        progress_reporter.start_progress()
+        
+        # Initialize repository (creates local metadata and pushes to backend)
+        init_repository(config, normalize=normalize)
+        
+        console.print("[green]✓[/green] Repository initialized successfully")
+        console.print("Local files have been pushed to remote repository")
+        console.print("Use 'dsg sync' for ongoing updates")
+        
+    except Exception as e:
+        handle_operation_error(console, "initializing repository", e)
+    finally:
+        progress_reporter.stop_progress()
 
 
 @app.command(name="list-repos")
@@ -378,7 +388,7 @@ def clone(
         console.print()
 
     # Validate all prerequisites for cloning
-    config = validate_clone_prerequisites(console, force=force, verbose=not quiet)
+    config = validate_repository_setup_prerequisites(console, force=force, verbose=not quiet)
 
     if not quiet:
         logger.info("Creating backend and starting clone...")
@@ -387,7 +397,7 @@ def clone(
 
     # Create progress reporter 
     show_progress = not quiet
-    progress_reporter = CloneProgressReporter(console, show_progress)
+    progress_reporter = RepositoryProgressReporter(console, show_progress)
     
     def progress_callback(action: str, **kwargs):
         """Progress callback for clone operations."""

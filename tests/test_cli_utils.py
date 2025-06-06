@@ -22,7 +22,7 @@ from dsg.cli_utils import (
     load_config_with_console,
     validate_backend_connectivity,
     validate_project_prerequisites,
-    validate_clone_prerequisites,
+    validate_repository_setup_prerequisites,
     validate_repository_command_prerequisites
 )
 
@@ -148,8 +148,8 @@ class TestValidateProjectPrerequisites:
         assert result == mock_config
 
 
-class TestValidateClonePrerequisites:
-    """Tests for validate_clone_prerequisites function."""
+class TestValidateRepositorySetupPrerequisites:
+    """Tests for validate_repository_setup_prerequisites function."""
     
     @patch('dsg.cli_utils.ensure_dsg_not_exists')
     @patch('dsg.cli_utils.validate_project_prerequisites')
@@ -159,7 +159,7 @@ class TestValidateClonePrerequisites:
         mock_validate_project.return_value = mock_config
         
         console = Mock()
-        result = validate_clone_prerequisites(console, force=True, verbose=True)
+        result = validate_repository_setup_prerequisites(console, force=True, verbose=True)
         
         mock_validate_project.assert_called_once_with(console, verbose=True, check_backend=True)
         mock_ensure_dsg_not_exists.assert_called_once_with(console, force=True)

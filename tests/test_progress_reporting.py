@@ -17,16 +17,16 @@ from unittest.mock import Mock
 import pytest
 from rich.console import Console
 
-from dsg.cli import CloneProgressReporter
+from dsg.cli import RepositoryProgressReporter
 
 
-class TestCloneProgressReporter:
-    """Test the CloneProgressReporter class."""
+class TestRepositoryProgressReporter:
+    """Test the RepositoryProgressReporter class."""
 
     def test_progress_reporter_initialization(self):
-        """Test CloneProgressReporter initialization."""
+        """Test RepositoryProgressReporter initialization."""
         console = Console()
-        reporter = CloneProgressReporter(console, verbose=True)
+        reporter = RepositoryProgressReporter(console, verbose=True)
         
         assert reporter.console == console
         assert reporter.verbose is True
@@ -35,9 +35,9 @@ class TestCloneProgressReporter:
         assert reporter.files_task is None
 
     def test_progress_reporter_non_verbose(self):
-        """Test CloneProgressReporter in non-verbose mode."""
+        """Test RepositoryProgressReporter in non-verbose mode."""
         console = Console()
-        reporter = CloneProgressReporter(console, verbose=False)
+        reporter = RepositoryProgressReporter(console, verbose=False)
         
         # Non-verbose mode should not create progress display
         reporter.start_progress()
@@ -139,7 +139,7 @@ class TestCloneProgressReporter:
     def test_format_size_helper(self):
         """Test the file size formatting helper."""
         console = Console()
-        reporter = CloneProgressReporter(console, verbose=True)
+        reporter = RepositoryProgressReporter(console, verbose=True)
         
         assert reporter._format_size(0) == "0.0 B"
         assert reporter._format_size(500) == "500.0 B"
