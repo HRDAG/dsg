@@ -18,7 +18,7 @@ from dsg.config_manager import Config
 from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
 from dsg.manifest import Manifest
 from dsg.manifest_merger import ManifestMerger, SyncState
-from dsg.backends import create_backend
+from dsg.config_manager import create_backend
 from dsg.filename_validation import fix_problematic_path
 from dsg.display import display_sync_dry_run_preview, display_normalization_preview
 

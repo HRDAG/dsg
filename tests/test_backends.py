@@ -19,10 +19,10 @@ from dsg.config_manager import (
 from dsg.backends import (
     can_access_backend,
     SSHBackend, 
-    create_backend, 
     Backend, 
     LocalhostBackend
 )
+from dsg.config_manager import create_backend
 from dsg.host_utils import is_local_host
 from unittest.mock import patch, MagicMock
 

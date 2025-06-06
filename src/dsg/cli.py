@@ -19,7 +19,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
-from dsg.backends import create_backend, can_access_backend, SSHBackend
+from dsg.backends import can_access_backend, SSHBackend
+from dsg.config_manager import create_backend
 from dsg.cli_utils import (
     validate_clone_prerequisites,
     validate_repository_command_prerequisites,

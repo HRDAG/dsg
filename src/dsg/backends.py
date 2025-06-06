@@ -18,7 +18,6 @@ from typing import Literal, BinaryIO, Optional
 import paramiko
 
 from dsg.config_manager import Config
-from dsg.host_utils import is_local_host
 from dsg.manifest import Manifest
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include "s3", "dropbox", etc.
@@ -580,25 +579,7 @@ class SSHBackend(Backend):
                 progress_callback("update_files", completed=total_files)
 
 
-def create_backend(cfg: Config) -> Backend:
-    """Create the appropriate backend instance based on config."""
-    transport = cfg.project.transport
-    repo_name = cfg.project.name  # Use top-level name (supports both new and migrated configs)
-    
-    if transport == "ssh":
-        ssh_config = cfg.project.ssh
-        # Check if it's actually local
-        if is_local_host(ssh_config.host):
-            return LocalhostBackend(ssh_config.path, repo_name)
-        else:
-            return SSHBackend(ssh_config, cfg.user, repo_name)
-    elif transport == "rclone":
-        raise NotImplementedError("Rclone backend not yet implemented")
-    elif transport == "ipfs":
-        raise NotImplementedError("IPFS backend not yet implemented")
-    else:
-        # TODO: Add support for additional transport types as needed
-        raise ValueError(f"Transport type '{transport}' not supported")  # pragma: no cover
+# Backend factory moved to config_manager.py for better localhost detection
 
 
 def can_access_backend(cfg: Config, return_backend: bool = False) -> tuple[bool, str] | tuple[bool, str, Backend]:
@@ -607,6 +588,7 @@ def can_access_backend(cfg: Config, return_backend: bool = False) -> tuple[bool,
     assert repo is not None  # validated upstream
     
     try:
+        from dsg.config_manager import create_backend
         backend = create_backend(cfg)
         ok, msg = backend.is_accessible()
         if return_backend:

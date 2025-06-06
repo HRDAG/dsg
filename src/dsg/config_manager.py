@@ -495,8 +495,12 @@ def create_backend(config: Config):
         repo_path = config.project_root.parent  # Adjust based on actual localhost config
         return LocalhostBackend(repo_path, config.project.name)
     
+    elif config.project.transport == "rclone":
+        raise NotImplementedError("Rclone backend not yet implemented")
+    elif config.project.transport == "ipfs":
+        raise NotImplementedError("IPFS backend not yet implemented")
     else:
-        raise ValueError(f"Unsupported transport type: {config.project.transport}")
+        raise ValueError(f"Transport type '{config.project.transport}' not supported")
 
 
 def _is_effectively_localhost(ssh_config) -> bool:
@@ -513,6 +517,14 @@ def _is_effectively_localhost(ssh_config) -> bool:
         True if target is effectively localhost, False for remote
     """
     # Primary test: Can we access the exact repo described by ssh_config?
+    # Handle case where name might be None
+    if not ssh_config.name:
+        # No name means we can't do path-based detection
+        is_local = is_local_host(ssh_config.host)
+        if is_local:
+            logger.debug(f"SSH target {ssh_config.host} is localhost (hostname-based, no name provided)")
+        return is_local
+    
     repo_path = Path(ssh_config.path) / ssh_config.name
     config_file = repo_path / ".dsgconfig.yml"
     
