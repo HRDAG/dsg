@@ -317,6 +317,40 @@ class SSHBackend(Backend):
         base_path = str(self.repo_path).rstrip('/')
         self.full_repo_path = f"{base_path}/{self.repo_name}"
     
+    def _create_ssh_client(self) -> paramiko.SSHClient:
+        """Create and connect SSH client with standard settings."""
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(self.host, timeout=10)
+        return client
+    
+    def _execute_ssh_command(self, command: str) -> tuple[int, str, str]:
+        """Execute SSH command and return (exit_code, stdout, stderr)."""
+        try:
+            with self._create_ssh_client() as client:
+                stdin, stdout, stderr = client.exec_command(command)
+                exit_code = stdout.channel.recv_exit_status()
+                stdout_text = stdout.read().decode('utf-8')
+                stderr_text = stderr.read().decode('utf-8')
+                return exit_code, stdout_text, stderr_text
+        except Exception as e:
+            raise ValueError(f"SSH command failed: {e}")
+    
+    def _run_rsync(self, source: str, dest: str, extra_args: list = None, verbose: bool = False) -> None:
+        """Run rsync command with standard error handling."""
+        rsync_cmd = ["rsync", "-av", source, dest]
+        if extra_args:
+            rsync_cmd.extend(extra_args)
+        
+        try:
+            if verbose:
+                subprocess.run(rsync_cmd, check=True)
+            else:
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
+            raise ValueError(f"rsync operation failed: {error_msg}")
+    
     def is_accessible(self) -> tuple[bool, str]:
         """Check if the SSH repository is accessible."""
         # Store detailed test results for verbose output
@@ -377,24 +411,68 @@ class SSHBackend(Backend):
         return getattr(self, '_detailed_results', [])
     
     def read_file(self, rel_path: str) -> bytes:
-        """Read a file from the SSH repository."""
-        # TODO: Implement SSH file reading
-        raise NotImplementedError("SSH file reading not yet implemented")
+        """Read a file from the SSH repository using SFTP."""
+        try:
+            with self._create_ssh_client() as client:
+                sftp = client.open_sftp()
+                remote_path = f"{self.full_repo_path}/{rel_path}"
+                
+                try:
+                    with sftp.file(remote_path, 'rb') as remote_file:
+                        return remote_file.read()
+                except FileNotFoundError:
+                    raise FileNotFoundError(f"File not found: {remote_path}")
+                finally:
+                    sftp.close()
+        except Exception as e:
+            if isinstance(e, FileNotFoundError):
+                raise
+            raise ValueError(f"Failed to read file {rel_path}: {e}")
     
     def write_file(self, rel_path: str, content: bytes) -> None:
-        """Write content to a file in the SSH repository."""
-        # TODO: Implement SSH file writing  
-        raise NotImplementedError("SSH file writing not yet implemented")
+        """Write content to a file in the SSH repository using SFTP."""
+        try:
+            with self._create_ssh_client() as client:
+                sftp = client.open_sftp()
+                remote_path = f"{self.full_repo_path}/{rel_path}"
+                
+                # Ensure parent directory exists
+                parent_dir = str(Path(remote_path).parent)
+                try:
+                    sftp.stat(parent_dir)
+                except FileNotFoundError:
+                    # Create parent directories recursively
+                    self._execute_ssh_command(f"mkdir -p '{parent_dir}'")
+                
+                try:
+                    with sftp.file(remote_path, 'wb') as remote_file:
+                        remote_file.write(content)
+                finally:
+                    sftp.close()
+        except Exception as e:
+            raise ValueError(f"Failed to write file {rel_path}: {e}")
     
     def file_exists(self, rel_path: str) -> bool:
         """Check if a file exists in the SSH repository."""
-        # TODO: Implement SSH file existence check
-        raise NotImplementedError("SSH file existence check not yet implemented")
+        remote_path = f"{self.full_repo_path}/{rel_path}"
+        exit_code, stdout, stderr = self._execute_ssh_command(f"test -f '{remote_path}'")
+        return exit_code == 0
     
     def copy_file(self, source_path: Path, rel_dest_path: str) -> None:
-        """Copy a file from local filesystem to the SSH repository."""
-        # TODO: Implement SSH file copying
-        raise NotImplementedError("SSH file copying not yet implemented")
+        """Copy a file from local filesystem to the SSH repository using rsync."""
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file not found: {source_path}")
+        
+        # Use rsync for efficient copying (same as clone uses)
+        remote_dest = f"{self.host}:{self.full_repo_path}/{rel_dest_path}"
+        
+        # Ensure parent directory exists on remote
+        parent_dir = str(Path(rel_dest_path).parent)
+        if parent_dir != ".":
+            remote_parent = f"{self.full_repo_path}/{parent_dir}"
+            self._execute_ssh_command(f"mkdir -p '{remote_parent}'")
+        
+        self._run_rsync(str(source_path), remote_dest)
     
     def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
         """Clone repository from SSH source to destination directory using rsync.
