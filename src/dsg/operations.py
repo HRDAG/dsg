@@ -214,7 +214,7 @@ def sync_repository(
         config: Config,
         console: 'Console',
         dry_run: bool = False,
-        no_normalize: bool = False) -> None:
+        normalize: bool = False) -> None:
     """
     Synchronize local files with remote repository.
 
@@ -223,12 +223,12 @@ def sync_repository(
     Args:
         config: Loaded project configuration
         dry_run: If True, show what would be done without syncing
-        no_normalize: If True, block on validation warnings instead of normalizing
+        normalize: If True, fix validation warnings automatically
 
     Raises:
-        ValueError: If validation warnings exist and no_normalize=True
+        ValueError: If validation warnings exist and normalize=False
     """
-    logger.debug(f"Starting sync_repository with dry_run={dry_run}, no_normalize={no_normalize}")
+    logger.debug(f"Starting sync_repository with dry_run={dry_run}, normalize={normalize}")
 
     # Step 1: Scan local directory to check for validation warnings
     logger.debug("Scanning local directory for validation warnings...")
@@ -237,7 +237,7 @@ def sync_repository(
     # Step 2: Check for validation warnings and block if needed
     if scan_result.validation_warnings:
         logger.debug(f"Found {len(scan_result.validation_warnings)} validation warnings")
-        if no_normalize:
+        if not normalize:
             # Block sync - user must fix validation issues first
             warning_paths = [w['path'] for w in scan_result.validation_warnings]
             raise ValueError(

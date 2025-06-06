@@ -221,7 +221,9 @@ def init(  # pragma: no cover
     transport: str = typer.Option("ssh", help="Transport method (ssh, rclone, ipfs)"),
     rclone_remote: Optional[str] = typer.Option(None, help="rclone remote name (for rclone transport)"),
     ipfs_did: Optional[str] = typer.Option(None, help="IPFS DID (for IPFS transport)"),
-    interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values")
+    interactive: bool = typer.Option(True, help="Interactive mode to prompt for missing values"),
+    normalize: bool = typer.Option(False, "--normalize", help="Fix invalid filenames automatically"),
+    force: bool = typer.Option(False, "--force", help="Force init even with conflicts")
 ):
     """
     [bold blue]Setup[/bold blue]: Initialize project configuration for NEW dsg repository.
@@ -536,7 +538,7 @@ def sync(  # pragma: no cover
     force: bool = typer.Option(False, "--force", help="Force sync even with conflicts"),
     message: Optional[str] = typer.Option(None, "-m", "--message", help="Sync message describing changes"),
     exclude_once: Optional[list[str]] = typer.Option(None, "--exclude-once", help="Temporarily exclude paths (this sync only)"),
-    no_normalize: bool = typer.Option(False, "--no-normalize", help="Skip automatic path normalization"),
+    normalize: bool = typer.Option(False, "--normalize", help="Fix invalid filenames automatically"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed debugging information"),
 ):
     """
@@ -546,7 +548,7 @@ def sync(  # pragma: no cover
     1. Connect to backend specified in .dsg/config.yml
     2. Fetch remote manifest (.dsg/last-sync.json)
     3. Compare local, cache, and remote manifests
-    4. Normalize invalid paths if needed (unless --no-normalize)
+    4. Check for invalid filenames (use --normalize to fix automatically)
     5. Apply temporary exclusions (--exclude-once paths)
     6. Determine sync operations based on SyncState
     7. Execute sync operations via backend
@@ -557,6 +559,7 @@ def sync(  # pragma: no cover
     With --dry-run: Show what would be done without actually syncing
     With --force: Overwrite conflicts (dangerous!)
     With --message: Provide sync message (will prompt if not provided)
+    With --normalize: Fix invalid filenames automatically (required if issues found)
 
     If conflicts occur, writes to .dsg/conflicts.json for resolution.
     """
@@ -568,10 +571,10 @@ def sync(  # pragma: no cover
             enable_debug_logging()
             console.print(f"[dim]Project root: {config.project_root}[/dim]")
             console.print(f"[dim]Dry run: {dry_run}[/dim]")
-            console.print(f"[dim]No normalize: {no_normalize}[/dim]")
+            console.print(f"[dim]Normalize: {normalize}[/dim]")
             console.print()
         
-        sync_repository(config, console, dry_run=dry_run, no_normalize=no_normalize)
+        sync_repository(config, console, dry_run=dry_run, normalize=normalize)
         
         if not dry_run:
             console.print("[green]✓[/green] Sync completed successfully")
