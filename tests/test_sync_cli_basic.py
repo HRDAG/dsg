@@ -38,7 +38,7 @@ def test_sync_cli_blocks_on_validation_warnings(bb_repo_with_validation_issues_a
         os.chdir(bb_path)
         
         runner = CliRunner()
-        result = runner.invoke(app, ["sync", "--no-normalize"])
+        result = runner.invoke(app, ["sync"])  # Without --normalize, should block
         
         # Should fail (either due to missing user config or validation warnings)
         assert result.exit_code != 0
@@ -58,4 +58,4 @@ def test_sync_cli_help_works():
     
     assert result.exit_code == 0
     assert "sync" in result.stdout.lower()
-    assert "--no-normalize" in result.stdout
+    assert "--normalize" in result.stdout

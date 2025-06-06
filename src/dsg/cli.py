@@ -29,7 +29,7 @@ from dsg.cli_utils import (
     handle_operation_error
 )
 from dsg.config_manager import load_repository_discovery_config, Config, validate_config as validate_config_func
-from dsg.operations import sync_repository
+from dsg.lifecycle import sync_repository
 
 
 class CloneProgressReporter:

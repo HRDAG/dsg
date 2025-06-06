@@ -44,7 +44,7 @@ from tests.fixtures.bb_repo_factory import bb_repo_structure
 
 def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) -> Manifest:
     """Create manifest for init with normalization (exactly like sync)."""
-    from dsg.operations import _normalize_problematic_paths
+    from dsg.lifecycle import normalize_problematic_paths
     import logging
     
     logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
         logger.debug(f"Init found {len(scan_result.validation_warnings)} paths needing normalization")
         
         # Use sync's exact normalization function
-        _normalize_problematic_paths(base_path, scan_result.validation_warnings)
+        normalize_problematic_paths(base_path, scan_result.validation_warnings)
         
         # 3. Re-scan to verify normalization worked
         scan_result = scan_directory_no_cfg(
