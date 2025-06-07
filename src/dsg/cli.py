@@ -150,8 +150,8 @@ def version_callback(value: bool):
     if value:
         try:
             pkg_version = version("dsg")
-        except Exception:
-            pkg_version = "unknown"
+        except Exception as e:
+            handle_operation_error(console, "retrieving version information", e)
         console.print(f"dsg version {pkg_version}")
         raise typer.Exit()
 
@@ -790,14 +790,14 @@ def validate_config(
                     display_ssh_test_details(console, backend)
                     
             except Exception as e:
-                logger.warning(f"Could not load SSH test details: {e}")
+                handle_operation_error(console, "loading SSH test details", e)
 
         if verbose:
             try:
                 config = Config.load()
                 display_config_summary(console, config)
             except Exception as e:
-                logger.warning(f"Could not load config details: {e}")
+                handle_operation_error(console, "loading config details", e)
     else:
         raise typer.Exit(1)
 
