@@ -24,7 +24,7 @@ from dsg.config_manager import Config
 from dsg.manifest import Manifest
 from dsg.host_utils import is_local_host
 
-RepoType = Literal["zfs", "xfs", "local"]  # will expand to include "s3", "dropbox", etc.
+RepoType = Literal["zfs", "xfs", "local"]  # will expand to include n2s primarily
 
 
 class Transport(ABC):
@@ -104,8 +104,6 @@ class LocalhostTransport(Transport):
                 str(src_base) + "/",
                 str(dest_base) + "/"
             ]
-
-            # Execute rsync
             subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
 
         except subprocess.CalledProcessError as e:
