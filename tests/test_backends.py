@@ -22,7 +22,7 @@ from dsg.backends import (
     Backend, 
     LocalhostBackend
 )
-from dsg.config_manager import create_backend
+from dsg.backends import create_backend
 from dsg.host_utils import is_local_host
 from unittest.mock import patch, MagicMock
 

@@ -176,6 +176,9 @@ class ManifestMetadata(BaseModel):
     snapshot_previous: Optional[str] = None  # Reference to previous snapshot (e.g., s1)
     snapshot_hash: Optional[str] = None  # Hash of entries_hash + message + prev_hash
     snapshot_notes: Optional[str] = None  # Additional notes (e.g., "btrsnap-migration")
+    
+    # Configuration snapshot that created this manifest (answers "why these files?")
+    project_config: Optional[dict] = None  # ProjectSettings from .dsgconfig.yml
 
     @classmethod
     def _create(
@@ -184,6 +187,7 @@ class ManifestMetadata(BaseModel):
         snapshot_id: str = "",
         user_id: Optional[str] = None,
         timestamp: Optional[datetime] = None,
+        project_config: Optional[dict] = None,
     ) -> ManifestMetadata:
         """Create metadata for a set of entries"""
         # Generate entries hash using xxhash3_64
@@ -200,6 +204,7 @@ class ManifestMetadata(BaseModel):
             entry_count=len(entries),
             entries_hash=entries_hash,
             created_by=user_id,
+            project_config=project_config,
         )
 
 
@@ -363,6 +368,7 @@ class Manifest(BaseModel):
         snapshot_id: str = "",
         user_id: Optional[str] = None,
         timestamp: Optional[datetime] = None,
+        project_config: Optional[dict] = None,
     ) -> None:
         """Write manifest to disk as JSON"""
         # Validate symlinks before saving
@@ -383,7 +389,7 @@ class Manifest(BaseModel):
             if metadata is None:
                 # Pass the actual OrderedDict, not a list
                 # Pass timestamp if provided
-                metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp)
+                metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp, project_config)
                 self.metadata = metadata  # Store for future use
 
             # Update the manifest version to reflect the new structure
@@ -507,17 +513,21 @@ class Manifest(BaseModel):
             self,
             snapshot_id: str = "",
             user_id: Optional[str] = None,
-            timestamp: Optional[datetime] = None) -> None:
+            timestamp: Optional[datetime] = None,
+            project_config: Optional[dict] = None) -> None:
         """Generate metadata for this manifest"""
-        self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp)
+        self.metadata = ManifestMetadata._create(self.entries, snapshot_id, user_id, timestamp, project_config)
 
     def compute_snapshot_hash(
         self, message: str, prev_snapshot_hash: Optional[str] = None
     ) -> str:
         """Compute snapshot hash for chain validation.
 
-        For s1: hash(entries_hash + snapshot_message + "")
-        For others: hash(entries_hash + snapshot_message + prev_snapshot_hash)
+        Hash includes: entries_hash + snapshot_message + project_config + prev_snapshot_hash
+        This ensures config changes affect snapshot integrity and chain validation.
+
+        For s1: hash(entries_hash + snapshot_message + project_config + "")
+        For others: hash(entries_hash + snapshot_message + project_config + prev_snapshot_hash)
 
         Args:
             message: The snapshot message to include in the hash
@@ -532,6 +542,16 @@ class Manifest(BaseModel):
         h = xxhash.xxh3_64()
         h.update(self.metadata.entries_hash.encode())
         h.update(message.encode())
+        
+        # Include project config in hash - config changes should affect snapshot hash
+        # NOTE: This provides automatic backward compatibility:
+        # - Old snapshots (no project_config): hash(entries + message + prev_hash)
+        # - New snapshots (with project_config): hash(entries + message + config + prev_hash)
+        # TODO: Needs comprehensive testing with existing migrated snapshots
+        if self.metadata.project_config:
+            # Use orjson for consistent serialization (same as entries_hash)
+            config_bytes = orjson.dumps(self.metadata.project_config, option=orjson.OPT_SORT_KEYS)
+            h.update(config_bytes)
 
         if prev_snapshot_hash:
             h.update(prev_snapshot_hash.encode())

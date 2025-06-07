@@ -25,7 +25,7 @@ import pytest
 
 from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
 from dsg.backends import LocalhostBackend, SSHBackend
-from dsg.config_manager import create_backend
+from dsg.backends import create_backend
 from dsg.manifest import Manifest, FileRef
 from dsg.scanner import scan_directory_no_cfg
 

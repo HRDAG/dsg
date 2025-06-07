@@ -27,7 +27,8 @@ from dataclasses import dataclass
 import loguru
 import orjson
 
-from dsg.config_manager import Config, create_backend
+from dsg.config_manager import Config
+from dsg.backends import create_backend
 from dsg.manifest import Manifest, ManifestMetadata
 from dsg.operations import get_sync_status
 from dsg.scanner import scan_directory, scan_directory_no_cfg

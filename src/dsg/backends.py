@@ -1,4 +1,4 @@
-# Author: PB & ChatGPT
+# Author: PB, Claude, and ChatGPT
 # Maintainer: PB
 # Original date: 2025.05.10
 # License: (c) HRDAG, 2025, GPL-2 or newer
@@ -16,13 +16,114 @@ from pathlib import Path
 from typing import Literal, BinaryIO, Optional
 
 import paramiko
+from loguru import logger
 
 from dsg.config_manager import Config
 from dsg.manifest import Manifest
+from dsg.host_utils import is_local_host
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include "s3", "dropbox", etc.
 
 
+class Transport(ABC):
+    """Abstract base for transport mechanisms (how to reach backend)"""
+    
+    @abstractmethod
+    def copy_files(self, file_list: list[str], src_base: str, dest_base: str) -> None:
+        """Copy specific files from src_base to dest_base.
+        
+        Args:
+            file_list: List of relative paths to copy (or [".dsg/"] for metadata)
+            src_base: Source base directory  
+            dest_base: Destination base directory
+        """
+        raise NotImplementedError("copy_files() not implemented")
+        
+    @abstractmethod
+    def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
+        """Execute command on target host.
+        
+        Returns:
+            (exit_code, stdout, stderr)
+        """
+        raise NotImplementedError("run_command() not implemented")
+
+
+class SnapshotOperations(ABC):
+    """Abstract base for filesystem snapshot operations (what to do once there)"""
+    
+    @abstractmethod
+    def init_repository(self, file_list: list[str], transport: Transport, 
+                       local_base: str, remote_base: str) -> None:
+        """Initialize repository with filesystem-specific workflow.
+        
+        Each filesystem type orchestrates transport + snapshot commands differently:
+        - ZFS: copy_files() then zfs snapshot
+        - XFS: create hardlink structure then copy_files() 
+        
+        Args:
+            file_list: List of relative file paths to copy
+            transport: Transport mechanism to use
+            local_base: Local base directory
+            remote_base: Remote base directory (mount point for ZFS)
+        """
+        raise NotImplementedError("init_repository() not implemented")
+
+
+# ---- Transport Implementation Stubs ----
+# TODO: These are minimal stubs to keep existing functionality working
+# Need full implementation for new ZFS functionality
+
+class LocalhostTransport(Transport):
+    """Localhost transport implementation (stub for now)"""
+    
+    def __init__(self, repo_path: Path, repo_name: str):
+        self.repo_path = repo_path
+        self.repo_name = repo_name
+        self.full_path = repo_path / repo_name
+    
+    def copy_files(self, file_list: list[str], src_base: str, dest_base: str) -> None:
+        """TODO: Implement rsync-based file copying"""
+        raise NotImplementedError("LocalhostTransport.copy_files() not yet implemented")
+    
+    def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
+        """Execute command locally"""
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.returncode, result.stdout, result.stderr
+
+
+class SSHTransport(Transport):
+    """SSH transport implementation (stub for now)"""
+    
+    def __init__(self, ssh_config, user_config, repo_name: str):
+        self.ssh_config = ssh_config
+        self.user_config = user_config
+        self.repo_name = repo_name
+        self.host = ssh_config.host
+        self.full_repo_path = f"{ssh_config.path}/{repo_name}"
+    
+    def copy_files(self, file_list: list[str], src_base: str, dest_base: str) -> None:
+        """TODO: Implement SSH rsync-based file copying"""
+        raise NotImplementedError("SSHTransport.copy_files() not yet implemented")
+    
+    def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
+        """Execute command via SSH"""
+        # TODO: Implement SSH command execution
+        raise NotImplementedError("SSHTransport.run_command() not yet implemented")
+
+
+# ---- SnapshotOperations Implementation Stubs ----
+
+class XFSOperations(SnapshotOperations):
+    """XFS operations using hardlink-based snapshots (stub for now)"""
+    
+    def __init__(self, repo_path: str):
+        self.repo_path = repo_path
+    
+    def init_repository(self, file_list: list[str], transport: Transport, 
+                       local_base: str, remote_base: str) -> None:
+        """TODO: Implement XFS hardlink snapshots"""
+        raise NotImplementedError("XFS hardlink snapshots not yet implemented")
 
 
 class Backend(ABC):
@@ -172,6 +273,16 @@ class Backend(ABC):
         """
         raise NotImplementedError("clone() not implemented")
     
+    @abstractmethod
+    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+        """Initialize a new repository on the backend.
+        
+        Args:
+            snapshot_hash: Hash of the initial snapshot for verification
+            progress_callback: Optional callback for progress updates
+        """
+        raise NotImplementedError("init_repository() not implemented")
+    
     # TODO: Add snapshot operation methods
     # @abstractmethod
     # def list_snapshots(self) -> List[Dict[str, Any]]:
@@ -302,6 +413,11 @@ class LocalhostBackend(Backend):
         # Notify progress: file sync complete
         if progress_callback:
             progress_callback("complete_files")
+    
+    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+        """Initialize repository on local filesystem."""
+        # TODO: Implement local repository initialization
+        raise NotImplementedError("LocalhostBackend.init_repository() not yet implemented")
 
 
 class SSHBackend(Backend):
@@ -655,9 +771,150 @@ class SSHBackend(Backend):
             subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
             if progress_callback:
                 progress_callback("update_files", completed=total_files)
+    
+    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+        """Initialize repository on SSH remote."""
+        # TODO: Implement SSH repository initialization
+        raise NotImplementedError("SSHBackend.init_repository() not yet implemented")
 
 
-# Backend factory moved to config_manager.py for better localhost detection
+# ---- Composed Backend ----
+
+class ComposedBackend(Backend):
+    """Backend composed of Transport + SnapshotOperations"""
+    
+    def __init__(self, transport: Transport, snapshot_ops: SnapshotOperations):
+        self.transport = transport
+        self.snapshot_ops = snapshot_ops
+    
+    def is_accessible(self) -> tuple[bool, str]:
+        """TODO: Delegate to transport for accessibility check"""
+        return True, "ComposedBackend accessibility check not yet implemented"
+    
+    def read_file(self, rel_path: str) -> bytes:
+        """TODO: Delegate to transport"""
+        raise NotImplementedError("ComposedBackend.read_file() not yet implemented")
+    
+    def write_file(self, rel_path: str, content: bytes) -> None:
+        """TODO: Delegate to transport"""
+        raise NotImplementedError("ComposedBackend.write_file() not yet implemented")
+    
+    def file_exists(self, rel_path: str) -> bool:
+        """TODO: Delegate to transport"""
+        raise NotImplementedError("ComposedBackend.file_exists() not yet implemented")
+    
+    def copy_file(self, source_path: Path, rel_dest_path: str) -> None:
+        """TODO: Delegate to transport"""
+        raise NotImplementedError("ComposedBackend.copy_file() not yet implemented")
+    
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
+        """TODO: Delegate to transport"""
+        raise NotImplementedError("ComposedBackend.clone() not yet implemented")
+    
+    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+        """Delegate to snapshot operations for init workflow"""
+        # TODO: Get file list from lifecycle and call snapshot_ops.init_repository()
+        raise NotImplementedError("ComposedBackend.init_repository() not yet implemented")
+
+
+# ---- Backend Factory ----
+
+def create_backend(config: Config):
+    """Create the optimal backend based on config and accessibility.
+    
+    TODO: Transition to composed Transport + SnapshotOperations architecture
+    For now, returns existing LocalhostBackend/SSHBackend for compatibility.
+    
+    Future architecture:
+    - Transport: LocalhostTransport vs SSHTransport (how to reach backend)
+    - SnapshotOps: ZFSOperations vs XFSOperations (what filesystem commands to run)
+    - Backend: Composed object that orchestrates transport + snapshot operations
+    
+    Args:
+        config: Complete DSG configuration
+        
+    Returns:
+        Backend instance (LocalhostBackend or SSHBackend for now)
+        
+    Raises:
+        ValueError: If transport type not supported
+        ImportError: If required backend dependencies missing
+    """
+    # TODO: Replace with composed architecture once tests are updated
+    # For now, use existing backend classes for compatibility
+    
+    if config.project.transport == "ssh":
+        if _is_effectively_localhost(config.project.ssh):
+            # Use filesystem operations for localhost optimization
+            repo_path = Path(config.project.ssh.path)
+            return LocalhostBackend(repo_path, config.project.name)
+        else:
+            # Use SSH for remote hosts
+            return SSHBackend(config.project.ssh, config.user, config.project.name)
+    
+    elif config.project.transport == "localhost":
+        repo_path = config.project_root.parent  # Adjust based on actual localhost config
+        return LocalhostBackend(repo_path, config.project.name)
+    
+    elif config.project.transport == "rclone":
+        raise NotImplementedError("Rclone backend not yet implemented")
+    elif config.project.transport == "ipfs":
+        raise NotImplementedError("IPFS backend not yet implemented")
+    else:
+        raise ValueError(f"Transport type '{config.project.transport}' not supported")
+
+
+def _is_effectively_localhost(ssh_config) -> bool:
+    """Determine if SSH config points to effectively localhost.
+    
+    Uses two tests in order of reliability:
+    1. Path-based: Can we directly access the repo at ssh.path/ssh.name?
+    2. Hostname-based: Does ssh.host resolve to the current machine?
+    
+    Args:
+        ssh_config: SSH configuration object
+        
+    Returns:
+        True if target is effectively localhost, False for remote
+    """
+    # Primary test: Can we access the exact repo described by ssh_config?
+    # Handle case where name might be None
+    if not ssh_config.name:
+        # No name means we can't do path-based detection
+        is_local = is_local_host(ssh_config.host)
+        if is_local:
+            logger.debug(f"SSH target {ssh_config.host} is localhost (hostname-based, no name provided)")
+        return is_local
+    
+    repo_path = Path(ssh_config.path) / ssh_config.name
+    config_file = repo_path / ".dsgconfig.yml"
+    
+    if config_file.exists():
+        try:
+            # Import here to avoid circular dependency
+            from dsg.config_manager import ProjectConfig
+            
+            # Read the config at that path
+            local_config = ProjectConfig.load(config_file)
+            
+            # Verify it's actually the same repo
+            if (local_config.ssh and 
+                local_config.ssh.name == ssh_config.name and
+                str(local_config.ssh.path) == str(ssh_config.path)):
+                logger.debug(f"SSH target {ssh_config.host}:{repo_path} is effectively localhost (path accessible)")
+                return True
+                
+        except Exception as e:
+            # Config read failed, fall through to hostname test
+            logger.debug(f"Failed to validate local config at {config_file}: {e}")
+            pass
+    
+    # Fallback: hostname-based detection
+    is_local = is_local_host(ssh_config.host)
+    if is_local:
+        logger.debug(f"SSH target {ssh_config.host} is localhost (hostname-based)")
+    
+    return is_local
 
 
 def can_access_backend(cfg: Config, return_backend: bool = False) -> tuple[bool, str] | tuple[bool, str, Backend]:
@@ -666,7 +923,6 @@ def can_access_backend(cfg: Config, return_backend: bool = False) -> tuple[bool,
     assert repo is not None  # validated upstream
     
     try:
-        from dsg.config_manager import create_backend
         backend = create_backend(cfg)
         ok, msg = backend.is_accessible()
         if return_backend:

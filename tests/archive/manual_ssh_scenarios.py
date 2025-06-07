@@ -21,7 +21,7 @@ import tempfile
 import yaml
 from pathlib import Path
 from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
-from dsg.config_manager import create_backend
+from dsg.backends import create_backend
 from dsg.backends import LocalhostBackend, SSHBackend
 
 def create_test_user_config():
