@@ -20,7 +20,10 @@ from dsg.backends import (
     can_access_backend,
     SSHBackend, 
     Backend, 
-    LocalhostBackend
+    LocalhostBackend,
+    ZFSOperations,
+    LocalhostTransport,
+    SSHTransport
 )
 from dsg.backends import create_backend
 from dsg.host_utils import is_local_host
@@ -949,6 +952,264 @@ class TestMigratedConfigBackends:
         ok, msg = can_access_backend(cfg)
         assert ok
         assert msg == "OK"
+
+
+class TestZFSOperations:
+    """Tests for ZFSOperations class"""
+    
+    def test_zfs_operations_init(self):
+        """Test ZFSOperations initialization"""
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        assert zfs_ops.pool_name == "testpool"
+        assert zfs_ops.repo_name == "testrepo"
+        assert zfs_ops.dataset_name == "testpool/testrepo"
+        assert zfs_ops.mount_path == "/var/repos/zsd/testrepo"
+    
+    def test_zfs_operations_custom_mount_base(self):
+        """Test ZFSOperations with custom mount base"""
+        zfs_ops = ZFSOperations("testpool", "testrepo", mount_base="/custom/mount")
+        assert zfs_ops.mount_path == "/custom/mount/testrepo"
+    
+    @patch('subprocess.run')
+    def test_zfs_validate_access_success(self, mock_run):
+        """Test ZFS access validation success"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        result = zfs_ops._validate_zfs_access()
+        assert result is True
+        mock_run.assert_called_with(["sudo", "zfs", "list"], 
+                                   capture_output=True, text=True, check=True)
+    
+    @patch('subprocess.run')
+    def test_zfs_validate_access_failure(self, mock_run):
+        """Test ZFS access validation failure"""
+        mock_run.side_effect = subprocess.CalledProcessError(1, "zfs")
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        result = zfs_ops._validate_zfs_access()
+        assert result is False
+    
+    @patch('subprocess.run')
+    def test_zfs_create_dataset(self, mock_run):
+        """Test ZFS dataset creation"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        zfs_ops._create_dataset()
+        
+        # Verify both create and mountpoint commands were called
+        expected_calls = [
+            ['sudo', 'zfs', 'create', 'testpool/testrepo'],
+            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo']
+        ]
+        
+        actual_calls = [call[0][0] for call in mock_run.call_args_list]
+        assert len(actual_calls) == 2
+        assert actual_calls[0] == expected_calls[0]
+        assert actual_calls[1] == expected_calls[1]
+    
+    @patch('subprocess.run')
+    def test_zfs_create_dataset_with_force(self, mock_run):
+        """Test ZFS dataset creation with force flag"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        zfs_ops._create_dataset(force=True)
+        
+        # Verify destroy, create, and mountpoint commands were called
+        expected_calls = [
+            ['sudo', 'zfs', 'destroy', '-r', 'testpool/testrepo'],
+            ['sudo', 'zfs', 'create', 'testpool/testrepo'],
+            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo']
+        ]
+        
+        actual_calls = [call[0][0] for call in mock_run.call_args_list]
+        assert len(actual_calls) == 3
+        for i, expected in enumerate(expected_calls):
+            assert actual_calls[i] == expected
+    
+    @patch('subprocess.run')
+    def test_zfs_create_snapshot(self, mock_run):
+        """Test ZFS snapshot creation"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        zfs_ops._create_snapshot("s1")
+        
+        mock_run.assert_called_with(["sudo", "zfs", "snapshot", "testpool/testrepo@s1"],
+                                   capture_output=True, text=True, check=True)
+    
+    @patch('subprocess.run')
+    def test_zfs_init_repository(self, mock_run):
+        """Test ZFS repository initialization workflow"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        # Create mock transport
+        mock_transport = MagicMock()
+        file_list = ["file1.txt", "file2.txt"]
+        
+        zfs_ops.init_repository(file_list, mock_transport, "/src", "/dest")
+        
+        # Verify transport was called
+        mock_transport.copy_files.assert_called_once_with(file_list, "/src", "/var/repos/zsd/testrepo")
+        
+        # Verify ZFS commands were called (dataset creation + snapshot)
+        assert mock_run.call_count == 3  # create, set mountpoint, snapshot
+    
+    @patch('subprocess.run')
+    def test_zfs_init_repository_empty_file_list(self, mock_run):
+        """Test ZFS repository initialization with empty file list"""
+        mock_run.return_value = MagicMock(returncode=0)
+        zfs_ops = ZFSOperations("testpool", "testrepo")
+        
+        mock_transport = MagicMock()
+        zfs_ops.init_repository([], mock_transport, "/src", "/dest")
+        
+        # Transport should not be called for empty file list
+        mock_transport.copy_files.assert_not_called()
+        
+        # But ZFS commands should still be called
+        assert mock_run.call_count == 3  # create, set mountpoint, snapshot
+
+
+class TestTransportOperations:
+    """Tests for Transport classes"""
+    
+    def test_localhost_transport_init(self):
+        """Test LocalhostTransport initialization"""
+        transport = LocalhostTransport(Path("/repo/path"), "test-repo")
+        assert transport.repo_path == Path("/repo/path")
+        assert transport.repo_name == "test-repo"
+        assert transport.full_path == Path("/repo/path/test-repo")
+    
+    @patch('subprocess.run')
+    @patch('tempfile.NamedTemporaryFile')
+    @patch('os.unlink')
+    def test_localhost_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run):
+        """Test LocalhostTransport file copying"""
+        # Setup mocks
+        mock_file = MagicMock()
+        mock_file.name = "/tmp/test.filelist"
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        transport = LocalhostTransport(Path("/repo"), "test")
+        file_list = ["file1.txt", "file2.txt"]
+        
+        transport.copy_files(file_list, "/src", "/dest")
+        
+        # Verify file list was written
+        mock_file.write.assert_any_call("file1.txt\n")
+        mock_file.write.assert_any_call("file2.txt\n")
+        
+        # Verify rsync command
+        expected_cmd = [
+            "rsync", "-av",
+            "--files-from=/tmp/test.filelist",
+            "/src/",
+            "/dest/"
+        ]
+        mock_run.assert_called_with(expected_cmd, check=True, capture_output=True, text=True)
+        
+        # Verify cleanup
+        mock_unlink.assert_called_with("/tmp/test.filelist")
+    
+    def test_localhost_transport_copy_files_empty_list(self):
+        """Test LocalhostTransport with empty file list"""
+        transport = LocalhostTransport(Path("/repo"), "test")
+        
+        # Should return early without doing anything
+        transport.copy_files([], "/src", "/dest")
+        # No assertion needed - just verify no exception
+    
+    @patch('subprocess.run')
+    def test_localhost_transport_run_command(self, mock_run):
+        """Test LocalhostTransport command execution"""
+        mock_run.return_value = MagicMock(returncode=0, stdout="output", stderr="error")
+        transport = LocalhostTransport(Path("/repo"), "test")
+        
+        ret, out, err = transport.run_command(["ls", "-la"])
+        
+        assert ret == 0
+        assert out == "output"
+        assert err == "error"
+        mock_run.assert_called_with(["ls", "-la"], capture_output=True, text=True)
+    
+    def test_ssh_transport_init(self):
+        """Test SSHTransport initialization"""
+        ssh_config = MagicMock()
+        ssh_config.host = "testhost"
+        ssh_config.path = "/remote/path"
+        
+        transport = SSHTransport(ssh_config, MagicMock(), "test-repo")
+        assert transport.host == "testhost"
+        assert transport.repo_name == "test-repo"
+        assert transport.full_repo_path == "/remote/path/test-repo"
+    
+    @patch('subprocess.run')
+    @patch('tempfile.NamedTemporaryFile')
+    @patch('os.unlink')
+    def test_ssh_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run):
+        """Test SSHTransport file copying"""
+        # Setup mocks
+        mock_file = MagicMock()
+        mock_file.name = "/tmp/test.filelist"
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        mock_run.return_value = MagicMock(returncode=0)
+        
+        ssh_config = MagicMock()
+        ssh_config.host = "testhost"
+        ssh_config.path = "/remote"
+        
+        transport = SSHTransport(ssh_config, MagicMock(), "test")
+        file_list = ["file1.txt", "file2.txt"]
+        
+        transport.copy_files(file_list, "/src", "/dest")
+        
+        # Verify rsync command with SSH
+        expected_cmd = [
+            "rsync", "-av",
+            "--files-from=/tmp/test.filelist", 
+            "/src/",
+            "testhost:/dest/"
+        ]
+        mock_run.assert_called_with(expected_cmd, check=True, capture_output=True, text=True)
+    
+    @patch('subprocess.run')
+    def test_ssh_transport_run_command(self, mock_run):
+        """Test SSHTransport command execution"""
+        mock_run.return_value = MagicMock(returncode=0, stdout="output", stderr="error")
+        
+        ssh_config = MagicMock()
+        ssh_config.host = "testhost"
+        
+        transport = SSHTransport(ssh_config, MagicMock(), "test")
+        
+        ret, out, err = transport.run_command(["ls", "-la"])
+        
+        assert ret == 0
+        assert out == "output" 
+        assert err == "error"
+        mock_run.assert_called_with(["ssh", "testhost", "ls", "-la"], capture_output=True, text=True)
+    
+    @patch('subprocess.run')
+    @patch('tempfile.NamedTemporaryFile')
+    def test_transport_copy_files_rsync_failure(self, mock_tempfile, mock_run):
+        """Test transport error handling for rsync failures"""
+        # Setup mocks
+        mock_file = MagicMock()
+        mock_file.name = "/tmp/test.filelist"
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        
+        # Mock rsync failure
+        mock_run.side_effect = subprocess.CalledProcessError(1, "rsync")
+        
+        transport = LocalhostTransport(Path("/repo"), "test")
+        
+        with pytest.raises(ValueError, match="LocalhostTransport rsync operation failed"):
+            transport.copy_files(["file1.txt"], "/src", "/dest")
 
 
 # done.
