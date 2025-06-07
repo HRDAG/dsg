@@ -8,7 +8,6 @@
 
 """Repository discovery service for finding DSG repositories."""
 
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional
@@ -19,6 +18,7 @@ import orjson
 import yaml
 
 from dsg.host_utils import is_local_host
+from dsg.utils.execution import CommandExecutor as ce
 
 
 @dataclass(frozen=True)
@@ -129,19 +129,19 @@ class BaseRepositoryDiscovery(ABC):
         try:
             if host:
                 # Remote ZFS REFER query via SSH
-                cmd = ["ssh", host, f"zfs list -H -o refer {repo_path}"]
+                cmd = ["zfs", "list", "-H", "-o", "refer", str(repo_path)]
+                result = ce.run_ssh(host, cmd, timeout=10, check=False)
             else:
                 # Local ZFS REFER query
                 cmd = ["zfs", "list", "-H", "-o", "refer", str(repo_path)]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                result = ce.run_local(cmd, timeout=10, check=False)
             
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
                         
             return None
             
-        except (subprocess.TimeoutExpired, Exception):
+        except Exception:
             return None
 
 
@@ -225,12 +225,11 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
 
         try:
             # Find .dsg directories
-            ssh_cmd = [
-                "ssh", host,
-                f"find {project_path} -maxdepth 2 -name .dsg -type d 2>/dev/null"
+            find_cmd = [
+                "find", str(project_path), "-maxdepth", "2", "-name", ".dsg", "-type", "d", "2>/dev/null"
             ]
 
-            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
+            result = ce.run_ssh(host, find_cmd, timeout=30, check=False)
 
             if result.returncode != 0:
                 return repos
@@ -245,7 +244,7 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
                 repo_info = self._read_remote_repository_metadata(host, repo_name, repo_dir)
                 repos.append(repo_info)
 
-        except (subprocess.TimeoutExpired, Exception):
+        except Exception:
             pass
 
         return repos
@@ -255,11 +254,10 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
         try:
             # Try to read .dsgconfig.yml via SSH
             config_cmd = [
-                "ssh", host,
-                f"cat {repo_dir}/.dsgconfig.yml 2>/dev/null || echo ''"
+                "sh", "-c", f"cat {repo_dir}/.dsgconfig.yml 2>/dev/null || echo ''"
             ]
 
-            result = subprocess.run(config_cmd, capture_output=True, text=True, timeout=10)
+            result = ce.run_ssh(host, config_cmd, timeout=10, check=False)
 
             repo_name = name
             if result.returncode == 0 and result.stdout.strip():
@@ -272,11 +270,10 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
 
             # Try to read last sync data via SSH
             read_cmd = [
-                "ssh", host,
-                f"cat {repo_dir}/.dsg/last-sync.json 2>/dev/null || cat {repo_dir}/.dsg/manifest.json 2>/dev/null || echo '{{}}'"
+                "sh", "-c", f"cat {repo_dir}/.dsg/last-sync.json 2>/dev/null || cat {repo_dir}/.dsg/manifest.json 2>/dev/null || echo '{{}}'"
             ]
 
-            result = subprocess.run(read_cmd, capture_output=True, text=True, timeout=10)
+            result = ce.run_ssh(host, read_cmd, timeout=10, check=False)
 
             if result.returncode == 0 and result.stdout.strip():
                 data = orjson.loads(result.stdout.strip())
