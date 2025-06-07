@@ -65,26 +65,49 @@ DSG_DIR: Final = ".dsg"
 MANIFEST_FILE: Final = "last-sync.json"
 ```
 
-## Current Status (2025.06.04)
+## Current Status (2025.06.07)
 
 ### ✅ COMPLETED WORK
-**Manifest API Cleanup** - eq_shallow() methods deprecated and removed:
-- Replaced all eq_shallow() usage with == operator throughout codebase
-- Inlined eq_shallow() logic directly into __eq__() methods
+
+**Phase 1: CommandExecutor Utility Extraction** - Subprocess pattern consolidation completed:
+- Created CommandExecutor utility class in `src/dsg/utils/execution.py` with 5 methods
+- Comprehensive test suite with 24 test cases covering all functionality
+- Replaced 15+ subprocess patterns in `backends.py` with centralized CommandExecutor calls
+- Updated all related tests to use CommandExecutor interface instead of subprocess mocks
+- All 542 tests now pass, confirming successful refactoring
+- Eliminated command execution duplication across the codebase
+- Standardized error handling and logging for all subprocess operations
+- Enhanced testability with consistent mockable interface
+
+**Previous Work:**
+- **Manifest API Cleanup** - eq_shallow() methods deprecated and removed
+- All eq_shallow() usage replaced with == operator throughout codebase
 - Simplified manifest entry API - developers now only use ==
-- All 435 tests pass, confirming successful refactoring
 
 ### 🔄 IN PROGRESS
-**CLI Error Handling Standardization** - Mixed patterns identified:
-- Some commands use `handle_config_error()` and `handle_operation_error()` from cli_utils
-- Others use direct `console.print + typer.Exit`
-- 9 total error handling calls found in CLI
-- Standardization needed for consistency
+**Phase 2: Repository Discovery Subprocess Consolidation** - NEXT:
+- Apply CommandExecutor pattern to `repository_discovery.py`
+- Identify and replace remaining subprocess patterns
+- Update related tests to use CommandExecutor interface
 
 ### 📋 REMAINING TASKS
 
-## Priority
+**Subprocess Pattern Consolidation (High Priority)**:
+- **Phase 2**: Replace subprocess patterns in `repository_discovery.py` with CommandExecutor (NEXT)
+- **Phase 3**: Audit remaining files for any missed subprocess patterns
+- Update TODO document after each phase completion
 
-1. **HIGH**: CLI error handling standardization (NEXT)
-2. **MEDIUM**: Command structure template pattern
-3. **LOW**: Magic string constants (some constants exist, more needed)
+**CLI Refactoring (Medium Priority)**:
+1. **CLI Error Handling Standardization** - Mixed patterns identified:
+   - Some commands use `handle_config_error()` and `handle_operation_error()` from cli_utils
+   - Others use direct `console.print + typer.Exit`
+   - 9 total error handling calls found in CLI
+   - Standardization needed for consistency
+
+2. **Command Structure Template Pattern**:
+   - Extract common command pattern (config loading, validation, error handling)
+   - Reduce boilerplate across commands
+   - Consistent console output patterns
+
+3. **Magic String Constants** (Low Priority):
+   - Some constants exist, more needed for `.dsg`, `last-sync.json`, etc.

@@ -582,7 +582,7 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
     }
     
     # Mock the rsync calls and manifest parsing
-    with patch('subprocess.run') as mock_run, \
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
         
         # Setup manifest mock
@@ -598,23 +598,23 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
         
         # Side effect function to create manifest after first rsync call
         def rsync_side_effect(*args, **kwargs):
-            if mock_run.call_count == 1:
+            if mock_run_progress.call_count == 1:
                 # First call: create the manifest file
                 manifest_file.parent.mkdir(parents=True, exist_ok=True)
                 manifest_file.write_text('{"test": "manifest"}')
             return Mock()
         
-        mock_run.side_effect = rsync_side_effect
+        mock_run_progress.side_effect = rsync_side_effect
         
         # Test clone
         progress_callback = Mock() if use_progress else None
         backend.clone(dest_repo, progress_callback=progress_callback)
         
         # Verify rsync calls
-        assert mock_run.call_count == 2
+        assert mock_run_progress.call_count == 2
         
         # First call: metadata sync
-        first_call = mock_run.call_args_list[0]
+        first_call = mock_run_progress.call_args_list[0]
         first_args = first_call[0][0]
         assert first_args[0] == "rsync"
         assert first_args[1] == "-av"
@@ -624,7 +624,7 @@ def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
             assert "--progress" in first_args
         
         # Second call: data sync with files-from
-        second_call = mock_run.call_args_list[1]
+        second_call = mock_run_progress.call_args_list[1]
         second_args = second_call[0][0]
         assert second_args[0] == "rsync"
         assert second_args[1] == "-av"
@@ -650,20 +650,20 @@ def test_ssh_backend_clone_no_manifest(tmp_path, monkeypatch):
     user_config = Mock()
     backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
-    with patch('subprocess.run') as mock_run:
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress:
         # Create .dsg directory but no manifest file
         def create_empty_dsg(*args, **kwargs):
             dsg_dir = dest_repo / ".dsg"
             dsg_dir.mkdir(parents=True, exist_ok=True)
             return Mock()
         
-        mock_run.side_effect = [create_empty_dsg]
+        mock_run_progress.side_effect = [create_empty_dsg]
         
         # Clone should succeed but stop after metadata sync
         backend.clone(dest_repo)
         
         # Only one rsync call (metadata sync)
-        assert mock_run.call_count == 1
+        assert mock_run_progress.call_count == 1
 
 
 def test_ssh_backend_clone_with_resume(tmp_path):
@@ -681,7 +681,7 @@ def test_ssh_backend_clone_with_resume(tmp_path):
     user_config = Mock()
     backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
-    with patch('subprocess.run') as mock_run, \
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
         
         # Setup manifest mock
@@ -692,19 +692,19 @@ def test_ssh_backend_clone_with_resume(tmp_path):
         manifest_file = dest_repo / ".dsg" / "last-sync.json"
         
         def rsync_side_effect(*args, **kwargs):
-            if mock_run.call_count == 1:
+            if mock_run_progress.call_count == 1:
                 # First call: create the manifest file
                 manifest_file.parent.mkdir(parents=True, exist_ok=True)
                 manifest_file.write_text('{"test": "manifest"}')
             return Mock()
         
-        mock_run.side_effect = rsync_side_effect
+        mock_run_progress.side_effect = rsync_side_effect
         
         # Test clone with resume
         backend.clone(dest_repo, resume=True)
         
         # Check that --partial flag was added to data sync
-        second_call = mock_run.call_args_list[1]
+        second_call = mock_run_progress.call_args_list[1]
         second_args = second_call[0][0]
         assert "--partial" in second_args
 
@@ -726,16 +726,14 @@ def test_ssh_backend_clone_rsync_errors(tmp_path):
     backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
     # Test metadata sync failure
-    with patch('subprocess.run') as mock_run:
-        error = subprocess.CalledProcessError(1, "rsync")
-        error.stderr = "Connection refused"
-        mock_run.side_effect = error
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress:
+        mock_run_progress.side_effect = ValueError("Connection refused")
         
         with pytest.raises(ValueError, match="Failed to sync metadata directory"):
             backend.clone(dest_repo)
     
     # Test data sync failure
-    with patch('subprocess.run') as mock_run, \
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
         
         # Setup manifest mock
@@ -750,14 +748,12 @@ def test_ssh_backend_clone_rsync_errors(tmp_path):
             manifest_file.write_text('{"test": "manifest"}')
             
             # Second call (data) fails
-            if mock_run.call_count == 1:
+            if mock_run_progress.call_count == 1:
                 return Mock()
             else:
-                error = subprocess.CalledProcessError(1, "rsync")
-                error.stderr = "File not found"
-                raise error
+                raise ValueError("File not found")
         
-        mock_run.side_effect = first_success_second_fail
+        mock_run_progress.side_effect = first_success_second_fail
         
         with pytest.raises(ValueError, match="Failed to sync data files"):
             backend.clone(dest_repo)
@@ -778,7 +774,7 @@ def test_ssh_backend_clone_manifest_parse_error(tmp_path):
     user_config = Mock()
     backend = SSHBackend(ssh_config, user_config, ssh_config.name)
     
-    with patch('subprocess.run') as mock_run, \
+    with patch('dsg.backends.ce.run_with_progress') as mock_run_progress, \
          patch('dsg.backends.Manifest.from_json') as mock_manifest:
         
         # Metadata sync succeeds but creates invalid manifest
@@ -786,7 +782,7 @@ def test_ssh_backend_clone_manifest_parse_error(tmp_path):
         manifest_file.parent.mkdir(parents=True, exist_ok=True)
         manifest_file.write_text('invalid json')
         
-        mock_run.return_value = Mock()
+        mock_run_progress.return_value = Mock()
         mock_manifest.side_effect = ValueError("Invalid JSON")
         
         with pytest.raises(ValueError, match="Failed to parse manifest"):
@@ -1002,90 +998,83 @@ class TestZFSOperations:
         zfs_ops = ZFSOperations("testpool", "testrepo", mount_base="/custom/mount")
         assert zfs_ops.mount_path == "/custom/mount/testrepo"
     
-    @patch('subprocess.run')
-    def test_zfs_validate_access_success(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_validate_access_success(self, mock_run_sudo):
         """Test ZFS access validation success"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         result = zfs_ops._validate_zfs_access()
         assert result is True
-        mock_run.assert_called_with(["sudo", "zfs", "list"], 
-                                   capture_output=True, text=True, check=True)
+        mock_run_sudo.assert_called_with(["zfs", "list"])
     
-    @patch('subprocess.run')
-    def test_zfs_validate_access_failure(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_validate_access_failure(self, mock_run_sudo):
         """Test ZFS access validation failure"""
-        mock_run.side_effect = subprocess.CalledProcessError(1, "zfs")
+        mock_run_sudo.side_effect = ValueError("ZFS command failed")
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         result = zfs_ops._validate_zfs_access()
         assert result is False
     
-    @patch('subprocess.run')
-    def test_zfs_create_dataset(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_create_dataset(self, mock_run_sudo):
         """Test ZFS dataset creation"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         zfs_ops._create_dataset()
         
         # Verify all commands were called: create, mountpoint, chown, chmod
         expected_calls = [
-            ['sudo', 'zfs', 'create', 'testpool/testrepo'],
-            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
-            ['sudo', 'chown'],  # User will vary, just check command
-            ['sudo', 'chmod', '755', '/var/repos/zsd/testrepo']
+            ['zfs', 'create', 'testpool/testrepo'],
+            ['zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
+            ['chown'],  # User will vary, just check command
+            ['chmod', '755', '/var/repos/zsd/testrepo']
         ]
         
-        actual_calls = [call[0][0] for call in mock_run.call_args_list]
+        actual_calls = [call[0][0] for call in mock_run_sudo.call_args_list]
         assert len(actual_calls) == 4
         assert actual_calls[0] == expected_calls[0]  # create
         assert actual_calls[1] == expected_calls[1]  # mountpoint
-        assert actual_calls[2][:2] == ['sudo', 'chown']  # chown (user varies)
+        assert actual_calls[2][:1] == ['chown']  # chown (user varies)
         assert actual_calls[3] == expected_calls[3]  # chmod
     
-    @patch('subprocess.run')
-    def test_zfs_create_dataset_with_force(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_create_dataset_with_force(self, mock_run_sudo):
         """Test ZFS dataset creation with force flag"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         zfs_ops._create_dataset(force=True)
         
         # Verify all commands were called: destroy, create, mountpoint, chown, chmod
         expected_calls = [
-            ['sudo', 'zfs', 'destroy', '-r', 'testpool/testrepo'],
-            ['sudo', 'zfs', 'create', 'testpool/testrepo'],
-            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
-            ['sudo', 'chown'],  # User will vary, just check command
-            ['sudo', 'chmod', '755', '/var/repos/zsd/testrepo']
+            ['zfs', 'destroy', '-r', 'testpool/testrepo'],
+            ['zfs', 'create', 'testpool/testrepo'],
+            ['zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
+            ['chown'],  # User will vary, just check command
+            ['chmod', '755', '/var/repos/zsd/testrepo']
         ]
         
-        actual_calls = [call[0][0] for call in mock_run.call_args_list]
+        actual_calls = [call[0][0] for call in mock_run_sudo.call_args_list]
         assert len(actual_calls) == 5
         # Check specific commands
         assert actual_calls[0] == expected_calls[0]  # destroy
         assert actual_calls[1] == expected_calls[1]  # create
         assert actual_calls[2] == expected_calls[2]  # mountpoint
-        assert actual_calls[3][:2] == ['sudo', 'chown']  # chown (user varies)
+        assert actual_calls[3][:1] == ['chown']  # chown (user varies)
         assert actual_calls[4] == expected_calls[4]  # chmod
     
-    @patch('subprocess.run')
-    def test_zfs_create_snapshot(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_create_snapshot(self, mock_run_sudo):
         """Test ZFS snapshot creation"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         zfs_ops._create_snapshot("s1")
         
-        mock_run.assert_called_with(["sudo", "zfs", "snapshot", "testpool/testrepo@s1"],
-                                   capture_output=True, text=True, check=True)
+        mock_run_sudo.assert_called_with(["zfs", "snapshot", "testpool/testrepo@s1"])
     
-    @patch('subprocess.run')
-    def test_zfs_init_repository(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_init_repository(self, mock_run_sudo):
         """Test ZFS repository initialization workflow"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         # Create mock transport
@@ -1098,12 +1087,11 @@ class TestZFSOperations:
         mock_transport.copy_files.assert_called_once_with(file_list, "/src", "/var/repos/zsd/testrepo")
         
         # Verify ZFS commands were called (dataset creation + permissions + snapshot)
-        assert mock_run.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
+        assert mock_run_sudo.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
     
-    @patch('subprocess.run')
-    def test_zfs_init_repository_empty_file_list(self, mock_run):
+    @patch('dsg.backends.ce.run_sudo')
+    def test_zfs_init_repository_empty_file_list(self, mock_run_sudo):
         """Test ZFS repository initialization with empty file list"""
-        mock_run.return_value = MagicMock(returncode=0)
         zfs_ops = ZFSOperations("testpool", "testrepo")
         
         mock_transport = MagicMock()
@@ -1113,7 +1101,7 @@ class TestZFSOperations:
         mock_transport.copy_files.assert_not_called()
         
         # But ZFS commands should still be called
-        assert mock_run.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
+        assert mock_run_sudo.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
 
 
 class TestTransportOperations:
@@ -1126,16 +1114,15 @@ class TestTransportOperations:
         assert transport.repo_name == "test-repo"
         assert transport.full_path == Path("/repo/path/test-repo")
     
-    @patch('subprocess.run')
+    @patch('dsg.backends.ce.run_local')
     @patch('tempfile.NamedTemporaryFile')
     @patch('os.unlink')
-    def test_localhost_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run):
+    def test_localhost_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run_local):
         """Test LocalhostTransport file copying"""
         # Setup mocks
         mock_file = MagicMock()
         mock_file.name = "/tmp/test.filelist"
         mock_tempfile.return_value.__enter__.return_value = mock_file
-        mock_run.return_value = MagicMock(returncode=0)
         
         transport = LocalhostTransport(Path("/repo"), "test")
         file_list = ["file1.txt", "file2.txt"]
@@ -1153,7 +1140,7 @@ class TestTransportOperations:
             "/src/",
             "/dest/"
         ]
-        mock_run.assert_called_with(expected_cmd, check=True, capture_output=True, text=True)
+        mock_run_local.assert_called_with(expected_cmd)
         
         # Verify cleanup
         mock_unlink.assert_called_with("/tmp/test.filelist")
@@ -1166,10 +1153,11 @@ class TestTransportOperations:
         transport.copy_files([], "/src", "/dest")
         # No assertion needed - just verify no exception
     
-    @patch('subprocess.run')
-    def test_localhost_transport_run_command(self, mock_run):
+    @patch('dsg.backends.ce.run_local')
+    def test_localhost_transport_run_command(self, mock_run_local):
         """Test LocalhostTransport command execution"""
-        mock_run.return_value = MagicMock(returncode=0, stdout="output", stderr="error")
+        from dsg.utils.execution import CommandResult
+        mock_run_local.return_value = CommandResult(returncode=0, stdout="output", stderr="error")
         transport = LocalhostTransport(Path("/repo"), "test")
         
         ret, out, err = transport.run_command(["ls", "-la"])
@@ -1177,7 +1165,7 @@ class TestTransportOperations:
         assert ret == 0
         assert out == "output"
         assert err == "error"
-        mock_run.assert_called_with(["ls", "-la"], capture_output=True, text=True)
+        mock_run_local.assert_called_with(["ls", "-la"], check=False)
     
     def test_ssh_transport_init(self):
         """Test SSHTransport initialization"""
@@ -1190,16 +1178,15 @@ class TestTransportOperations:
         assert transport.repo_name == "test-repo"
         assert transport.full_repo_path == "/remote/path/test-repo"
     
-    @patch('subprocess.run')
+    @patch('dsg.backends.ce.run_local')
     @patch('tempfile.NamedTemporaryFile')
     @patch('os.unlink')
-    def test_ssh_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run):
+    def test_ssh_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run_local):
         """Test SSHTransport file copying"""
         # Setup mocks
         mock_file = MagicMock()
         mock_file.name = "/tmp/test.filelist"
         mock_tempfile.return_value.__enter__.return_value = mock_file
-        mock_run.return_value = MagicMock(returncode=0)
         
         ssh_config = MagicMock()
         ssh_config.host = "testhost"
@@ -1217,12 +1204,13 @@ class TestTransportOperations:
             "/src/",
             "testhost:/dest/"
         ]
-        mock_run.assert_called_with(expected_cmd, check=True, capture_output=True, text=True)
+        mock_run_local.assert_called_with(expected_cmd)
     
-    @patch('subprocess.run')
-    def test_ssh_transport_run_command(self, mock_run):
+    @patch('dsg.backends.ce.run_ssh')
+    def test_ssh_transport_run_command(self, mock_run_ssh):
         """Test SSHTransport command execution"""
-        mock_run.return_value = MagicMock(returncode=0, stdout="output", stderr="error")
+        from dsg.utils.execution import CommandResult
+        mock_run_ssh.return_value = CommandResult(returncode=0, stdout="output", stderr="error")
         
         ssh_config = MagicMock()
         ssh_config.host = "testhost"
@@ -1234,11 +1222,11 @@ class TestTransportOperations:
         assert ret == 0
         assert out == "output" 
         assert err == "error"
-        mock_run.assert_called_with(["ssh", "testhost", "ls", "-la"], capture_output=True, text=True)
+        mock_run_ssh.assert_called_with("testhost", ["ls", "-la"], check=False)
     
-    @patch('subprocess.run')
+    @patch('dsg.backends.ce.run_local')
     @patch('tempfile.NamedTemporaryFile')
-    def test_transport_copy_files_rsync_failure(self, mock_tempfile, mock_run):
+    def test_transport_copy_files_rsync_failure(self, mock_tempfile, mock_run_local):
         """Test transport error handling for rsync failures"""
         # Setup mocks
         mock_file = MagicMock()
@@ -1246,7 +1234,7 @@ class TestTransportOperations:
         mock_tempfile.return_value.__enter__.return_value = mock_file
         
         # Mock rsync failure
-        mock_run.side_effect = subprocess.CalledProcessError(1, "rsync")
+        mock_run_local.side_effect = ValueError("rsync failed")
         
         transport = LocalhostTransport(Path("/repo"), "test")
         

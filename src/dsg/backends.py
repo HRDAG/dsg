@@ -23,6 +23,7 @@ from loguru import logger
 from dsg.config_manager import Config
 from dsg.manifest import Manifest
 from dsg.host_utils import is_local_host
+from dsg.utils.execution import CommandExecutor as ce
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include n2s primarily
 
@@ -104,11 +105,10 @@ class LocalhostTransport(Transport):
                 str(src_base) + "/",
                 str(dest_base) + "/"
             ]
-            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            ce.run_local(rsync_cmd)
 
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
-            raise ValueError(f"LocalhostTransport rsync operation failed: {error_msg}")
+        except ValueError as e:
+            raise ValueError(f"LocalhostTransport rsync operation failed: {str(e)}")
         finally:
             try:
                 os.unlink(filelist_path)
@@ -117,7 +117,7 @@ class LocalhostTransport(Transport):
 
     def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         """Execute command locally"""
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = ce.run_local(cmd, check=False)
         return result.returncode, result.stdout, result.stderr
 
 
@@ -151,11 +151,10 @@ class SSHTransport(Transport):
                 remote_dest
             ]
 
-            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            ce.run_local(rsync_cmd)
 
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
-            raise ValueError(f"SSHTransport rsync operation failed: {error_msg}")
+        except ValueError as e:
+            raise ValueError(f"SSHTransport rsync operation failed: {str(e)}")
         finally:
             try:
                 os.unlink(filelist_path)
@@ -164,13 +163,8 @@ class SSHTransport(Transport):
 
     def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         """Execute command via SSH"""
-        ssh_cmd = ["ssh", self.host] + cmd
-
-        try:
-            result = subprocess.run(ssh_cmd, capture_output=True, text=True)
-            return result.returncode, result.stdout, result.stderr
-        except subprocess.CalledProcessError as e:
-            return e.returncode, "", str(e)
+        result = ce.run_ssh(self.host, cmd, check=False)
+        return result.returncode, result.stdout, result.stderr
 
 
 # ---- SnapshotOperations Implementation Stubs ----
@@ -214,17 +208,17 @@ class ZFSOperations(SnapshotOperations):
         """Create ZFS dataset with appropriate mountpoint and permissions"""
         if force:
             # Destroy existing dataset if force flag is set
-            destroy_cmd = ["sudo", "zfs", "destroy", "-r", self.dataset_name]
-            result = subprocess.run(destroy_cmd, capture_output=True, text=True)
-            # Don't check=True here since dataset might not exist
+            destroy_cmd = ["zfs", "destroy", "-r", self.dataset_name]
+            ce.run_sudo(destroy_cmd, check=False)
+            # Don't check since dataset might not exist
 
         # Create new dataset
-        create_cmd = ["sudo", "zfs", "create", self.dataset_name]
-        result = subprocess.run(create_cmd, capture_output=True, text=True, check=True)
+        create_cmd = ["zfs", "create", self.dataset_name]
+        ce.run_sudo(create_cmd)
 
         # Set mountpoint
-        mountpoint_cmd = ["sudo", "zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
-        result = subprocess.run(mountpoint_cmd, capture_output=True, text=True, check=True)
+        mountpoint_cmd = ["zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
+        ce.run_sudo(mountpoint_cmd)
 
         # Fix ownership and permissions on the mount point
         # Get current user for ownership
@@ -235,28 +229,30 @@ class ZFSOperations(SnapshotOperations):
         group_name = pwd.getpwuid(os.getuid()).pw_name  # Use same name for group fallback
 
         # Set ownership to current user
-        chown_cmd = ["sudo", "chown", f"{current_user}:{current_user}", self.mount_path]
-        result = subprocess.run(chown_cmd, capture_output=True, text=True, check=True)
+        # TODO: CRITICAL - Sudo usage needs context awareness
+        # This assumes sudo access which is only guaranteed during init operations.
+        # For regular operations, we need to check permissions or handle gracefully.
+        chown_cmd = ["chown", f"{current_user}:{current_user}", self.mount_path]
+        ce.run_sudo(chown_cmd)
 
         # Set permissions to allow user read/write
-        chmod_cmd = ["sudo", "chmod", "755", self.mount_path]
-        result = subprocess.run(chmod_cmd, capture_output=True, text=True, check=True)
+        chmod_cmd = ["chmod", "755", self.mount_path]
+        ce.run_sudo(chmod_cmd)
 
     def _create_snapshot(self, snapshot_id: str) -> None:
         """Create ZFS snapshot"""
         snapshot_name = f"{self.dataset_name}@{snapshot_id}"
-        snapshot_cmd = ["sudo", "zfs", "snapshot", snapshot_name]
-        result = subprocess.run(snapshot_cmd, capture_output=True, text=True, check=True)
+        snapshot_cmd = ["zfs", "snapshot", snapshot_name]
+        ce.run_sudo(snapshot_cmd)
 
     def _validate_zfs_access(self) -> bool:
         """Validate that we can access ZFS commands with sudo"""
         try:
             # TODO: what useful thing might we do with this list?
             # maybe check that other repos are on the same path? warn if not?
-            result = subprocess.run(["sudo", "zfs", "list"],
-                                  capture_output=True, text=True, check=True)
+            ce.run_sudo(["zfs", "list"])
             return True
-        except subprocess.CalledProcessError:
+        except ValueError:
             return False
 
 
@@ -627,13 +623,9 @@ class SSHBackend(Backend):
             rsync_cmd.extend(extra_args)
 
         try:
-            if verbose:
-                subprocess.run(rsync_cmd, check=True)
-            else:
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
-            raise ValueError(f"rsync operation failed: {error_msg}")
+            ce.run_with_progress(rsync_cmd, verbose=verbose)
+        except ValueError as e:
+            raise ValueError(f"rsync operation failed: {str(e)}")
 
     def is_accessible(self) -> tuple[bool, str]:
         """Check if the SSH repository is accessible."""
@@ -800,16 +792,10 @@ class SSHBackend(Backend):
             # - quiet: capture all output
             # - default: capture output but show progress
             # - verbose: show all rsync output
-            if verbose:
-                # Verbose: show all rsync output
-                subprocess.run(rsync_cmd, check=True)
-            else:
-                # Default/quiet: capture output
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            ce.run_with_progress(rsync_cmd, verbose=verbose)
 
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
-            raise ValueError(f"Failed to sync metadata directory: {error_msg}")
+        except ValueError as e:
+            raise ValueError(f"Failed to sync metadata directory: {str(e)}")
 
         if progress_callback:
             progress_callback("complete_metadata")
@@ -865,7 +851,7 @@ class SSHBackend(Backend):
             # Handle different output modes and track progress
             if verbose:
                 # Verbose: show all rsync output
-                subprocess.run(rsync_cmd, check=True)
+                ce.run_with_progress(rsync_cmd, verbose=True)
                 # Update progress to 100% when done
                 if progress_callback:
                     progress_callback("update_files", completed=total_files)
@@ -874,11 +860,10 @@ class SSHBackend(Backend):
                 self._run_rsync_with_progress(rsync_cmd, total_files, progress_callback)
             else:
                 # Quiet: capture all output
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+                ce.run_with_progress(rsync_cmd, verbose=False)
 
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr if hasattr(e, 'stderr') and e.stderr else f"rsync failed with exit code {e.returncode}"
-            raise ValueError(f"Failed to sync data files: {error_msg}")
+        except ValueError as e:
+            raise ValueError(f"Failed to sync data files: {str(e)}")
         finally:
             # Step 5: Always cleanup temp file
             try:
@@ -936,7 +921,7 @@ class SSHBackend(Backend):
 
         except Exception:
             # Fallback to simple execution if parsing fails
-            subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            ce.run_with_progress(rsync_cmd, verbose=False)
             if progress_callback:
                 progress_callback("update_files", completed=total_files)
 

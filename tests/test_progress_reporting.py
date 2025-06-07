@@ -218,7 +218,7 @@ project:
         
         backend = SSHBackend(ssh_config, user_config, ssh_config.name)
         
-        with patch('subprocess.run') as mock_run, \
+        with patch('dsg.backends.ce.run_with_progress') as mock_run, \
              patch('dsg.backends.Manifest.from_json') as mock_manifest:
             
             # Setup manifest mock
@@ -232,17 +232,18 @@ project:
                     manifest_file = Path("/tmp/test_dest/.dsg/last-sync.json")
                     manifest_file.parent.mkdir(parents=True, exist_ok=True)
                     manifest_file.write_text('{"test": "manifest"}')
-                return Mock()
+                from dsg.utils.execution import CommandResult
+                return CommandResult(returncode=0, stdout="", stderr="")
             
             mock_run.side_effect = rsync_side_effect
             
             # Test verbose=False (should capture output)
             backend.clone(Path("/tmp/test_dest"), verbose=False)
             
-            # Verify subprocess.run was called with capture_output=True
-            calls_with_capture = [call for call in mock_run.call_args_list 
-                                if call.kwargs.get('capture_output') is True]
-            assert len(calls_with_capture) >= 1, "Should capture output in non-verbose mode"
+            # Verify ce.run_with_progress was called with verbose=False
+            calls_with_verbose_false = [call for call in mock_run.call_args_list 
+                                      if call.kwargs.get('verbose') is False]
+            assert len(calls_with_verbose_false) >= 1, "Should capture output in non-verbose mode"
             
             # Reset mock
             mock_run.reset_mock()
@@ -251,10 +252,10 @@ project:
             # Test verbose=True (should not capture output)
             backend.clone(Path("/tmp/test_dest"), verbose=True)
             
-            # Verify subprocess.run was called without capture_output
-            calls_without_capture = [call for call in mock_run.call_args_list 
-                                   if 'capture_output' not in call.kwargs]
-            assert len(calls_without_capture) >= 1, "Should not capture output in verbose mode"
+            # Verify ce.run_with_progress was called with verbose=True
+            calls_with_verbose_true = [call for call in mock_run.call_args_list 
+                                     if call.kwargs.get('verbose') is True]
+            assert len(calls_with_verbose_true) >= 1, "Should not capture output in verbose mode"
 
 
 class TestRsyncProgressParsing:
@@ -328,7 +329,10 @@ class TestRsyncProgressParsing:
             callback_calls.append((action, kwargs))
         
         with patch('subprocess.Popen', return_value=mock_process), \
-             patch('subprocess.run') as mock_run:
+             patch('dsg.backends.ce.run_with_progress') as mock_run:
+            
+            from dsg.utils.execution import CommandResult
+            mock_run.return_value = CommandResult(returncode=0, stdout="", stderr="")
             
             backend._run_rsync_with_progress(
                 ["rsync", "test"], 
@@ -336,7 +340,7 @@ class TestRsyncProgressParsing:
                 progress_callback=test_callback
             )
             
-            # Should fall back to subprocess.run and report all files complete
+            # Should fall back to ce.run_with_progress and report all files complete
             mock_run.assert_called_once()
             update_calls = [call for call in callback_calls if call[0] == "update_files"]
             assert len(update_calls) == 1

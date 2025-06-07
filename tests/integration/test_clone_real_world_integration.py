@@ -196,7 +196,7 @@ class TestCloneRealWorldIntegration:
             assert isinstance(backend, SSHBackend)
             
             # Mock the rsync operations
-            with patch('subprocess.run') as mock_run:
+            with patch('dsg.backends.ce.run_with_progress') as mock_run:
                 
                 def rsync_side_effect(*args, **kwargs):
                     cmd_args = args[0]
@@ -241,7 +241,8 @@ class TestCloneRealWorldIntegration:
                                 file_path.parent.mkdir(parents=True, exist_ok=True)
                                 file_path.write_text(f"Simulated content for {rel_path}")
                     
-                    return Mock()
+                    from dsg.utils.execution import CommandResult
+                    return CommandResult(returncode=0, stdout="", stderr="")
                 
                 mock_run.side_effect = rsync_side_effect
                 
