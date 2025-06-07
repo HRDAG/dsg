@@ -503,19 +503,20 @@ def create_local_metadata(
     return snapshot_hash
 
 
-def init_repository(config: Config, normalize: bool = True) -> str:
+def init_repository(config: Config, normalize: bool = True, force: bool = False) -> str:
     """
     Initialize a complete DSG repository (local + backend).
     
     Args:
         config: Loaded DSG configuration
         normalize: Whether to fix validation warnings automatically
+        force: Whether to force initialization even with conflicts (passed to backend)
         
     Returns:
         The computed snapshot hash
     """
     logger = loguru.logger
-    logger.info(f"Initializing DSG repository for {config.project.repo_name}")
+    logger.info(f"Initializing DSG repository for {config.project.name}")
     
     # 1. Create local metadata (.dsg structure, manifests)
     snapshot_hash = create_local_metadata(
@@ -526,7 +527,7 @@ def init_repository(config: Config, normalize: bool = True) -> str:
     
     # 2. Initialize backend repository with this data
     backend = create_backend(config)
-    backend.init_repository(snapshot_hash)
+    backend.init_repository(snapshot_hash, force=force)
     
     logger.info(f"Successfully initialized DSG repository with snapshot hash: {snapshot_hash}")
     return snapshot_hash

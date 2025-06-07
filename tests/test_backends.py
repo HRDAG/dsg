@@ -430,6 +430,38 @@ def test_localhost_backend_clone_errors(tmp_path):
         bad_backend.clone(dest_repo2)
 
 
+def test_localhost_backend_zfs_pool_name_extraction():
+    """Test that LocalhostBackend correctly extracts ZFS pool name from repo_path"""
+    from pathlib import Path
+    from unittest.mock import patch, MagicMock
+    
+    # Test various repo_path scenarios
+    test_cases = [
+        (Path("/var/repos/zsd"), "zsd"),
+        (Path("/tank/repositories"), "repositories"), 
+        (Path("/storage/dsg-pools/production"), "production"),
+        (Path("/simple-pool"), "simple-pool"),
+    ]
+    
+    for repo_path, expected_pool in test_cases:
+        backend = LocalhostBackend(repo_path, "test-repo")
+        
+        # Mock the dependencies to focus on pool name extraction
+        with patch('dsg.backends.ZFSOperations') as mock_zfs, \
+             patch('dsg.backends.LocalhostTransport') as mock_transport, \
+             patch('os.getcwd', return_value="/fake/current/dir"), \
+             patch('os.listdir', return_value=["file1.txt"]):
+            
+            mock_zfs_instance = MagicMock()
+            mock_zfs.return_value = mock_zfs_instance
+            
+            # This should not raise an error and should call ZFSOperations with correct pool
+            backend.init_repository("fake_snapshot_hash")
+            
+            # Verify ZFSOperations was called with the correct pool name
+            mock_zfs.assert_called_once_with(expected_pool, "test-repo")
+
+
 # SSH Backend Tests
 
 def test_ssh_backend_path_construction():
@@ -998,16 +1030,20 @@ class TestZFSOperations:
         
         zfs_ops._create_dataset()
         
-        # Verify both create and mountpoint commands were called
+        # Verify all commands were called: create, mountpoint, chown, chmod
         expected_calls = [
             ['sudo', 'zfs', 'create', 'testpool/testrepo'],
-            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo']
+            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
+            ['sudo', 'chown'],  # User will vary, just check command
+            ['sudo', 'chmod', '755', '/var/repos/zsd/testrepo']
         ]
         
         actual_calls = [call[0][0] for call in mock_run.call_args_list]
-        assert len(actual_calls) == 2
-        assert actual_calls[0] == expected_calls[0]
-        assert actual_calls[1] == expected_calls[1]
+        assert len(actual_calls) == 4
+        assert actual_calls[0] == expected_calls[0]  # create
+        assert actual_calls[1] == expected_calls[1]  # mountpoint
+        assert actual_calls[2][:2] == ['sudo', 'chown']  # chown (user varies)
+        assert actual_calls[3] == expected_calls[3]  # chmod
     
     @patch('subprocess.run')
     def test_zfs_create_dataset_with_force(self, mock_run):
@@ -1017,17 +1053,23 @@ class TestZFSOperations:
         
         zfs_ops._create_dataset(force=True)
         
-        # Verify destroy, create, and mountpoint commands were called
+        # Verify all commands were called: destroy, create, mountpoint, chown, chmod
         expected_calls = [
             ['sudo', 'zfs', 'destroy', '-r', 'testpool/testrepo'],
             ['sudo', 'zfs', 'create', 'testpool/testrepo'],
-            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo']
+            ['sudo', 'zfs', 'set', 'mountpoint=/var/repos/zsd/testrepo', 'testpool/testrepo'],
+            ['sudo', 'chown'],  # User will vary, just check command
+            ['sudo', 'chmod', '755', '/var/repos/zsd/testrepo']
         ]
         
         actual_calls = [call[0][0] for call in mock_run.call_args_list]
-        assert len(actual_calls) == 3
-        for i, expected in enumerate(expected_calls):
-            assert actual_calls[i] == expected
+        assert len(actual_calls) == 5
+        # Check specific commands
+        assert actual_calls[0] == expected_calls[0]  # destroy
+        assert actual_calls[1] == expected_calls[1]  # create
+        assert actual_calls[2] == expected_calls[2]  # mountpoint
+        assert actual_calls[3][:2] == ['sudo', 'chown']  # chown (user varies)
+        assert actual_calls[4] == expected_calls[4]  # chmod
     
     @patch('subprocess.run')
     def test_zfs_create_snapshot(self, mock_run):
@@ -1055,8 +1097,8 @@ class TestZFSOperations:
         # Verify transport was called
         mock_transport.copy_files.assert_called_once_with(file_list, "/src", "/var/repos/zsd/testrepo")
         
-        # Verify ZFS commands were called (dataset creation + snapshot)
-        assert mock_run.call_count == 3  # create, set mountpoint, snapshot
+        # Verify ZFS commands were called (dataset creation + permissions + snapshot)
+        assert mock_run.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
     
     @patch('subprocess.run')
     def test_zfs_init_repository_empty_file_list(self, mock_run):
@@ -1071,7 +1113,7 @@ class TestZFSOperations:
         mock_transport.copy_files.assert_not_called()
         
         # But ZFS commands should still be called
-        assert mock_run.call_count == 3  # create, set mountpoint, snapshot
+        assert mock_run.call_count == 5  # create, set mountpoint, chown, chmod, snapshot
 
 
 class TestTransportOperations:

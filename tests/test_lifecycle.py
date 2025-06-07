@@ -245,7 +245,7 @@ class TestInitRepository:
         
         # Create mock config
         mock_config = MagicMock()
-        mock_config.project.repo_name = "test-repo"
+        mock_config.project.name = "test-repo"
         mock_config.project_root = Path("/test/project")
         mock_config.user.user_id = "test@example.com"
         
@@ -258,7 +258,7 @@ class TestInitRepository:
             normalize=True
         )
         mock_backend.assert_called_once_with(mock_config)
-        mock_backend_instance.init_repository.assert_called_once_with("test_snapshot_hash")
+        mock_backend_instance.init_repository.assert_called_once_with("test_snapshot_hash", force=False)
         
         assert result == "test_snapshot_hash"
     
@@ -286,6 +286,61 @@ class TestInitRepository:
         )
         
         assert result == "test_hash"
+    
+    def test_init_repository_with_real_config_structure(self):
+        """Test init_repository with realistic config structure - reproduces repo_name bug"""
+        from dsg.config_manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+        from pathlib import Path
+        
+        # Create realistic config structure that matches actual YAML
+        ssh_config = SSHRepositoryConfig(
+            host="localhost",
+            path=Path("/var/repos/zsd"), 
+            name="BB",  # This is the legacy field
+            type="zfs"
+        )
+        
+        project_settings = ProjectSettings(
+            data_dirs={"input", "output", "hand", "src"},
+            ignore={
+                "names": [".DS_Store", "__pycache__"],
+                "paths": [],
+                "suffixes": [".tmp", ".pyc"]
+            }
+        )
+        
+        project_config = ProjectConfig(
+            name="BB",  # This is the correct field
+            transport="ssh",
+            ssh=ssh_config,
+            project=project_settings
+        )
+        
+        user_config = UserConfig(
+            user_name="Test User",
+            user_id="test@example.com"
+        )
+        
+        from dsg.config_manager import Config
+        config = Config(
+            user=user_config,
+            project=project_config,
+            project_root=Path("/test/project")
+        )
+        
+        # This should now work after the fix (config.project.name instead of config.project.repo_name)
+        with patch('dsg.lifecycle.create_backend') as mock_backend, \
+             patch('dsg.lifecycle.create_local_metadata') as mock_local_meta:
+            mock_local_meta.return_value = "test_hash"
+            mock_backend_instance = MagicMock()
+            mock_backend.return_value = mock_backend_instance
+            
+            result = init_repository(config)
+            
+            # Verify the fix worked
+            assert result == "test_hash"
+            mock_backend.assert_called_once_with(config)
+            mock_backend_instance.init_repository.assert_called_once_with("test_hash", force=False)
     
     @patch('dsg.lifecycle.create_backend')
     @patch('dsg.lifecycle.create_local_metadata')

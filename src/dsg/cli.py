@@ -26,7 +26,10 @@ from dsg.cli_utils import (
     validate_repository_command_prerequisites,
     validate_project_prerequisites,
     handle_config_error,
-    handle_operation_error
+    handle_operation_error,
+    ensure_dsgconfig_exists,
+    load_config_with_console,
+    ensure_dsg_not_exists
 )
 from dsg.config_manager import load_repository_discovery_config, Config, validate_config as validate_config_func
 from dsg.lifecycle import sync_repository, init_repository
@@ -284,8 +287,10 @@ def init(  # pragma: no cover
     git add .dsgconfig.yml
     git commit -m "Add dsg repository configuration"
     """
-    # Validate all prerequisites for init
-    config = validate_repository_setup_prerequisites(console, force=force, verbose=True)
+    # Validate prerequisites for init (skip backend check since we're creating it)
+    ensure_dsgconfig_exists(console)
+    config = load_config_with_console(console, verbose=True)
+    ensure_dsg_not_exists(console, force=force)
     
     # Create progress reporter
     progress_reporter = RepositoryProgressReporter(console, verbose=True)
@@ -294,7 +299,7 @@ def init(  # pragma: no cover
         progress_reporter.start_progress()
         
         # Initialize repository (creates local metadata and pushes to backend)
-        init_repository(config, normalize=normalize)
+        init_repository(config, normalize=normalize, force=force)
         
         console.print("[green]✓[/green] Repository initialized successfully")
         console.print("Local files have been pushed to remote repository")

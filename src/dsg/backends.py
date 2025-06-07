@@ -5,6 +5,8 @@
 #
 # ------
 # dsg/src/dsg/backends.py
+#
+# TODO: split this into components, this file is much too long
 
 import socket
 import subprocess
@@ -54,7 +56,7 @@ class SnapshotOperations(ABC):
 
     @abstractmethod
     def init_repository(self, file_list: list[str], transport: Transport,
-                       local_base: str, remote_base: str) -> None:
+                       local_base: str, remote_base: str, force: bool = False) -> None:
         """Initialize repository with filesystem-specific workflow.
 
         Each filesystem type orchestrates transport + snapshot commands differently:
@@ -66,6 +68,7 @@ class SnapshotOperations(ABC):
             transport: Transport mechanism to use
             local_base: Local base directory
             remote_base: Remote base directory (mount point for ZFS)
+            force: Whether to force initialization, overwriting existing data
         """
         raise NotImplementedError("init_repository() not implemented")
 
@@ -181,7 +184,7 @@ class XFSOperations(SnapshotOperations):
         self.repo_path = repo_path
 
     def init_repository(self, file_list: list[str], transport: Transport,
-                       local_base: str, remote_base: str) -> None:
+                       local_base: str, remote_base: str, force: bool = False) -> None:
         """TODO: Implement XFS hardlink snapshots"""
         raise NotImplementedError("XFS hardlink snapshots not yet implemented")
 
@@ -197,10 +200,10 @@ class ZFSOperations(SnapshotOperations):
         self.mount_path = f"{mount_base}/{repo_name}"
 
     def init_repository(self, file_list: list[str], transport: Transport,
-                       local_base: str, remote_base: str) -> None:
+                       local_base: str, remote_base: str, force: bool = False) -> None:
         """Initialize ZFS repository with dataset creation and first snapshot"""
         # Step 1: Create ZFS dataset
-        self._create_dataset()
+        self._create_dataset(force=force)
 
         # Step 2: Copy files using transport
         if file_list:
@@ -210,7 +213,7 @@ class ZFSOperations(SnapshotOperations):
         self._create_snapshot("s1")
 
     def _create_dataset(self, force: bool = False) -> None:
-        """Create ZFS dataset with appropriate mountpoint"""
+        """Create ZFS dataset with appropriate mountpoint and permissions"""
         if force:
             # Destroy existing dataset if force flag is set
             destroy_cmd = ["sudo", "zfs", "destroy", "-r", self.dataset_name]
@@ -224,6 +227,22 @@ class ZFSOperations(SnapshotOperations):
         # Set mountpoint
         mountpoint_cmd = ["sudo", "zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
         result = subprocess.run(mountpoint_cmd, capture_output=True, text=True, check=True)
+
+        # Fix ownership and permissions on the mount point
+        # Get current user for ownership
+        import os
+        import pwd
+        current_user = pwd.getpwuid(os.getuid()).pw_name
+        current_group = pwd.getpwuid(os.getuid()).pw_gid
+        group_name = pwd.getpwuid(os.getuid()).pw_name  # Use same name for group fallback
+
+        # Set ownership to current user
+        chown_cmd = ["sudo", "chown", f"{current_user}:{current_user}", self.mount_path]
+        result = subprocess.run(chown_cmd, capture_output=True, text=True, check=True)
+
+        # Set permissions to allow user read/write
+        chmod_cmd = ["sudo", "chmod", "755", self.mount_path]
+        result = subprocess.run(chmod_cmd, capture_output=True, text=True, check=True)
 
     def _create_snapshot(self, snapshot_id: str) -> None:
         """Create ZFS snapshot"""
@@ -347,6 +366,9 @@ class Backend(ABC):
     - validate-snapshot: verify atomic sync integrity
     - Error handling: automatic rollback on any failure
 
+    QUESTION:
+    - how does atomicity work on the client side?
+
     PRIORITY: Medium-High - significantly improves sync reliability
     """
 
@@ -391,12 +413,13 @@ class Backend(ABC):
         raise NotImplementedError("clone() not implemented")
 
     @abstractmethod
-    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+    def init_repository(self, snapshot_hash: str, progress_callback=None, force: bool = False) -> None:
         """Initialize a new repository on the backend.
 
         Args:
             snapshot_hash: Hash of the initial snapshot for verification
             progress_callback: Optional callback for progress updates
+            force: Whether to force initialization, overwriting existing data
         """
         raise NotImplementedError("init_repository() not implemented")
 
@@ -531,10 +554,40 @@ class LocalhostBackend(Backend):
         if progress_callback:
             progress_callback("complete_files")
 
-    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
-        """Initialize repository on local filesystem."""
-        # TODO: Implement local repository initialization
-        raise NotImplementedError("LocalhostBackend.init_repository() not yet implemented")
+    def init_repository(self, snapshot_hash: str, progress_callback=None, force: bool = False) -> None:
+        """Initialize repository on local filesystem using appropriate snapshot operations."""
+        # TODO: Get repo_type from config to determine ZFS vs XFS
+        # For now, assume ZFS since that's what dsg-tester is using
+
+        # Create ZFS operations - need pool name from repo_path
+        # For path like "/var/repos/zsd", extract pool name "zsd" from the path
+        pool_name = self.repo_path.name  # Extract last component of path
+        zfs_ops = ZFSOperations(pool_name, self.repo_name)
+
+        # Create localhost transport
+        transport = LocalhostTransport(self.repo_path, self.repo_name)
+
+        # For init, we need to get file list from current working directory
+        # and copy them to the ZFS mount point
+        import os
+        from pathlib import Path
+
+        # Get all files from current directory (excluding .dsg)
+        current_dir = Path.cwd()
+        file_list = []
+        for item in current_dir.rglob("*"):
+            if item.is_file() and ".dsg" not in item.parts:
+                rel_path = item.relative_to(current_dir)
+                file_list.append(str(rel_path))
+
+        # Initialize ZFS repository
+        zfs_ops.init_repository(
+            file_list=file_list,
+            transport=transport,
+            local_base=str(current_dir),
+            remote_base=zfs_ops.mount_path,
+            force=force
+        )
 
 
 class SSHBackend(Backend):
@@ -889,7 +942,7 @@ class SSHBackend(Backend):
             if progress_callback:
                 progress_callback("update_files", completed=total_files)
 
-    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+    def init_repository(self, snapshot_hash: str, progress_callback=None, force: bool = False) -> None:
         """Initialize repository on SSH remote."""
         # TODO: Implement SSH repository initialization
         raise NotImplementedError("SSHBackend.init_repository() not yet implemented")
@@ -928,7 +981,7 @@ class ComposedBackend(Backend):
         """TODO: Delegate to transport"""
         raise NotImplementedError("ComposedBackend.clone() not yet implemented")
 
-    def init_repository(self, snapshot_hash: str, progress_callback=None) -> None:
+    def init_repository(self, snapshot_hash: str, progress_callback=None, force: bool = False) -> None:
         """Delegate to snapshot operations for init workflow"""
         # TODO: Get file list from lifecycle and call snapshot_ops.init_repository()
         raise NotImplementedError("ComposedBackend.init_repository() not yet implemented")
