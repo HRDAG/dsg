@@ -27,6 +27,10 @@ from dsg.locking import (
     create_sync_lock
 )
 
+# Fast unit test timeouts - no unit test should wait more than 100ms
+UNIT_TEST_TIMEOUT_MS = 100  # 100ms
+UNIT_TEST_TIMEOUT_MINUTES = UNIT_TEST_TIMEOUT_MS / (1000 * 60)  # ~0.00167 minutes
+
 
 class MockFileBackend:
     """Mock file backend for testing."""
@@ -138,7 +142,7 @@ class TestSyncLock:
     
     def test_successful_lock_acquisition(self, mock_backend):
         """Test successful lock acquisition."""
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # Initially no lock exists
         assert not mock_backend.file_exists(".dsg/sync.lock")
@@ -162,14 +166,18 @@ class TestSyncLock:
     def test_lock_acquisition_conflict(self, mock_backend):
         """Test lock acquisition fails when another lock exists."""
         # Create first lock
-        lock1 = SyncLock(mock_backend, "user1", "sync")
+        lock1 = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         assert lock1.acquire()
         
-        # Second lock should fail
-        lock2 = SyncLock(mock_backend, "user2", "sync", timeout_minutes=0.02)  # 1.2 seconds
+        # Second lock should fail quickly
+        lock2 = SyncLock(mock_backend, "user2", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
+        start_time = time.time()
         with pytest.raises(LockConflictError) as exc_info:
             lock2.acquire()
+        
+        elapsed = time.time() - start_time
+        assert elapsed < 0.5  # Should fail very quickly
         
         assert "Repository locked by user1" in str(exc_info.value)
         assert "sync" in str(exc_info.value)
@@ -177,7 +185,7 @@ class TestSyncLock:
     
     def test_lock_release(self, mock_backend):
         """Test successful lock release."""
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # Acquire and then release
         assert lock.acquire()
@@ -193,7 +201,7 @@ class TestSyncLock:
     
     def test_release_without_acquisition(self, mock_backend):
         """Test releasing lock that was never acquired."""
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # Should succeed gracefully
         success = lock.release()
@@ -201,7 +209,7 @@ class TestSyncLock:
     
     def test_context_manager_success(self, mock_backend):
         """Test successful context manager usage."""
-        with SyncLock(mock_backend, "user1", "sync") as lock:
+        with SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES) as lock:
             assert lock._acquired
             assert mock_backend.file_exists(".dsg/sync.lock")
         
@@ -212,13 +220,17 @@ class TestSyncLock:
     def test_context_manager_acquisition_failure(self, mock_backend):
         """Test context manager when lock acquisition fails."""
         # Create existing lock
-        existing_lock = SyncLock(mock_backend, "user1", "sync")
+        existing_lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         existing_lock.acquire()
         
-        # Context manager should raise exception
+        # Context manager should raise exception quickly
+        start_time = time.time()
         with pytest.raises(LockConflictError):
-            with SyncLock(mock_backend, "user2", "sync", timeout_minutes=0.02):
+            with SyncLock(mock_backend, "user2", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES):
                 pass  # Should never reach here
+        
+        elapsed = time.time() - start_time
+        assert elapsed < 0.5  # Should fail very quickly
     
     def test_stale_lock_detection(self, mock_backend):
         """Test detection and cleanup of stale locks."""
@@ -237,7 +249,7 @@ class TestSyncLock:
         mock_backend.write_file(".dsg/sync.lock", lock_data)
         
         # New lock should succeed by cleaning up stale lock
-        lock = SyncLock(mock_backend, "user2", "sync")
+        lock = SyncLock(mock_backend, "user2", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         success = lock.acquire()
         assert success
         assert lock._acquired
@@ -250,7 +262,7 @@ class TestSyncLock:
     
     def test_is_locked_method(self, mock_backend):
         """Test is_locked() method."""
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # Initially not locked
         is_locked, lock_info = lock.is_locked()
@@ -274,7 +286,7 @@ class TestSyncLock:
     def test_race_condition_protection(self, mock_backend):
         """Test protection against race conditions during acquisition."""
         # Mock the verification step to simulate race condition
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         original_get_current_lock_info = lock._get_current_lock_info
         
@@ -305,43 +317,47 @@ class TestSyncLock:
         success = lock._try_acquire_lock()
         assert not success
     
-    # def test_timeout_behavior(self, mock_backend):
-    #     """Test lock acquisition timeout."""
-    #     # Create existing lock
-    #     existing_lock = SyncLock(mock_backend, "user1", "sync")
-    #     existing_lock.acquire()
-    #     
-    #     # Second lock should timeout quickly
-    #     lock = SyncLock(mock_backend, "user2", "sync", timeout_minutes=0.017)  # ~1 second
-    #     
-    #     start_time = time.time()
-    #     with pytest.raises((LockTimeoutError, LockConflictError)):
-    #         lock.acquire()
-    #     
-    #     elapsed = time.time() - start_time
-    #     assert elapsed < 5  # Should timeout quickly, not hang
+    def test_timeout_behavior(self, mock_backend):
+        """Test lock acquisition timeout."""
+        # Create existing lock
+        existing_lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
+        existing_lock.acquire()
+        
+        # Second lock should timeout quickly
+        lock = SyncLock(mock_backend, "user2", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
+        
+        start_time = time.time()
+        with pytest.raises((LockTimeoutError, LockConflictError)):
+            lock.acquire()
+        
+        elapsed = time.time() - start_time
+        assert elapsed < 0.5  # Should timeout quickly, not hang
     
-    # def test_backend_error_handling(self, mock_backend):
-    #     """Test handling of backend errors."""
-    #     # Setup backend to fail on file operations
-    #     mock_backend.write_errors[".dsg/sync.lock"] = IOError("Disk full")
-    #     
-    #     # Use very short timeout to avoid hanging
-    #     lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=0.05)  # 3 seconds
-    #     
-    #     # Should fail with either LockError or LockTimeoutError
-    #     with pytest.raises((LockError, LockTimeoutError)) as exc_info:
-    #         lock.acquire()
-    #     
-    #     # Check that the failure is related to our simulated error
-    #     assert not lock._acquired
+    def test_backend_error_handling(self, mock_backend):
+        """Test handling of backend errors."""
+        # Setup backend to fail on file operations
+        mock_backend.write_errors[".dsg/sync.lock"] = IOError("Disk full")
+        
+        # Use very short timeout to avoid hanging
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
+        
+        start_time = time.time()
+        # Should fail with either LockError or LockTimeoutError
+        with pytest.raises((LockError, LockTimeoutError)) as exc_info:
+            lock.acquire()
+        
+        elapsed = time.time() - start_time
+        assert elapsed < 0.5  # Should fail quickly, not hang
+        
+        # Check that the failure is related to our simulated error
+        assert not lock._acquired
     
     def test_corrupted_lock_file_handling(self, mock_backend):
         """Test handling of corrupted lock files."""
         # Create corrupted lock file
         mock_backend.write_file(".dsg/sync.lock", b"invalid json content")
         
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # Should treat corrupted file as no lock and succeed
         success = lock.acquire()
@@ -354,7 +370,7 @@ class TestSyncLock:
         users = ["user1", "user2", "user3"]
         
         for operation, user in zip(operations, users):
-            lock = SyncLock(mock_backend, user, operation)
+            lock = SyncLock(mock_backend, user, operation, timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
             success = lock.acquire()
             assert success
             
@@ -393,12 +409,12 @@ class TestConcurrentScenarios:
     def test_sequential_lock_usage(self, mock_backend):
         """Test multiple users acquiring lock sequentially."""
         # First user acquires and releases
-        lock1 = SyncLock(mock_backend, "user1", "sync")
+        lock1 = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         assert lock1.acquire()
         assert lock1.release()
         
         # Second user should be able to acquire
-        lock2 = SyncLock(mock_backend, "user2", "clone")
+        lock2 = SyncLock(mock_backend, "user2", "clone", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         assert lock2.acquire()
         assert lock2.release()
         
@@ -407,7 +423,7 @@ class TestConcurrentScenarios:
     
     def test_lock_reacquisition_after_release(self, mock_backend):
         """Test that same lock instance can be reused."""
-        lock = SyncLock(mock_backend, "user1", "sync")
+        lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
         # First acquisition
         assert lock.acquire()
@@ -420,7 +436,7 @@ class TestConcurrentScenarios:
     def test_tombstone_cleanup_behavior(self, mock_backend):
         """Test that tombstones don't interfere with new locks."""
         # Create and release first lock
-        lock1 = SyncLock(mock_backend, "user1", "sync")
+        lock1 = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         lock1.acquire()
         lock1.release()
         
@@ -428,7 +444,7 @@ class TestConcurrentScenarios:
         assert mock_backend.file_exists(".dsg/sync.lock.released")
         
         # New lock should work despite tombstone
-        lock2 = SyncLock(mock_backend, "user2", "sync")
+        lock2 = SyncLock(mock_backend, "user2", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         assert lock2.acquire()
         
         # Should have active lock now

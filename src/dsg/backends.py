@@ -23,6 +23,7 @@ from loguru import logger
 from dsg.config_manager import Config
 from dsg.manifest import Manifest
 from dsg.host_utils import is_local_host
+from dsg.protocols import FileOperations
 from dsg.utils.execution import CommandExecutor as ce
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include n2s primarily
@@ -256,7 +257,7 @@ class ZFSOperations(SnapshotOperations):
             return False
 
 
-class Backend(ABC):
+class Backend(ABC, FileOperations):
     """Base class for all repository backends
 
     TODO: CRITICAL - Smart permission inconsistency warnings
