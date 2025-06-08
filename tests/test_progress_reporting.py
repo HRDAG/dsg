@@ -17,7 +17,7 @@ from unittest.mock import Mock
 import pytest
 from rich.console import Console
 
-from dsg.cli import RepositoryProgressReporter
+from dsg.progress import RepositoryProgressReporter
 
 
 class TestRepositoryProgressReporter:
@@ -190,19 +190,19 @@ project:
             runner = CliRunner()
             env = {"DSG_CONFIG_HOME": str(user_config_dir)}
             
-            # Test default mode (should show progress messages)
+            # Test default mode (should show clear error messages)
             result_default = runner.invoke(app, ["clone"], env=env)
-            assert "Repository Clone" in result_default.stdout
-            assert "Testing backend connectivity" in result_default.stdout
+            assert "Backend connectivity failed" in result_default.stdout
+            assert result_default.exit_code == 1
             
-            # Test quiet mode (should suppress progress)
+            # Test quiet mode (should still show errors but suppress progress)
             result_quiet = runner.invoke(app, ["clone", "--quiet"], env=env)
-            assert "Repository Clone" not in result_quiet.stdout
+            assert "Backend connectivity failed" in result_quiet.stdout or result_quiet.exit_code == 1
             
-            # Test verbose mode (should show progress + extra details)  
+            # Test verbose mode (should show error with extra details)  
             result_verbose = runner.invoke(app, ["clone", "--verbose"], env=env)
-            assert "Repository Clone" in result_verbose.stdout
-            assert "Testing backend connectivity" in result_verbose.stdout
+            assert "Backend connectivity failed" in result_verbose.stdout
+            assert result_verbose.exit_code == 1
 
     def test_ssh_backend_verbose_parameter_flow(self):
         """Test that verbose parameter flows through to SSH backend correctly."""

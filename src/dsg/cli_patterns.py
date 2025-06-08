@@ -201,9 +201,9 @@ def operation_command_pattern(command_type: str = "repository"):
                     console.print("[yellow]DRY RUN MODE - No changes will be made[/yellow]")
                 
                 # Add keyboard interrupt handling
-                # Remove operation-specific parameters from kwargs to avoid duplicates
-                filtered_kwargs = {k: v for k, v in kwargs.items() 
-                                 if k not in ['verbose', 'quiet', 'dry_run', 'force', 'normalize']}
+                # Separate core parameters from operation-specific parameters
+                core_params = {'verbose', 'quiet', 'dry_run', 'force', 'normalize'}
+                operation_params = {k: v for k, v in kwargs.items() if k not in core_params}
                 
                 result = func(
                     console=console, 
@@ -211,8 +211,10 @@ def operation_command_pattern(command_type: str = "repository"):
                     dry_run=dry_run,
                     force=force,
                     normalize=normalize,
+                    verbose=verbose,
+                    quiet=quiet,
                     *args, 
-                    **filtered_kwargs
+                    **operation_params
                 )
                 collector.capture_success(result, config=config)
                 

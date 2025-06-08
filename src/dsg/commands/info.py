@@ -163,17 +163,17 @@ def list_files(
     
     # Display results (we'll need to create this display function)
     if not quiet:
-        total_files = len(scan_result.manifest.files)
-        total_ignored = len(scan_result.ignored_files)
+        total_files = len(scan_result.manifest.entries) if scan_result.manifest else 0
+        total_ignored = len(scan_result.ignored)
         console.print(f"Found {total_files} files, {total_ignored} ignored")
     
     return {
         'config': config,
         'path': str(scan_path),
         'manifest': scan_result.manifest.__dict__ if scan_result.manifest else None,
-        'ignored_files': scan_result.ignored_files,
-        'total_files': len(scan_result.manifest.files) if scan_result.manifest else 0,
-        'total_ignored': len(scan_result.ignored_files)
+        'ignored_files': scan_result.ignored,
+        'total_files': len(scan_result.manifest.entries) if scan_result.manifest else 0,
+        'total_ignored': len(scan_result.ignored)
     }
 
 

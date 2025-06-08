@@ -103,18 +103,18 @@ class TestInfoCommandHandlers:
         config = Mock(spec=Config)
         
         with patch('dsg.commands.info.list_directory') as mock_list_dir:
-            # Create a simple object with the needed attributes
+            # Create a simple object with the needed attributes (updated for new structure)
             class MockManifest:
                 def __init__(self):
-                    self.files = ['file1.txt', 'file2.txt']
-                    self.__dict__ = {'files': self.files}
+                    self.entries = {'file1.txt': Mock(), 'file2.txt': Mock()}
+                    self.__dict__ = {'entries': self.entries}
             
             mock_manifest = MockManifest()
             
             class MockScanResult:
                 def __init__(self):
                     self.manifest = mock_manifest
-                    self.ignored_files = ['ignored.tmp']
+                    self.ignored = ['ignored.tmp']  # Updated attribute name
             
             mock_list_dir.return_value = MockScanResult()
             

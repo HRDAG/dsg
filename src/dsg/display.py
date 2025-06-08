@@ -577,4 +577,44 @@ def display_normalization_preview(console: Console, normalization_results: list[
     console.print(panel)
 
 
+def display_repository_list(console: Console, repositories: list[dict], verbose: bool = False, quiet: bool = False) -> None:
+    """Display repository list from configuration data.
+    
+    Args:
+        console: Rich console for output
+        repositories: List of repository config dictionaries
+        verbose: Show additional details if True
+        quiet: Minimize output if True
+    """
+    if quiet:
+        return
+        
+    if not repositories:
+        console.print("[yellow]No repositories configured for discovery.[/yellow]")
+        console.print("[dim]Configure repositories in ~/.config/dsg/dsg.yml[/dim]")
+        return
+    
+    console.print("[dim]Discovering available repositories...[/dim]")
+    
+    # Display repositories in table format
+    table = Table(title="Available DSG Repositories")
+    table.add_column("Name", style="cyan")
+    table.add_column("Host", style="green")
+    table.add_column("Path", style="blue")
+    table.add_column("Transport", style="magenta")
+    
+    for repo in repositories:
+        table.add_row(
+            repo.get('name', 'Unknown'),
+            repo.get('host', 'Unknown'),
+            repo.get('repo_path', 'Unknown'),
+            repo.get('transport', 'Unknown')
+        )
+    
+    console.print(table)
+    
+    if verbose:
+        console.print(f"\n[dim]Found {len(repositories)} repositories[/dim]")
+
+
 # done.

@@ -242,11 +242,11 @@ def init(
     def handler(console, config, **kwargs):
         return action_commands.init(
             console, config, 
+            dry_run=dry_run, force=force, normalize=normalize, 
+            verbose=verbose, quiet=quiet,
             host=host, repo_path=repo_path, repo_name=repo_name, repo_type=repo_type,
             transport=transport, rclone_remote=rclone_remote, ipfs_did=ipfs_did,
-            interactive=interactive,
-            dry_run=dry_run, force=force, normalize=normalize, 
-            verbose=verbose, quiet=quiet
+            interactive=interactive
         )
     
     handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
@@ -268,9 +268,9 @@ def clone(
     def handler(console, config, **kwargs):
         return action_commands.clone(
             console, config,
-            dest_path=dest_path, resume=resume,
             dry_run=dry_run, force=force, normalize=normalize,
-            verbose=verbose, quiet=quiet
+            verbose=verbose, quiet=quiet,
+            dest_path=dest_path, resume=resume
         )
     
     handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
@@ -291,9 +291,9 @@ def sync(
     def handler(console, config, **kwargs):
         return action_commands.sync(
             console, config,
-            continue_sync=continue_sync,
             dry_run=dry_run, force=force, normalize=normalize,
-            verbose=verbose, quiet=quiet
+            verbose=verbose, quiet=quiet,
+            continue_sync=continue_sync
         )
     
     handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
@@ -315,9 +315,9 @@ def snapmount(
     def handler(console, config, **kwargs):
         return action_commands.snapmount(
             console, config,
-            num=num, mountpoint=mountpoint,
             dry_run=dry_run, force=force, normalize=normalize,
-            verbose=verbose, quiet=quiet
+            verbose=verbose, quiet=quiet,
+            num=num, mountpoint=mountpoint
         )
     
     handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
@@ -340,9 +340,9 @@ def snapfetch(
     def handler(console, config, **kwargs):
         return action_commands.snapfetch(
             console, config,
-            num=num, file=file, output=output,
             dry_run=dry_run, force=force, normalize=normalize,
-            verbose=verbose, quiet=quiet
+            verbose=verbose, quiet=quiet,
+            num=num, file=file, output=output
         )
     
     handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
