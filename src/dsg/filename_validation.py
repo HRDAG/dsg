@@ -6,9 +6,10 @@
 # ------
 # dsg/src/dsg/filename_validation.py
 
-from pathlib import Path, PurePosixPath
 import re
 import unicodedata
+from pathlib import Path, PurePosixPath
+
 import typer
 
 

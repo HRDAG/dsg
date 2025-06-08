@@ -9,12 +9,12 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional, Literal, Final
 
 import yaml
 from loguru import logger
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator, PrivateAttr
 
 from dsg.host_utils import is_local_host
 from dsg.exceptions import ConfigError
@@ -131,9 +131,6 @@ class IPFSRepositoryConfig(BaseModel):
 
 
 # ---- Project Settings ----
-
-from pathlib import PurePosixPath
-from pydantic import PrivateAttr
 
 class IgnoreSettings(BaseModel):
     """Settings for ignoring files and directories."""
