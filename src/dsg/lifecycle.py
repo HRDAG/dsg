@@ -288,6 +288,134 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
     return scan_result.manifest, normalization_result
 
 
+def _validate_and_normalize_files(
+        config: Config, 
+        console: 'Console', 
+        normalize: bool, 
+        dry_run: bool) -> tuple[NormalizationResult | None, int]:
+    """
+    Handle file validation and normalization.
+    
+    Returns:
+        tuple: (normalization_result, validation_warnings_count)
+        
+    Raises:
+        ValidationError: If validation issues exist and can't be resolved
+    """
+    logger = loguru.logger
+    logger.debug("Scanning local directory for validation warnings...")
+    scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
+    
+    if not scan_result.validation_warnings:
+        logger.debug("No validation warnings found")
+        return None, 0
+    
+    logger.debug(f"Found {len(scan_result.validation_warnings)} validation warnings")
+    
+    if not normalize:
+        warning_paths = [w['path'] for w in scan_result.validation_warnings]
+        raise ValidationError(
+            f"Sync blocked: {len(scan_result.validation_warnings)} files have validation issues. "
+            f"Use --normalize to fix automatically or manually fix these paths: {warning_paths[:3]}..."
+        )
+    
+    logger.debug("Attempting to normalize validation issues...")
+    
+    if dry_run:
+        _show_normalization_preview(console, scan_result.validation_warnings)
+        return None, len(scan_result.validation_warnings)
+    
+    try:
+        normalization_result = normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
+        
+        if normalization_result.has_changes():
+            _display_normalization_results(console, normalization_result)
+        
+        # Re-scan to verify normalization worked
+        logger.debug("Re-scanning after normalization...")
+        scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
+        
+        if scan_result.validation_warnings:
+            warning_paths = [w['path'] for w in scan_result.validation_warnings]
+            raise ValidationError(
+                f"Normalization failed: {len(scan_result.validation_warnings)} files still have validation issues. "
+                f"Please manually fix these paths: {warning_paths[:3]}..."
+            )
+        
+        logger.debug("Normalization completed successfully")
+        return normalization_result, 0
+        
+    except Exception as e:
+        raise ValidationError(f"Normalization failed: {e}")
+
+
+def _check_sync_conflicts(config: Config) -> list[str]:
+    """
+    Check for sync conflicts that require manual resolution.
+    
+    Returns:
+        list: File paths with conflicts
+    """
+    logger = loguru.logger
+    logger.debug("Getting sync status to determine operations...")
+    status_result = get_sync_status(config, include_remote=True, verbose=True)
+    
+    conflict_states = [
+        SyncState.sLCR__all_ne,  # All three copies differ
+        SyncState.sLxCR__L_ne_R  # Cache missing; local and remote differ
+    ]
+    
+    conflicts = []
+    for file_path, sync_state in status_result.sync_states.items():
+        if file_path == "nonexistent/path.txt":  # Skip test entry
+            continue
+        if sync_state in conflict_states:
+            conflicts.append(file_path)
+    
+    return conflicts
+
+
+def _display_conflicts_and_exit(console: 'Console', conflicts: list[str]) -> None:
+    """
+    Display conflict information and raise SyncError.
+    
+    Args:
+        console: Rich console for output
+        conflicts: List of conflicted file paths
+        
+    Raises:
+        SyncError: Always raises to block sync
+    """
+    logger = loguru.logger
+    logger.error(f"Found {len(conflicts)} conflicts requiring manual resolution")
+    
+    console.print(f"[red]✗[/red] Sync blocked: {len(conflicts)} conflicts require manual resolution")
+    for conflict_file in conflicts[:5]:  # Show first 5 conflicts
+        console.print(f"  [red]{conflict_file}[/red]")
+    if len(conflicts) > 5:
+        console.print(f"  ... and {len(conflicts) - 5} more")
+    console.print("\nResolve conflicts manually, then run 'dsg sync --continue'")
+    
+    raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
+
+
+def _execute_sync_operations(console: 'Console') -> None:
+    """
+    Perform the actual sync operations.
+    
+    Args:
+        console: Rich console for output
+    """
+    logger = loguru.logger
+    logger.debug("No conflicts found - proceeding with sync...")
+    
+    console.print("[dim]Synchronizing files...[/dim]")
+    
+    # TODO: Implement actual file transfer operations with backend
+    console.print("[green]✓[/green] Sync completed successfully")
+    logger.debug("Sync operations completed")
+
+
 def sync_repository(
         config: Config,
         console: 'Console',
@@ -306,66 +434,32 @@ def sync_repository(
         Dictionary with sync results including normalization details for JSON output
 
     Raises:
-        ValueError: If validation warnings exist and normalize=False
+        ValidationError: If validation warnings exist and normalize=False
+        SyncError: If conflicts exist that require manual resolution
     """
-    
     logger = loguru.logger
     logger.debug(f"Starting sync_repository with dry_run={dry_run}, normalize={normalize}")
 
-    # Track normalization results for JSON output
-    normalization_result = None
+    # Step 1: Handle validation and normalization
+    try:
+        normalization_result, validation_warnings_count = _validate_and_normalize_files(
+            config, console, normalize, dry_run
+        )
+        
+        # Early return for dry-run with validation warnings
+        if dry_run and validation_warnings_count > 0:
+            return {
+                'operation': 'sync',
+                'dry_run': True,
+                'validation_warnings_found': validation_warnings_count,
+                'normalize_requested': normalize
+            }
+            
+    except ValidationError:
+        # Re-raise validation errors to caller
+        raise
 
-    # Step 1: Scan local directory to check for validation warnings
-    logger.debug("Scanning local directory for validation warnings...")
-    scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
-
-    # Step 2: Check for validation warnings and block if needed
-    if scan_result.validation_warnings:
-        logger.debug(f"Found {len(scan_result.validation_warnings)} validation warnings")
-        if not normalize:
-            # Block sync - user must fix validation issues first
-            warning_paths = [w['path'] for w in scan_result.validation_warnings]
-            raise ValidationError(
-                f"Sync blocked: {len(scan_result.validation_warnings)} files have validation issues. "
-                f"Use --normalize to fix automatically or manually fix these paths: {warning_paths[:3]}..."
-            )
-        else:
-            logger.debug("Attempting to normalize validation issues...")
-            try:
-                if dry_run:
-                    _show_normalization_preview(console, scan_result.validation_warnings)
-                    return {
-                        'operation': 'sync',
-                        'dry_run': True,
-                        'validation_warnings_found': len(scan_result.validation_warnings),
-                        'normalize_requested': normalize
-                    }
-                else:
-                    normalization_result = normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
-                    
-                    # Show user what was fixed
-                    if normalization_result.has_changes():
-                        _display_normalization_results(console, normalization_result)
-
-                    logger.debug("Re-scanning after normalization...")
-                    scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
-
-                    if scan_result.validation_warnings:
-                        # Some issues couldn't be fixed
-                        warning_paths = [w['path'] for w in scan_result.validation_warnings]
-                        raise ValidationError(
-                            f"Normalization failed: {len(scan_result.validation_warnings)} files still have validation issues. "
-                            f"Please manually fix these paths: {warning_paths[:3]}..."
-                        )
-
-                    logger.debug("Normalization completed successfully")
-            except Exception as e:
-                if not dry_run:
-                    raise ValidationError(f"Normalization failed: {e}")
-                # In dry-run mode, just show the preview even if normalization would fail
-
-    logger.debug("No validation warnings found, sync can proceed")
-
+    # Step 2: Handle dry-run preview
     if dry_run:
         logger.debug("Dry run mode - showing operations that would be performed")
         display_sync_dry_run_preview(console)
@@ -376,49 +470,21 @@ def sync_repository(
             'normalize_requested': normalize
         }
 
-    # Step 3: Get sync status to determine what operations are needed
-    logger.debug("Getting sync status to determine operations...")
-    status_result = get_sync_status(config, include_remote=True, verbose=True)
-    
-    # Step 4: Check for conflicts that require manual resolution
-    conflict_states = [
-        SyncState.sLCR__all_ne,  # All three copies differ
-        SyncState.sLxCR__L_ne_R  # Cache missing; local and remote differ
-    ]
-    
-    conflicts = []
-    for file_path, sync_state in status_result.sync_states.items():
-        if file_path == "nonexistent/path.txt":  # Skip test entry
-            continue
-        if sync_state in conflict_states:
-            conflicts.append(file_path)
-    
+    # Step 3: Check for conflicts
+    conflicts = _check_sync_conflicts(config)
     if conflicts:
-        logger.error(f"Found {len(conflicts)} conflicts requiring manual resolution")
-        console.print(f"[red]✗[/red] Sync blocked: {len(conflicts)} conflicts require manual resolution")
-        for conflict_file in conflicts[:5]:  # Show first 5 conflicts
-            console.print(f"  [red]{conflict_file}[/red]")
-        if len(conflicts) > 5:
-            console.print(f"  ... and {len(conflicts) - 5} more")
-        console.print("\nResolve conflicts manually, then run 'dsg sync --continue'")
-        raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
+        _display_conflicts_and_exit(console, conflicts)
+
+    # Step 4: Execute sync operations
+    _execute_sync_operations(console)
     
-    # Step 5: Perform sync operations
-    logger.debug("No conflicts found - proceeding with sync...")
-    console.print("[dim]Synchronizing files...[/dim]")
-    
-    # For now, just show that sync would complete successfully
-    # TODO: Implement actual file transfer operations with backend
-    console.print("[green]✓[/green] Sync completed successfully")
-    logger.debug("Sync operations completed")
-    
-    # Return comprehensive sync result including normalization details
+    # Step 5: Return results
     return {
         'operation': 'sync',
         'success': True,
         'conflicts_found': 0,
         'normalization_result': normalization_result.summary() if normalization_result else None,
-        'validation_warnings_found': len(scan_result.validation_warnings) if scan_result.validation_warnings else 0,
+        'validation_warnings_found': validation_warnings_count,
         'normalize_requested': normalize,
         'dry_run': False
     }
@@ -474,6 +540,85 @@ def _show_normalization_preview(console: 'Console', validation_warnings: list[di
     display_normalization_preview(console, normalization_results)
 
 
+def _normalize_single_path(
+        path_str: str, 
+        project_root: Path, 
+        result: NormalizationResult) -> None:
+    """
+    Normalize a single problematic path.
+    
+    Args:
+        path_str: Relative path string to normalize
+        project_root: Project root directory
+        result: NormalizationResult to update with operations
+    """
+    logger = loguru.logger
+    full_path = project_root / path_str
+
+    logger.debug(f"Processing problematic path: {path_str}")
+
+    if not full_path.exists():
+        logger.warning(f"Path not found for normalization: {full_path}")
+        result.add_error(path_str, "File not found")
+        return
+
+    # Handle symlinks by updating their targets if needed
+    if full_path.is_symlink():
+        symlink_handled = _handle_symlink_normalization(full_path, project_root, result)
+        if symlink_handled:
+            return  # Symlink was handled, done with this path
+
+    # Use the UNIFIED fix function that handles all validation issues
+    normalized_path, was_modified = fix_problematic_path(full_path)
+
+    if was_modified:
+        _perform_path_rename(path_str, full_path, normalized_path, project_root, result)
+    else:
+        logger.debug(f"Path {path_str} did not need normalization")
+
+
+def _perform_path_rename(
+        path_str: str,
+        full_path: Path, 
+        normalized_path: Path, 
+        project_root: Path, 
+        result: NormalizationResult) -> None:
+    """
+    Perform the actual file/directory rename operation.
+    
+    Args:
+        path_str: Original relative path string
+        full_path: Current full path
+        normalized_path: Target normalized path
+        project_root: Project root directory
+        result: NormalizationResult to update
+    """
+    logger = loguru.logger
+
+    # Check if destination already exists
+    if normalized_path.exists():
+        error_msg = f"Cannot normalize to {normalized_path.name}: destination exists"
+        logger.warning(f"Cannot normalize {full_path} to {normalized_path}: destination exists")
+        result.add_error(path_str, error_msg)
+        return
+
+    try:
+        # Ensure parent directory exists
+        normalized_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Rename the file/directory
+        full_path.rename(normalized_path)
+        
+        # Record the successful rename
+        result.add_rename(path_str, str(normalized_path.relative_to(project_root)))
+        logger.debug(f"Successfully normalized: {full_path} -> {normalized_path}")
+
+    except Exception as e:
+        error_msg = f"Rename failed: {e}"
+        logger.error(f"Failed to normalize {full_path}: {e}")
+        result.add_error(path_str, error_msg)
+
+
 def normalize_problematic_paths(
         project_root: Path,
         validation_warnings: list[dict[str, str]]) -> NormalizationResult:
@@ -487,7 +632,6 @@ def normalize_problematic_paths(
     Returns:
         NormalizationResult with detailed tracking of all operations
     """
-    
     logger = loguru.logger
     logger.debug(f"Normalizing {len(validation_warnings)} problematic paths with result tracking")
     
@@ -495,49 +639,7 @@ def normalize_problematic_paths(
 
     for warning in validation_warnings:
         path_str = warning['path']
-        full_path = project_root / path_str
-
-        logger.debug(f"Processing problematic path: {path_str}")
-
-        if not full_path.exists():
-            logger.warning(f"Path not found for normalization: {full_path}")
-            result.add_error(path_str, "File not found")
-            continue
-
-        # Handle symlinks by updating their targets if needed
-        if full_path.is_symlink():
-            symlink_result = _handle_symlink_normalization(full_path, project_root, result)
-            if symlink_result:
-                continue  # Symlink was handled, move to next file
-
-        # Use the UNIFIED fix function that handles all validation issues
-        normalized_path, was_modified = fix_problematic_path(full_path)
-
-        if was_modified:
-            # Check if destination already exists
-            if normalized_path.exists():
-                error_msg = f"Cannot normalize to {normalized_path.name}: destination exists"
-                logger.warning(f"Cannot normalize {full_path} to {normalized_path}: destination exists")
-                result.add_error(path_str, error_msg)
-                continue
-
-            try:
-                # Ensure parent directory exists
-                normalized_path.parent.mkdir(parents=True, exist_ok=True)
-
-                # Rename the file/directory
-                full_path.rename(normalized_path)
-                
-                # Record the successful rename
-                result.add_rename(path_str, str(normalized_path.relative_to(project_root)))
-                logger.debug(f"Successfully normalized: {full_path} -> {normalized_path}")
-
-            except Exception as e:
-                error_msg = f"Rename failed: {e}"
-                logger.error(f"Failed to normalize {full_path}: {e}")
-                result.add_error(path_str, error_msg)
-        else:
-            logger.debug(f"Path {path_str} did not need normalization")
+        _normalize_single_path(path_str, project_root, result)
 
     logger.debug(f"Normalization complete: {len(result.renamed_files)} renamed, {len(result.fixed_symlinks)} symlinks fixed, {len(result.errors)} errors")
     return result

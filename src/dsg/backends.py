@@ -751,29 +751,8 @@ class SSHBackend(Backend):
 
         self._run_rsync(str(source_path), remote_dest)
 
-    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
-        """Clone repository from SSH source to destination directory using rsync.
-
-        Implements metadata-first approach:
-        1. rsync remote:.dsg/ → local/.dsg/ (get metadata first)
-        2. Parse local:.dsg/last-sync.json for file list
-        3. rsync files according to manifest using --files-from
-
-        Args:
-            dest_path: Local directory to clone repository into
-            resume: Continue interrupted transfer if True
-            progress_callback: Optional callback for progress updates (not implemented yet)
-
-        Raises:
-            subprocess.CalledProcessError: If rsync commands fail
-            ValueError: If source is not a DSG repository
-        """
-        # Construct remote paths
-        remote_dsg_path = f"{self.host}:{self.full_repo_path}/.dsg/"
-        remote_repo_path = f"{self.host}:{self.full_repo_path}/"
-        dest_dsg_path = dest_path / ".dsg"
-
-        # Step 1: Transfer metadata directory (critical, small, fast)
+    def _sync_metadata_directory(self, remote_dsg_path: str, dest_dsg_path: Path, progress_callback, verbose: bool) -> None:
+        """Transfer metadata directory from remote to local using rsync."""
         if progress_callback:
             progress_callback("start_metadata")
 
@@ -801,13 +780,13 @@ class SSHBackend(Backend):
         if progress_callback:
             progress_callback("complete_metadata")
 
-        # Step 2: Parse manifest for file list using existing utilities
-        manifest_file = dest_dsg_path / "last-sync.json"
+    def _parse_manifest_and_calculate_totals(self, manifest_file: Path, progress_callback) -> tuple['Manifest', int, int]:
+        """Parse manifest file and calculate total files and size for progress tracking."""
         if not manifest_file.exists():
             # Repository has no synced data yet, only metadata
             if progress_callback:
                 progress_callback("no_files")
-            return
+            return None, 0, 0
 
         try:
             manifest = Manifest.from_json(manifest_file)
@@ -825,14 +804,22 @@ class SSHBackend(Backend):
         if progress_callback:
             progress_callback("start_files", total_files=total_files, total_size=total_size)
 
-        # Step 3: Create temporary file list for rsync
+        return manifest, total_files, total_size
+
+    def _create_rsync_file_list(self, manifest: 'Manifest') -> str:
+        """Create temporary file list for rsync --files-from option."""
+        import tempfile
+        
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
             for path in manifest.entries.keys():
                 f.write(f"{path}\n")
-            filelist_path = f.name
+            return f.name
 
+    def _sync_data_files(self, remote_repo_path: str, dest_path: Path, filelist_path: str, 
+                        total_files: int, resume: bool, progress_callback, verbose: bool) -> None:
+        """Bulk transfer data files using rsync --files-from."""
         try:
-            # Step 4: Bulk transfer data files using --files-from
+            # Build rsync command
             rsync_cmd = [
                 "rsync", "-av",
                 f"--files-from={filelist_path}",
@@ -865,6 +852,47 @@ class SSHBackend(Backend):
 
         except ValueError as e:
             raise ValueError(f"Failed to sync data files: {str(e)}")
+
+    def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
+        """Clone repository from SSH source to destination directory using rsync.
+
+        Implements metadata-first approach:
+        1. rsync remote:.dsg/ → local/.dsg/ (get metadata first)
+        2. Parse local:.dsg/last-sync.json for file list
+        3. rsync files according to manifest using --files-from
+
+        Args:
+            dest_path: Local directory to clone repository into
+            resume: Continue interrupted transfer if True
+            progress_callback: Optional callback for progress updates (not implemented yet)
+
+        Raises:
+            subprocess.CalledProcessError: If rsync commands fail
+            ValueError: If source is not a DSG repository
+        """
+        # Construct remote paths
+        remote_dsg_path = f"{self.host}:{self.full_repo_path}/.dsg/"
+        remote_repo_path = f"{self.host}:{self.full_repo_path}/"
+        dest_dsg_path = dest_path / ".dsg"
+
+        # Step 1: Transfer metadata directory (critical, small, fast)
+        self._sync_metadata_directory(remote_dsg_path, dest_dsg_path, progress_callback, verbose)
+
+        # Step 2: Parse manifest for file list and calculate totals
+        manifest_file = dest_dsg_path / "last-sync.json"
+        manifest, total_files, total_size = self._parse_manifest_and_calculate_totals(manifest_file, progress_callback)
+        
+        # Early return if no files to sync
+        if manifest is None:
+            return
+
+        # Step 3: Create temporary file list for rsync
+        filelist_path = self._create_rsync_file_list(manifest)
+
+        try:
+            # Step 4: Bulk transfer data files using --files-from
+            self._sync_data_files(remote_repo_path, dest_path, filelist_path, total_files, resume, progress_callback, verbose)
+
         finally:
             # Step 5: Always cleanup temp file
             try:

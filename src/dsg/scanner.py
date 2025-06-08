@@ -9,6 +9,7 @@ from __future__ import annotations
 
 # Standard library imports
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Optional, Callable
 
@@ -20,8 +21,27 @@ import xxhash
 # Local DSG imports
 from dsg.config_manager import Config
 from dsg.manifest import Manifest, ManifestEntry, FileRef
+from dsg.filename_validation import validate_path
 
 logger = loguru.logger
+
+
+@dataclass
+class ProcessedPath:
+    """Structured representation of a processed file path during scanning."""
+    relative_path: Path
+    path_parts: tuple[str, ...]
+    posix_path: PurePosixPath
+    str_path: str
+
+
+@dataclass  
+class PathClassification:
+    """Classification flags for a path during directory scanning."""
+    is_dsg_file: bool
+    is_in_data_dir: bool
+    is_hidden: bool
+    should_include: bool
 
 
 def hash_file(path: Path) -> str:
@@ -176,6 +196,72 @@ def _is_in_data_dir(path_parts, data_dirs) -> bool:
     return any(part in data_dirs for part in path_parts)
 
 
+def _process_file_path(full_path: Path, root_path: Path) -> ProcessedPath:
+    """Process a file path into its component parts for scanning."""
+    relative_path = full_path.relative_to(root_path)
+    path_parts = relative_path.parts
+    posix_path = PurePosixPath(relative_path)
+    str_path = str(posix_path)
+    
+    return ProcessedPath(
+        relative_path=relative_path,
+        path_parts=path_parts,
+        posix_path=posix_path,
+        str_path=str_path
+    )
+
+
+def _classify_path(relative_path: Path, path_parts: tuple, data_dirs: set, include_dsg_files: bool) -> PathClassification:
+    """Classify a path to determine if it should be included in scanning."""
+    is_dsg_file = _is_dsg_path(relative_path)
+    is_in_data_dir = _is_in_data_dir(path_parts, data_dirs)
+    is_hidden = _is_hidden_path(relative_path)
+    should_include = (is_dsg_file and include_dsg_files) or (is_in_data_dir and not is_hidden)
+    
+    return PathClassification(
+        is_dsg_file=is_dsg_file,
+        is_in_data_dir=is_in_data_dir,
+        is_hidden=is_hidden,
+        should_include=should_include
+    )
+
+
+def _validate_path_and_collect_warnings(str_path: str, validation_warnings: list) -> bool:
+    """Validate a path and collect warnings if validation fails."""
+    is_valid, validation_message = validate_path(str_path)
+    if not is_valid:
+        validation_warnings.append({
+            'path': str_path,
+            'message': validation_message
+        })
+        logger.debug(f"  Validation warning for {str_path}: {validation_message}")
+    return is_valid
+
+
+def _create_manifest_entry(full_path: Path, root_path: Path, normalize_paths: bool, 
+                          user_id: Optional[str], compute_hashes: bool) -> Optional[ManifestEntry]:
+    """Create and configure a manifest entry for a file."""
+    entry = Manifest.create_entry(full_path, root_path, normalize_paths)
+    if not entry:
+        return None
+        
+    # Set user attribution if provided
+    if user_id and hasattr(entry, "user") and not entry.user:
+        entry.user = user_id
+        logger.debug(f"  Setting user attribution for {entry.path}: {user_id}")
+    
+    # Handle hash computation for files
+    is_hashable_file = isinstance(entry, FileRef) and not full_path.is_symlink()
+    if compute_hashes and is_hashable_file:
+        try:
+            entry.hash = hash_file(full_path)
+            logger.debug(f"  Computed hash for {entry.path}: {entry.hash}")
+        except Exception as e:  # pragma: no cover
+            logger.error(f"Failed to compute hash for {entry.path}: {e}")
+    
+    return entry
+
+
 def _scan_directory_internal(
     root_path: Path,
     data_dirs: set[str],
@@ -211,73 +297,52 @@ def _scan_directory_internal(
     logger.debug(f"Computing hashes: {compute_hashes}")
 
     for full_path in [p for p in root_path.rglob('*') if p.is_file() or p.is_symlink()]:
-        relative_path = full_path.relative_to(root_path)
-        path_parts = relative_path.parts
-        posix_path = PurePosixPath(relative_path)
-        str_path = str(posix_path)
+        # Process file path into structured components
+        processed_path = _process_file_path(full_path, root_path)
+        
+        logger.debug(f"Processing file: {processed_path.str_path}")
+        logger.debug(f"  Path parts: {processed_path.path_parts}")
 
-        logger.debug(f"Processing file: {str_path}")
-        logger.debug(f"  Path parts: {path_parts}")
+        # Classify the path to determine if it should be included
+        classification = _classify_path(
+            processed_path.relative_path, 
+            processed_path.path_parts, 
+            data_dirs, 
+            include_dsg_files
+        )
 
-        is_dsg_file = _is_dsg_path(relative_path)
-        is_in_data_dir = _is_in_data_dir(path_parts, data_dirs)
-        is_hidden = _is_hidden_path(relative_path)
-        should_include = (is_dsg_file and include_dsg_files) or (is_in_data_dir and not is_hidden)
+        logger.debug(f"  Is DSG file: {classification.is_dsg_file}")
+        logger.debug(f"  Is in data dir: {classification.is_in_data_dir}")
+        logger.debug(f"  Is hidden: {classification.is_hidden}")
+        logger.debug(f"  Should include: {classification.should_include}")
 
-        logger.debug(f"  Is DSG file: {is_dsg_file}")
-        logger.debug(f"  Is in data dir: {is_in_data_dir}")
-        logger.debug(f"  Is hidden: {is_hidden}")
-        logger.debug(f"  Should include: {should_include}")
-
-        if not should_include:
+        if not classification.should_include:
             logger.debug("  Skipping file (not in data dir or hidden)")
             continue
 
+        # Check if file should be ignored based on patterns
         should_ignore = _should_ignore_path(
-            posix_path, full_path.name, full_path,
+            processed_path.posix_path, full_path.name, full_path,
             ignored_exact, ignored_names, ignored_suffixes
         )
 
         logger.debug(f"  Should ignore: {should_ignore}")
 
         if should_ignore:
-            ignored.append(str_path)
+            ignored.append(processed_path.str_path)
             logger.debug("  Adding to ignored list")
             continue
 
-        # Check for filename validation issues before creating manifest entry
-        from dsg.filename_validation import validate_path
-        is_valid, validation_message = validate_path(str_path)
-        if not is_valid:
-            validation_warnings.append({
-                'path': str_path,
-                'message': validation_message
-            })
-            logger.debug(f"  Validation warning for {str_path}: {validation_message}")
+        # Validate path and collect warnings
+        _validate_path_and_collect_warnings(processed_path.str_path, validation_warnings)
 
-        if entry := Manifest.create_entry(full_path, root_path, normalize_paths):
-            # TODO: The create_entry method now validates paths and warns about invalid ones.
-            # Consider collecting validation warnings for reporting to CLI commands.
-            # This would be useful for 'dsg status' and 'dsg normalize --dry-run' commands.
-            if user_id and hasattr(entry, "user") and not entry.user:
-                entry.user = user_id
-                logger.debug(f"  Setting user attribution for {str_path}: {user_id}")
-                
-            # Race condition: files could become symlinks between scan and hash
-            is_hashable_file = isinstance(entry, FileRef) and not full_path.is_symlink()
-            
-            if compute_hashes and is_hashable_file:
-                try:
-                    entry.hash = hash_file(full_path)
-                    logger.debug(f"  Computed hash for {entry.path}: {entry.hash}")
-                except Exception as e:  # pragma: no cover
-                    logger.error(f"Failed to compute hash for {str_path}: {e}")
-
+        # Create and configure manifest entry
+        entry = _create_manifest_entry(full_path, root_path, normalize_paths, user_id, compute_hashes)
+        if entry:
             # Use entry.path as the key to ensure normalized paths in manifest
             # entry.path will be NFC-normalized if normalize_paths=True
             entries[entry.path] = entry
             logger.debug(f"  Adding to manifest with path: {entry.path}")
-        # else: create_entry returned None - should not happen  # pragma: no cover
 
     logger.debug(f"Found {len(entries)} included files and {len(ignored)} ignored files")
     logger.debug(f"Found {len(validation_warnings)} validation warnings")
