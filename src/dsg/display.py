@@ -6,15 +6,20 @@
 # ------
 # dsg/src/dsg/display.py
 
+# Standard library imports
 from pathlib import Path
 from typing import List, Optional
-from rich.table import Table
+
+# Third-party imports
+import humanize
 from rich.console import Console
 from rich.panel import Panel
-import humanize
+from rich.table import Table
+
+# Local DSG imports
+from dsg.history import LogEntry, BlameEntry
 from dsg.manifest import Manifest
 from dsg.repository_discovery import RepositoryInfo
-from dsg.history import LogEntry, BlameEntry
 
 
 def manifest_to_table(

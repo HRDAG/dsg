@@ -16,13 +16,16 @@ using the three decorator patterns:
 - operation_command_pattern: State-changing operation commands
 """
 
+# Standard library imports
+from importlib.metadata import version
 from pathlib import Path
 from typing import Optional
 
-from importlib.metadata import version
+# Third-party imports
 import typer
 from rich.console import Console
 
+# Local DSG imports
 from dsg.cli_patterns import (
     info_command_pattern,
     discovery_command_pattern, 
@@ -30,6 +33,7 @@ from dsg.cli_patterns import (
     COMMAND_TYPE_SETUP,
     COMMAND_TYPE_REPOSITORY
 )
+from dsg.cli_utils import handle_operation_error
 from dsg.commands import info as info_commands
 from dsg.commands import discovery as discovery_commands  
 from dsg.commands import actions as action_commands
@@ -55,8 +59,7 @@ def version_callback(value: bool):
         try:
             pkg_version = version("dsg")
         except Exception as e:
-            console.print(f"[red]Error retrieving version: {e}[/red]")
-            raise typer.Exit(1)
+            handle_operation_error(console, "retrieving version", e)
         console.print(f"dsg version {pkg_version}")
         raise typer.Exit()
 

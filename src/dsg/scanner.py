@@ -6,17 +6,20 @@
 # ------
 
 from __future__ import annotations
+
+# Standard library imports
 from collections import OrderedDict
 from pathlib import Path, PurePosixPath
 from typing import Optional, Callable
 
+# Third-party imports
 import loguru
-import xxhash
 from pydantic import BaseModel
+import xxhash
 
-from dsg.manifest import Manifest, ManifestEntry, FileRef
+# Local DSG imports
 from dsg.config_manager import Config
-from pathlib import PurePosixPath
+from dsg.manifest import Manifest, ManifestEntry, FileRef
 
 logger = loguru.logger
 

@@ -16,14 +16,16 @@ synchronization decisions such as upload, delete, conflict resolution, or no-op.
 
 See issue #13 for a full description of each SyncState.
 """
+# Standard library imports
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
-from dsg.manifest import Manifest, FileRef, LinkRef
-from dsg.scanner import scan_directory, hash_file  # Import hash_file from scanner
+# Local DSG imports
 from dsg.config_manager import Config
+from dsg.manifest import Manifest, FileRef, LinkRef
+from dsg.scanner import scan_directory, hash_file
 
 
 class SyncState(Enum):

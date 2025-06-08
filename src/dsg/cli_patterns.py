@@ -18,6 +18,7 @@ from dsg.cli_utils import (
     validate_repository_command_prerequisites,
     validate_repository_setup_prerequisites,
     handle_operation_error,
+    handle_config_error,
     load_config_with_console
 )
 from dsg.json_collector import JSONCollector
@@ -76,9 +77,9 @@ def info_command_pattern(func: Callable) -> Callable:
                 collector = JSONCollector(enabled=True)
                 collector.capture_error(e)
                 collector.output()
+                raise typer.Exit(1)
             else:
-                console.print(f"[red]Configuration error: {e}[/red]")
-            raise typer.Exit(1)
+                handle_config_error(console, str(e))
         
         # Setup JSON collection
         collector = JSONCollector(enabled=to_json)
@@ -211,9 +212,9 @@ def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY):
                     collector = JSONCollector(enabled=True)
                     collector.capture_error(e, config=config)
                     collector.output()
+                    raise typer.Exit(1)
                 else:
-                    console.print(f"[red]Configuration error: {e}[/red]")
-                raise typer.Exit(1)
+                    handle_config_error(console, str(e))
             
             # Setup JSON collection
             collector = JSONCollector(enabled=to_json)
