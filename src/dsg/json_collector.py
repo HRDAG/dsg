@@ -18,7 +18,7 @@ class JSONCollector:
     When disabled, all methods are no-ops for zero performance impact.
     """
     
-    def __init__(self, enabled: bool = False):
+    def __init__(self, enabled: bool = False) -> None:
         """Initialize collector.
         
         Args:
@@ -27,7 +27,7 @@ class JSONCollector:
         self.enabled = enabled
         self.data = {} if enabled else None
     
-    def capture_success(self, result: Any, config: Any = None):
+    def capture_success(self, result: Any, config: Any = None) -> None:
         """Capture successful operation data.
         
         Args:
@@ -56,7 +56,7 @@ class JSONCollector:
         if config:
             self.data["config"] = self._extract_config(config)
     
-    def capture_error(self, error: Exception, config: Any = None, partial_result: Any = None):
+    def capture_error(self, error: Exception, config: Any = None, partial_result: Any = None) -> None:
         """Capture error operation data.
         
         Args:
@@ -78,7 +78,7 @@ class JSONCollector:
         if partial_result:
             self.data["partial_result"] = self._extract_partial_result(partial_result)
     
-    def record(self, key: str, value: Any):
+    def record(self, key: str, value: Any) -> None:
         """Record arbitrary key-value data.
         
         Args:
@@ -90,7 +90,7 @@ class JSONCollector:
         
         self.data[key] = value
     
-    def record_all(self, **kwargs):
+    def record_all(self, **kwargs) -> None:
         """Record multiple key-value pairs, filtering out None values.
         
         Args:
@@ -103,7 +103,7 @@ class JSONCollector:
             if value is not None:
                 self.data[key] = value
     
-    def output(self):
+    def output(self) -> str:
         """Output collected JSON data to stdout if enabled."""
         if not self.enabled:
             return
@@ -111,13 +111,13 @@ class JSONCollector:
         json_str = json.dumps(self.data, indent=2, default=str)
         print(f"<JSON-STDOUT>{json_str}</JSON-STDOUT>")
     
-    def _extract_files(self, files):
+    def _extract_files(self, files) -> list[dict]:
         """Extract file data for JSON output."""
         if hasattr(files, '__iter__'):
             return [self._extract_file(f) for f in files]
         return []
     
-    def _extract_file(self, file_obj):
+    def _extract_file(self, file_obj) -> dict | str:
         """Extract single file data."""
         if hasattr(file_obj, 'to_dict') and callable(getattr(file_obj, 'to_dict', None)):
             return file_obj.to_dict()
@@ -133,7 +133,7 @@ class JSONCollector:
         
         return file_data if file_data else str(file_obj)
     
-    def _extract_manifest(self, manifest):
+    def _extract_manifest(self, manifest) -> dict | str:
         """Extract manifest data for JSON output."""
         if hasattr(manifest, 'to_dict'):
             return manifest.to_dict()
@@ -146,13 +146,13 @@ class JSONCollector:
         
         return manifest_data if manifest_data else str(manifest)
     
-    def _extract_repositories(self, repositories):
+    def _extract_repositories(self, repositories) -> list[dict]:
         """Extract repository list data."""
         if hasattr(repositories, '__iter__'):
             return [self._extract_repository(r) for r in repositories]
         return []
     
-    def _extract_repository(self, repo):
+    def _extract_repository(self, repo) -> dict | str:
         """Extract single repository data."""
         if hasattr(repo, 'to_dict'):
             return repo.to_dict()
@@ -165,13 +165,13 @@ class JSONCollector:
         
         return repo_data if repo_data else str(repo)
     
-    def _extract_snapshots(self, snapshots):
+    def _extract_snapshots(self, snapshots) -> list[dict]:
         """Extract snapshot list data."""
         if hasattr(snapshots, '__iter__'):
             return [self._extract_snapshot(s) for s in snapshots]
         return []
     
-    def _extract_snapshot(self, snapshot):
+    def _extract_snapshot(self, snapshot) -> dict | str:
         """Extract single snapshot data."""
         if hasattr(snapshot, 'to_dict'):
             return snapshot.to_dict()
@@ -184,7 +184,7 @@ class JSONCollector:
         
         return snapshot_data if snapshot_data else str(snapshot)
     
-    def _extract_config(self, config):
+    def _extract_config(self, config) -> dict | str:
         """Extract configuration data for JSON output."""
         if hasattr(config, 'to_dict') and callable(getattr(config, 'to_dict', None)):
             return config.to_dict()
@@ -201,7 +201,7 @@ class JSONCollector:
         
         return config_data if config_data else str(config)
     
-    def _extract_partial_result(self, result):
+    def _extract_partial_result(self, result) -> dict | str:
         """Extract what we can from partial results during errors."""
         # Try the same extraction methods as success case
         extracted = {}

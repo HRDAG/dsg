@@ -83,7 +83,7 @@ class SnapshotOperations(ABC):
 class LocalhostTransport(Transport):
     """Localhost transport implementation (stub for now)"""
 
-    def __init__(self, repo_path: Path, repo_name: str):
+    def __init__(self, repo_path: Path, repo_name: str) -> None:
         self.repo_path = repo_path
         self.repo_name = repo_name
         self.full_path = repo_path / repo_name
@@ -125,7 +125,7 @@ class LocalhostTransport(Transport):
 class SSHTransport(Transport):
     """SSH transport implementation (stub for now)"""
 
-    def __init__(self, ssh_config, user_config, repo_name: str):
+    def __init__(self, ssh_config, user_config, repo_name: str) -> None:
         self.ssh_config = ssh_config
         self.user_config = user_config
         self.repo_name = repo_name
@@ -173,7 +173,7 @@ class SSHTransport(Transport):
 class XFSOperations(SnapshotOperations):
     """XFS operations using hardlink-based snapshots (stub for now)"""
 
-    def __init__(self, repo_path: str):
+    def __init__(self, repo_path: str) -> None:
         self.repo_path = repo_path
 
     def init_repository(self, file_list: list[str], transport: Transport,
@@ -185,7 +185,7 @@ class XFSOperations(SnapshotOperations):
 class ZFSOperations(SnapshotOperations):
     """ZFS operations using ZFS snapshots"""
 
-    def __init__(self, pool_name: str, repo_name: str, mount_base: str = "/var/repos/zsd"):
+    def __init__(self, pool_name: str, repo_name: str, mount_base: str = "/var/repos/zsd") -> None:
         self.pool_name = pool_name
         self.repo_name = repo_name
         self.mount_base = mount_base
@@ -448,7 +448,7 @@ class Backend(ABC, FileOperations):
 class LocalhostBackend(Backend):
     """Backend for local filesystem access"""
 
-    def __init__(self, repo_path: Path, repo_name: str):
+    def __init__(self, repo_path: Path, repo_name: str) -> None:
         self.repo_path = repo_path
         self.repo_name = repo_name
         self.full_path = repo_path / repo_name
@@ -588,7 +588,7 @@ class LocalhostBackend(Backend):
 class SSHBackend(Backend):
     """Backend for SSH-based remote repository access."""
 
-    def __init__(self, ssh_config, user_config, repo_name: str):
+    def __init__(self, ssh_config, user_config, repo_name: str) -> None:
         self.ssh_config = ssh_config
         self.user_config = user_config
         self.host = ssh_config.host
@@ -876,7 +876,7 @@ class SSHBackend(Backend):
         if progress_callback:
             progress_callback("complete_files")
 
-    def _run_rsync_with_progress(self, rsync_cmd, total_files, progress_callback):
+    def _run_rsync_with_progress(self, rsync_cmd, total_files, progress_callback) -> None:
         """Run rsync and parse output to track file progress."""
         import re
 
@@ -937,7 +937,7 @@ class SSHBackend(Backend):
 class ComposedBackend(Backend):
     """Backend composed of Transport + SnapshotOperations"""
 
-    def __init__(self, transport: Transport, snapshot_ops: SnapshotOperations):
+    def __init__(self, transport: Transport, snapshot_ops: SnapshotOperations) -> None:
         self.transport = transport
         self.snapshot_ops = snapshot_ops
 
@@ -973,7 +973,7 @@ class ComposedBackend(Backend):
 
 # ---- Backend Factory ----
 
-def create_backend(config: Config):
+def create_backend(config: Config) -> Backend:
     """Create the optimal backend based on config and accessibility.
 
     TODO: Transition to composed Transport + SnapshotOperations architecture

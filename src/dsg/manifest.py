@@ -110,7 +110,7 @@ class LinkRef(BaseModel):
     reference: str  # The target of the symlink (MUST be relative within project)
 
     @field_validator("reference")
-    def validate_reference(cls, v: str, info):
+    def validate_reference(cls, v: str, info) -> str:
         """Ensure reference is a relative path and doesn't escape project."""
         if os.path.isabs(v):
             raise ValueError("Symlink target must be a relative path")

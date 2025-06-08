@@ -20,14 +20,14 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 class RepositoryProgressReporter:
     """Progress reporting for repository operations (clone/init) with Rich UI."""
     
-    def __init__(self, console: Console, verbose: bool = False):
+    def __init__(self, console: Console, verbose: bool = False) -> None:
         self.console = console
         self.verbose = verbose
         self.progress = None
         self.metadata_task = None
         self.files_task = None
         
-    def start_progress(self):
+    def start_progress(self) -> None:
         """Start the progress display."""
         if not self.verbose:
             return
@@ -42,13 +42,13 @@ class RepositoryProgressReporter:
         )
         self.progress.start()
         
-    def stop_progress(self):
+    def stop_progress(self) -> None:
         """Stop the progress display."""
         if self.progress:
             self.progress.stop()
             self.progress = None
             
-    def start_metadata_sync(self):
+    def start_metadata_sync(self) -> None:
         """Report start of metadata synchronization."""
         if self.verbose and self.progress:
             self.metadata_task = self.progress.add_task(
@@ -58,7 +58,7 @@ class RepositoryProgressReporter:
         elif self.verbose:
             self.console.print("[dim]Syncing repository metadata...[/dim]")
             
-    def complete_metadata_sync(self):
+    def complete_metadata_sync(self) -> None:
         """Report completion of metadata synchronization."""
         if self.verbose and self.progress and self.metadata_task is not None:
             self.progress.update(self.metadata_task, completed=True)
@@ -66,7 +66,7 @@ class RepositoryProgressReporter:
         elif self.verbose:
             self.console.print("[dim]✓ Metadata sync complete[/dim]")
             
-    def start_files_sync(self, total_files: int, total_size: int = 0):
+    def start_files_sync(self, total_files: int, total_size: int = 0) -> None:
         """Report start of file synchronization."""
         if self.verbose and self.progress:
             size_info = f" ({self._format_size(total_size)})" if total_size > 0 else ""
@@ -77,12 +77,12 @@ class RepositoryProgressReporter:
         elif self.verbose:
             self.console.print(f"[dim]Copying {total_files} files...[/dim]")
             
-    def update_files_progress(self, completed_files: int = 1):
+    def update_files_progress(self, completed_files: int = 1) -> None:
         """Update file synchronization progress."""
         if self.verbose and self.progress and self.files_task is not None:
             self.progress.update(self.files_task, advance=completed_files)
             
-    def complete_files_sync(self):
+    def complete_files_sync(self) -> None:
         """Report completion of file synchronization."""
         if self.verbose and self.progress and self.files_task is not None:
             self.progress.update(self.files_task, completed=True)
@@ -90,7 +90,7 @@ class RepositoryProgressReporter:
         elif self.verbose:
             self.console.print("[dim]✓ File sync complete[/dim]")
             
-    def report_no_files(self):
+    def report_no_files(self) -> None:
         """Report that no files need to be copied."""
         if self.verbose:
             self.console.print("[dim]Repository has no synced data yet - only metadata copied[/dim]")

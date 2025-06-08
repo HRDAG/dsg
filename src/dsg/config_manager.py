@@ -181,7 +181,7 @@ class ProjectConfig(BaseModel):
     project: ProjectSettings
 
     @model_validator(mode="after")
-    def migrate_legacy_format_and_validate(self):
+    def migrate_legacy_format_and_validate(self) -> "ProjectConfig":
         """Auto-migrate from legacy format and validate transport config."""
         # First validate transport config consistency (to preserve existing test behavior)
         configs = [self.ssh, self.rclone, self.ipfs]
