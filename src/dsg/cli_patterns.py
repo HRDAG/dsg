@@ -23,6 +23,10 @@ from dsg.cli_utils import (
 from dsg.json_collector import JSONCollector
 from dsg.logging_setup import setup_logging
 
+# Command type constants
+COMMAND_TYPE_SETUP = "setup"
+COMMAND_TYPE_REPOSITORY = "repository"
+
 
 def _validate_mutually_exclusive_flags(verbose: bool, quiet: bool) -> None:
     """Validate that verbose and quiet flags are not both set."""
@@ -46,13 +50,16 @@ def info_command_pattern(func: Callable) -> Callable:
     
     Handles: status, log, blame, list-files, validate-*
     Provides: verbose/quiet control, JSON output, config validation
+    
+    The decorated function will be called with (console, config, **filtered_kwargs)
+    where filtered_kwargs contains only command-specific parameters.
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
         # Extract common parameters
         to_json = kwargs.pop('to_json', False)
-        verbose = kwargs.get('verbose', False)
-        quiet = kwargs.get('quiet', False)
+        verbose = kwargs.pop('verbose', False)
+        quiet = kwargs.pop('quiet', False)
         
         # Validate parameter combinations
         _validate_mutually_exclusive_flags(verbose, quiet)
@@ -77,8 +84,15 @@ def info_command_pattern(func: Callable) -> Callable:
         collector = JSONCollector(enabled=to_json)
         
         try:
-            # Call the actual command handler
-            result = func(console=console, config=config, *args, **kwargs)
+            # Call the actual command handler with standard parameters
+            result = func(
+                console=console, 
+                config=config, 
+                verbose=verbose, 
+                quiet=quiet,
+                *args, 
+                **kwargs
+            )
             collector.capture_success(result, config=config)
             
         except Exception as e:
@@ -99,13 +113,16 @@ def discovery_command_pattern(func: Callable) -> Callable:
     
     Handles: list-repos
     Provides: verbose/quiet control, JSON output, minimal config validation
+    
+    The decorated function will be called with (console, verbose, quiet, **filtered_kwargs)
+    where filtered_kwargs contains only command-specific parameters.
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
         # Extract common parameters
         to_json = kwargs.pop('to_json', False)
-        verbose = kwargs.get('verbose', False)
-        quiet = kwargs.get('quiet', False)
+        verbose = kwargs.pop('verbose', False)
+        quiet = kwargs.pop('quiet', False)
         
         # Validate parameter combinations
         _validate_mutually_exclusive_flags(verbose, quiet)
@@ -118,8 +135,14 @@ def discovery_command_pattern(func: Callable) -> Callable:
         collector = JSONCollector(enabled=to_json)
         
         try:
-            # Call the actual command handler
-            result = func(console=console, *args, **kwargs)
+            # Call the actual command handler with standard parameters
+            result = func(
+                console=console, 
+                verbose=verbose, 
+                quiet=quiet,
+                *args, 
+                **kwargs
+            )
             collector.capture_success(result)
             
         except Exception as e:
@@ -135,7 +158,7 @@ def discovery_command_pattern(func: Callable) -> Callable:
     return wrapper
 
 
-def operation_command_pattern(command_type: str = "repository"):
+def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY):
     """Unified pattern for state-changing operation commands.
     
     Args:
@@ -151,11 +174,11 @@ def operation_command_pattern(command_type: str = "repository"):
         def wrapper(*args, **kwargs):
             # Extract common parameters
             to_json = kwargs.pop('to_json', False)
-            verbose = kwargs.get('verbose', False)
-            quiet = kwargs.get('quiet', False)
-            dry_run = kwargs.get('dry_run', False)
-            force = kwargs.get('force', False)
-            normalize = kwargs.get('normalize', False)
+            verbose = kwargs.pop('verbose', False)
+            quiet = kwargs.pop('quiet', False)
+            dry_run = kwargs.pop('dry_run', False)
+            force = kwargs.pop('force', False)
+            normalize = kwargs.pop('normalize', False)
             
             # Validate parameter combinations
             _validate_mutually_exclusive_flags(verbose, quiet)
@@ -167,21 +190,21 @@ def operation_command_pattern(command_type: str = "repository"):
             # Load configuration with command-type-specific validation
             config = None
             try:
-                if command_type == "setup":
+                if command_type == COMMAND_TYPE_SETUP:
                     # For init/clone - setup validation with force handling
                     config = validate_repository_setup_prerequisites(
                         console, 
                         force=force, 
                         verbose=verbose
                     )
-                elif command_type == "repository":
+                elif command_type == COMMAND_TYPE_REPOSITORY:
                     # For sync/snapmount/snapfetch - need existing repository
                     config = validate_repository_command_prerequisites(
                         console, 
                         verbose=verbose
                     )
                 else:
-                    raise ValueError(f"Unknown command_type '{command_type}'. Use 'setup' or 'repository'.")
+                    raise ValueError(f"Unknown command_type '{command_type}'. Use '{COMMAND_TYPE_SETUP}' or '{COMMAND_TYPE_REPOSITORY}'.")
                     
             except Exception as e:
                 if to_json:
@@ -200,11 +223,8 @@ def operation_command_pattern(command_type: str = "repository"):
                 if dry_run and not quiet:
                     console.print("[yellow]DRY RUN MODE - No changes will be made[/yellow]")
                 
-                # Add keyboard interrupt handling
-                # Separate core parameters from operation-specific parameters
-                core_params = {'verbose', 'quiet', 'dry_run', 'force', 'normalize'}
-                operation_params = {k: v for k, v in kwargs.items() if k not in core_params}
-                
+                # Call the actual command handler with standard parameters
+                # The decorator now handles parameter extraction and passes them explicitly
                 result = func(
                     console=console, 
                     config=config,
@@ -214,7 +234,7 @@ def operation_command_pattern(command_type: str = "repository"):
                     verbose=verbose,
                     quiet=quiet,
                     *args, 
-                    **operation_params
+                    **kwargs
                 )
                 collector.capture_success(result, config=config)
                 

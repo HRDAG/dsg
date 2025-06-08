@@ -26,7 +26,9 @@ from rich.console import Console
 from dsg.cli_patterns import (
     info_command_pattern,
     discovery_command_pattern, 
-    operation_command_pattern
+    operation_command_pattern,
+    COMMAND_TYPE_SETUP,
+    COMMAND_TYPE_REPOSITORY
 )
 from dsg.commands import info as info_commands
 from dsg.commands import discovery as discovery_commands  
@@ -85,11 +87,10 @@ def list_repos_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold blue]Setup[/bold blue]: List available repositories from discovery config."""
-    @discovery_command_pattern
-    def handler(console, **kwargs):
-        return discovery_commands.list_repos(console, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = discovery_command_pattern(
+        lambda console, verbose, quiet: discovery_commands.list_repos(console, verbose, quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 # =============================================================================
@@ -98,18 +99,15 @@ def list_repos_command(
 
 @app.command()
 def status(
-    repo: Optional[str] = typer.Option(None, "--repo", help="Repository name (defaults to current repository)"),
-    remote: bool = typer.Option(True, "--remote/--no-remote", help="Compare with remote manifest (default: True)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed debugging information"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress output"),
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold green]Core Operations[/bold green]: Show sync status by comparing local files with last sync."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.status(console, config, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.status(console, config, verbose, quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command(name="list-files")
@@ -120,11 +118,10 @@ def list_files_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold green]Core Operations[/bold green]: List all files in the repository."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.list_files(console, config, path=path, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.list_files(console, config, path=path, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command()
@@ -135,11 +132,10 @@ def log(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold magenta]History[/bold magenta]: Show repository sync history."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.log(console, config, limit=limit, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.log(console, config, limit=limit, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command()
@@ -150,11 +146,10 @@ def blame(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold magenta]History[/bold magenta]: Show file modification history."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.blame(console, config, file, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.blame(console, config, file, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command(name="validate-config")
@@ -165,11 +160,10 @@ def validate_config_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold red]Validation[/bold red]: Validate repository configuration."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.validate_config(console, config, check_backend=check_backend, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.validate_config(console, config, check_backend=check_backend, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command(name="validate-file")
@@ -180,11 +174,10 @@ def validate_file_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold red]Validation[/bold red]: Validate a specific file."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.validate_file(console, config, file=file, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.validate_file(console, config, file=file, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command(name="validate-snapshot")
@@ -195,11 +188,10 @@ def validate_snapshot_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold red]Validation[/bold red]: Validate a repository snapshot."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.validate_snapshot(console, config, snapshot_id=snapshot_id, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.validate_snapshot(console, config, snapshot_id=snapshot_id, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 @app.command(name="validate-chain")
@@ -209,11 +201,10 @@ def validate_chain_command(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold red]Validation[/bold red]: Validate the entire snapshot chain."""
-    @info_command_pattern
-    def handler(console, config, **kwargs):
-        return info_commands.validate_chain(console, config, verbose=verbose, quiet=quiet)
-    
-    handler(verbose=verbose, quiet=quiet, to_json=to_json)
+    decorated_handler = info_command_pattern(
+        lambda console, config, verbose, quiet: info_commands.validate_chain(console, config, verbose=verbose, quiet=quiet)
+    )
+    return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 
 
 # =============================================================================
@@ -238,9 +229,8 @@ def init(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold blue]Setup[/bold blue]: Initialize a new data repository."""
-    @operation_command_pattern(command_type="setup")
-    def handler(console, config, **kwargs):
-        return action_commands.init(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_SETUP)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.init(
             console, config, 
             dry_run=dry_run, force=force, normalize=normalize, 
             verbose=verbose, quiet=quiet,
@@ -248,8 +238,11 @@ def init(
             transport=transport, rclone_remote=rclone_remote, ipfs_did=ipfs_did,
             interactive=interactive
         )
-    
-    handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=normalize, 
+        verbose=verbose, quiet=quiet, to_json=to_json
+    )
 
 
 @app.command()
@@ -264,16 +257,18 @@ def clone(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold blue]Setup[/bold blue]: Clone data from existing dsg repository."""
-    @operation_command_pattern(command_type="setup")
-    def handler(console, config, **kwargs):
-        return action_commands.clone(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_SETUP)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.clone(
             console, config,
             dry_run=dry_run, force=force, normalize=normalize,
             verbose=verbose, quiet=quiet,
             dest_path=dest_path, resume=resume
         )
-    
-    handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=normalize, 
+        verbose=verbose, quiet=quiet, to_json=to_json
+    )
 
 
 @app.command()
@@ -287,16 +282,18 @@ def sync(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold green]Core Operations[/bold green]: Sync local changes to remote repository."""
-    @operation_command_pattern(command_type="repository")
-    def handler(console, config, **kwargs):
-        return action_commands.sync(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_REPOSITORY)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.sync(
             console, config,
             dry_run=dry_run, force=force, normalize=normalize,
             verbose=verbose, quiet=quiet,
             continue_sync=continue_sync
         )
-    
-    handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=normalize, 
+        verbose=verbose, quiet=quiet, to_json=to_json
+    )
 
 
 @app.command()
@@ -311,16 +308,18 @@ def snapmount(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold magenta]History[/bold magenta]: Mount a repository snapshot for read-only access."""
-    @operation_command_pattern(command_type="repository")
-    def handler(console, config, **kwargs):
-        return action_commands.snapmount(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_REPOSITORY)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.snapmount(
             console, config,
             dry_run=dry_run, force=force, normalize=normalize,
             verbose=verbose, quiet=quiet,
             num=num, mountpoint=mountpoint
         )
-    
-    handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=normalize, 
+        verbose=verbose, quiet=quiet, to_json=to_json
+    )
 
 
 @app.command()
@@ -336,16 +335,18 @@ def snapfetch(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ):
     """[bold magenta]History[/bold magenta]: Fetch a specific file from a repository snapshot."""
-    @operation_command_pattern(command_type="repository")
-    def handler(console, config, **kwargs):
-        return action_commands.snapfetch(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_REPOSITORY)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.snapfetch(
             console, config,
             dry_run=dry_run, force=force, normalize=normalize,
             verbose=verbose, quiet=quiet,
             num=num, file=file, output=output
         )
-    
-    handler(dry_run=dry_run, force=force, normalize=normalize, verbose=verbose, quiet=quiet, to_json=to_json)
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=normalize, 
+        verbose=verbose, quiet=quiet, to_json=to_json
+    )
 
 
 # =============================================================================
