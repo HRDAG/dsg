@@ -147,7 +147,8 @@ class TestProjectConfigMigration:
             yaml.safe_dump(config_content, f)
         
         # Should fail validation because no name can be found
-        with pytest.raises(ValueError) as excinfo:
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError) as excinfo:
             ProjectConfig.load(config_file)
         
         # Should mention missing name field

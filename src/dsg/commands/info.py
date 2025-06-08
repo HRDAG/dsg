@@ -23,7 +23,6 @@ from dsg.history import get_repository_log, get_file_blame
 from dsg.display import display_sync_status
 # Simple ValidationResult replacement for placeholder validation functions
 from dataclasses import dataclass, field
-from typing import List
 
 @dataclass
 class ValidationResult:
@@ -32,7 +31,7 @@ class ValidationResult:
     description: str
     passed: bool = False
     message: str = ""
-    details: List[str] = field(default_factory=list)
+    details: list[str] = field(default_factory=list)
     
     def set_passed(self, passed: bool, message: str = "") -> "ValidationResult":
         """Set the pass/fail status with optional message."""

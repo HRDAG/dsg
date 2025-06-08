@@ -23,12 +23,12 @@ Common usage patterns:
 """
 
 from pathlib import Path
-from typing import Tuple
 
 import typer
 from rich.console import Console
 
 from dsg.config_manager import Config
+from dsg.exceptions import ConfigError
 from dsg.backends import can_access_backend
 
 
@@ -89,8 +89,11 @@ def load_config_with_console(console: Console, verbose: bool = False) -> Config:
     try:
         config = Config.load()
         return config
-    except Exception as e:
+    except ConfigError as e:
         console.print(f"[red]✗[/red] Configuration error: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Unexpected error loading configuration: {e}")
         raise typer.Exit(1)
 
 

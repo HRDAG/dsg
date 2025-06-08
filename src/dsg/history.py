@@ -9,7 +9,7 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Iterator, Tuple
+from typing import Optional, Iterator
 from dataclasses import dataclass, field, fields
 
 import loguru
@@ -90,7 +90,7 @@ class HistoryWalker:
         self.archive_dir = self.dsg_dir / "archive"
         self.current_manifest_path = self.dsg_dir / "last-sync.json"
 
-    def get_archive_files(self) -> List[Tuple[int, Path]]:
+    def get_archive_files(self) -> list[tuple[int, Path]]:
         archive_files = []
 
         if not self.archive_dir.exists():
@@ -213,7 +213,7 @@ class HistoryWalker:
 
         return True
 
-    def get_file_blame(self, file_path: str) -> List[BlameEntry]:
+    def get_file_blame(self, file_path: str) -> list[BlameEntry]:
         """Get blame/change history for a specific file across all snapshots."""
         blame_entries = []
         previous_manifest = None
@@ -279,7 +279,7 @@ class HistoryWalker:
 
 def get_repository_log(config: Config, limit: Optional[int] = None,
                        since: Optional[str] = None,
-                       author: Optional[str] = None) -> List[LogEntry]:
+                       author: Optional[str] = None) -> list[LogEntry]:
     """Get repository history log with optional filtering.
 
     Args:
@@ -295,7 +295,7 @@ def get_repository_log(config: Config, limit: Optional[int] = None,
     return list(walker.walk_history(limit=limit, since=since, author=author))
 
 
-def get_file_blame(config: Config, file_path: str) -> List[BlameEntry]:
+def get_file_blame(config: Config, file_path: str) -> list[BlameEntry]:
     """Get blame/history information for a specific file.
 
     Args:

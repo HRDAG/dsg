@@ -8,7 +8,7 @@
 
 # Standard library imports
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 # Third-party imports
 import humanize
@@ -24,7 +24,7 @@ from dsg.repository_discovery import RepositoryInfo
 
 def manifest_to_table(
     manifest: Manifest,
-    ignored: Optional[List[str]] = None,
+    ignored: Optional[list[str]] = None,
     base_path: Optional[Path] = None,
     show_ignored: bool = True,
     verbose: bool = False
@@ -128,7 +128,7 @@ def manifest_to_table(
     return table
 
 
-def format_file_count(manifest: Manifest, ignored: Optional[List[str]] = None, verbose: bool = False) -> str:
+def format_file_count(manifest: Manifest, ignored: Optional[list[str]] = None, verbose: bool = False) -> str:
     """Format file count summary.
     
     Args:
@@ -163,7 +163,7 @@ def format_file_count(manifest: Manifest, ignored: Optional[List[str]] = None, v
     return "\n".join(lines)
 
 
-def display_repositories(console: Console, repos: List[RepositoryInfo], host: str, project_path: Path, verbose: bool = False) -> None:
+def display_repositories(console: Console, repos: list[RepositoryInfo], host: str, project_path: Path, verbose: bool = False) -> None:
     """Display repository list using RepositoryInfo objects.
     
     Args:
@@ -230,7 +230,7 @@ def display_repositories(console: Console, repos: List[RepositoryInfo], host: st
     console.print(" - ".join(parts))
 
 
-def display_config_validation_results(console: Console, errors: List[str], check_backend: bool, verbose: bool) -> None:
+def display_config_validation_results(console: Console, errors: list[str], check_backend: bool, verbose: bool) -> None:
     """Display configuration validation results."""
     console.print("[bold]dsg Configuration Validation[/bold]")
     console.print()
@@ -291,7 +291,7 @@ def display_config_summary(console: Console, config) -> None:
     console.print(table)
 
 
-def display_repository_log(console: Console, log_entries: List[LogEntry], verbose: bool = False) -> None:
+def display_repository_log(console: Console, log_entries: list[LogEntry], verbose: bool = False) -> None:
     if not log_entries:
         console.print("[yellow]No history found[/yellow]")
         return
@@ -329,7 +329,7 @@ def display_repository_log(console: Console, log_entries: List[LogEntry], verbos
     console.print(table)
 
 
-def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_path: str) -> None:
+def display_file_blame(console: Console, blame_entries: list[BlameEntry], file_path: str) -> None:
     if not blame_entries:
         console.print(f"[yellow]No history found for file: {file_path}[/yellow]")
         return
@@ -365,7 +365,7 @@ def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_p
     console.print(table)
 
 
-def format_validation_warnings(warnings: List[dict]) -> Panel:
+def format_validation_warnings(warnings: list[dict]) -> Panel:
     """Format validation warnings as a Rich Panel with suggestions."""
     if not warnings:
         return None

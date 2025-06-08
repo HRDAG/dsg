@@ -10,7 +10,7 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -39,7 +39,7 @@ class BaseRepositoryDiscovery(ABC):
     """Base class for repository discovery implementations."""
 
     @abstractmethod
-    def list_repositories(self, *args, **kwargs) -> List[RepositoryInfo]:
+    def list_repositories(self, *args, **kwargs) -> list[RepositoryInfo]:
         """List repositories for this transport type."""
         pass
 
@@ -148,7 +148,7 @@ class BaseRepositoryDiscovery(ABC):
 class LocalRepositoryDiscovery(BaseRepositoryDiscovery):
     """Discovery for local filesystem repositories."""
 
-    def list_repositories(self, project_path: Path) -> List[RepositoryInfo]:
+    def list_repositories(self, project_path: Path) -> list[RepositoryInfo]:
         """List repositories on local filesystem.
 
         Args:
@@ -211,7 +211,7 @@ class LocalRepositoryDiscovery(BaseRepositoryDiscovery):
 class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
     """Discovery for SSH-based remote repositories."""
 
-    def list_repositories(self, host: str, project_path: Path) -> List[RepositoryInfo]:
+    def list_repositories(self, host: str, project_path: Path) -> list[RepositoryInfo]:
         """List repositories on remote host via SSH.
 
         Args:
@@ -298,7 +298,7 @@ class SSHRepositoryDiscovery(BaseRepositoryDiscovery):
 class RcloneRepositoryDiscovery(BaseRepositoryDiscovery):
     """Discovery for Rclone-based remote repositories."""
 
-    def list_repositories(self, remote: str, path: Path) -> List[RepositoryInfo]:
+    def list_repositories(self, remote: str, path: Path) -> list[RepositoryInfo]:
         """List repositories via Rclone.
 
         Args:
@@ -315,7 +315,7 @@ class RcloneRepositoryDiscovery(BaseRepositoryDiscovery):
 class IPFSRepositoryDiscovery(BaseRepositoryDiscovery):
     """Discovery for IPFS-based repositories."""
 
-    def list_repositories(self, network: str) -> List[RepositoryInfo]:
+    def list_repositories(self, network: str) -> list[RepositoryInfo]:
         """List repositories on IPFS network.
 
         Args:
@@ -337,7 +337,7 @@ class RepositoryDiscovery:
         self._rclone_discovery = RcloneRepositoryDiscovery()
         self._ipfs_discovery = IPFSRepositoryDiscovery()
 
-    def list_repositories(self, host: str, project_path: Path) -> List[RepositoryInfo]:
+    def list_repositories(self, host: str, project_path: Path) -> list[RepositoryInfo]:
         """List repositories, automatically choosing local vs SSH discovery.
 
         Args:

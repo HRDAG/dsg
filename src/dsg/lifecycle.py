@@ -35,6 +35,7 @@ from dsg.scanner import scan_directory, scan_directory_no_cfg
 from dsg.display import display_sync_dry_run_preview, display_normalization_preview
 from dsg.filename_validation import fix_problematic_path
 from dsg.manifest_merger import SyncState
+from dsg.exceptions import SyncError, ValidationError
 
 
 @dataclass
@@ -253,7 +254,7 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
         if not normalize:
             # Block init/sync - user must use --normalize or fix manually
             warning_paths = [w['path'] for w in scan_result.validation_warnings]
-            raise ValueError(
+            raise ValidationError(
                 f"Init blocked: {len(scan_result.validation_warnings)} files have validation issues. "
                 f"Use --normalize to fix automatically or manually fix these paths: {warning_paths[:3]}..."
             )
@@ -277,7 +278,7 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
         # 4. Same error handling as sync for unfixable issues
         if scan_result.validation_warnings:
             warning_paths = [w['path'] for w in scan_result.validation_warnings]
-            raise ValueError(
+            raise ValidationError(
                 f"Normalization failed: {len(scan_result.validation_warnings)} files still have validation issues. "
                 f"Please manually fix these paths: {warning_paths[:3]}..."
             )
@@ -324,7 +325,7 @@ def sync_repository(
         if not normalize:
             # Block sync - user must fix validation issues first
             warning_paths = [w['path'] for w in scan_result.validation_warnings]
-            raise ValueError(
+            raise ValidationError(
                 f"Sync blocked: {len(scan_result.validation_warnings)} files have validation issues. "
                 f"Use --normalize to fix automatically or manually fix these paths: {warning_paths[:3]}..."
             )
@@ -352,7 +353,7 @@ def sync_repository(
                     if scan_result.validation_warnings:
                         # Some issues couldn't be fixed
                         warning_paths = [w['path'] for w in scan_result.validation_warnings]
-                        raise ValueError(
+                        raise ValidationError(
                             f"Normalization failed: {len(scan_result.validation_warnings)} files still have validation issues. "
                             f"Please manually fix these paths: {warning_paths[:3]}..."
                         )
@@ -360,7 +361,7 @@ def sync_repository(
                     logger.debug("Normalization completed successfully")
             except Exception as e:
                 if not dry_run:
-                    raise ValueError(f"Normalization failed: {e}")
+                    raise ValidationError(f"Normalization failed: {e}")
                 # In dry-run mode, just show the preview even if normalization would fail
 
     logger.debug("No validation warnings found, sync can proceed")
@@ -400,7 +401,7 @@ def sync_repository(
         if len(conflicts) > 5:
             console.print(f"  ... and {len(conflicts) - 5} more")
         console.print("\nResolve conflicts manually, then run 'dsg sync --continue'")
-        raise ValueError(f"Sync blocked by {len(conflicts)} conflicts")
+        raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
     
     # Step 5: Perform sync operations
     logger.debug("No conflicts found - proceeding with sync...")

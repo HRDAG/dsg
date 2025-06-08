@@ -7,7 +7,7 @@
 # dsg/src/dsg/operations.py
 
 from pathlib import Path, PurePosixPath
-from typing import Optional, Set, Dict, Any
+from typing import Optional, Any
 from collections import OrderedDict
 from dataclasses import dataclass
 import traceback
@@ -15,6 +15,7 @@ import traceback
 import loguru
 
 from dsg.config_manager import Config
+from dsg.exceptions import ConfigError
 from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
 from dsg.manifest import Manifest
 from dsg.manifest_merger import ManifestMerger, SyncState
@@ -27,9 +28,9 @@ logger = loguru.logger
 
 def list_directory(
     path: Path,
-    ignored_names: Optional[Set[str]] = None,
-    ignored_suffixes: Optional[Set[str]] = None,
-    ignored_paths: Optional[Set[str]] = None,
+    ignored_names: Optional[set[str]] = None,
+    ignored_suffixes: Optional[set[str]] = None,
+    ignored_paths: Optional[set[str]] = None,
     use_config: bool = True,
     debug: bool = False,
     include_dsg_files: bool = True
@@ -91,7 +92,7 @@ def parse_cli_overrides(
     ignored_names: Optional[str] = None,
     ignored_suffixes: Optional[str] = None,
     ignored_paths: Optional[str] = None
-) -> Dict[str, Set[str]]:
+) -> dict[str, set[str]]:
     """Parse comma-separated CLI arguments into sets.
 
     Args:

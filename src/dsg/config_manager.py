@@ -17,6 +17,7 @@ from loguru import logger
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from dsg.host_utils import is_local_host
+from dsg.exceptions import ConfigError
 
 
 # ---- Constants ----
@@ -188,7 +189,7 @@ class ProjectConfig(BaseModel):
         set_configs = [c for c in configs if c is not None]
 
         if len(set_configs) != 1:
-            raise ValueError("Exactly one transport config must be set")
+            raise ConfigError("Exactly one transport config must be set")
 
         # Delegate transport-specific validation to config classes
         transport_config_map = {
@@ -199,7 +200,7 @@ class ProjectConfig(BaseModel):
         
         transport_config = transport_config_map.get(self.transport)
         if transport_config is None:
-            raise ValueError(f"{self.transport.upper()} config required when transport={self.transport}")
+            raise ConfigError(f"{self.transport.upper()} config required when transport={self.transport}")
         
         # Let the transport config validate its own requirements
         transport_config.validate_required_for_transport()
@@ -219,7 +220,7 @@ class ProjectConfig(BaseModel):
 
         # Finally validate that we have a name after migration
         if not self.name:
-            raise ValueError("Repository name is required (either at top level or in transport section)")
+            raise ConfigError("Repository name is required (either at top level or in transport section)")
 
         return self
 
@@ -307,7 +308,7 @@ def _validate_system_config(config_data: dict, config_path: Path) -> dict:
             f"System config {config_path} contains personal fields: {fields_str}. "
             f"These fields should only be in user configs, not system defaults."
         )
-        raise ValueError(
+        raise ConfigError(
             f"System config contains personal fields: {fields_str}"
         )
 

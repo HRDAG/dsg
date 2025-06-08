@@ -103,7 +103,8 @@ class TestProjectConfigModels:
         assert ssh_config.ssh is not None
         
         # Invalid: transport=ssh but rclone config provided
-        with pytest.raises(ValueError, match="SSH config required when transport=ssh"):
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="SSH config required when transport=ssh"):
             ProjectConfig(
                 transport="ssh",
                 rclone=RcloneRepositoryConfig(
@@ -119,7 +120,8 @@ class TestProjectConfigModels:
     
     def test_project_config_multiple_transports_invalid(self):
         """Test that only one transport config can be set."""
-        with pytest.raises(ValueError, match="Exactly one transport config must be set"):
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="Exactly one transport config must be set"):
             ProjectConfig(
                 transport="ssh",
                 ssh=SSHRepositoryConfig(
@@ -336,7 +338,8 @@ project:
         with config_file.open() as f:
             data = yaml.safe_load(f)
         
-        with pytest.raises(ValueError, match="SSH config required"):
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="SSH config required"):
             ProjectConfig.model_validate(data)
     
     def test_missing_transport_config(self, tmp_path):
@@ -354,7 +357,8 @@ project:
         with config_file.open() as f:
             data = yaml.safe_load(f)
         
-        with pytest.raises(ValueError, match="Exactly one transport config must be set"):
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="Exactly one transport config must be set"):
             ProjectConfig.model_validate(data)
 
 

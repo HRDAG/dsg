@@ -36,6 +36,7 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
     
     from dsg.config_manager import Config, ProjectConfig, UserConfig, ProjectSettings, IgnoreSettings, SSHRepositoryConfig
     from dsg.lifecycle import sync_repository
+    from dsg.exceptions import ValidationError
     from rich.console import Console
     
     # Create minimal config object manually (easier than loading from files)
@@ -58,7 +59,7 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
     
     # Try to sync - should fail due to validation warnings
     console = Console()
-    with pytest.raises(ValueError, match="validation"):
+    with pytest.raises(ValidationError, match="validation"):
         sync_repository(config, console, dry_run=False, normalize=False)
 
 

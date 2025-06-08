@@ -322,6 +322,7 @@ class TransmissionVerifier:
 3. **Transmission Integrity**: Resume from last verified state
 4. **Backend Atomicity**: Continue from last atomic checkpoint
 
+<<<<<<< HEAD
 ## TransactionManager: Unified Coordination
 
 ### Design Decision: Integrated vs. Layered
@@ -602,6 +603,24 @@ class TransactionManager:
 - [ ] Comprehensive error scenario testing passes
 - [ ] Performance impact acceptable (< 10% overhead)
 - [ ] Recovery procedures documented and tested
+=======
+## Implementation Priorities
+
+### Phase 1: Foundation (Current)
+- ✅ Distributed locking system
+- 🔄 Basic transmission verification
+- 🔄 Client transaction framework
+
+### Phase 2: Core Atomicity  
+- 🔄 Full client-side transaction management
+- 🔄 ZFS atomic operations
+- 🔄 Non-ZFS staged operations
+
+### Phase 3: Advanced Features
+- 🔄 Resumable transfers
+- 🔄 Advanced corruption recovery
+- 🔄 Performance optimizations
+>>>>>>> 04075ac (  Clean up docs: remove completed status reports and archive superseded designs)
 
 ## Benefits of This Architecture
 

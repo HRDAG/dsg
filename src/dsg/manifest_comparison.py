@@ -15,7 +15,7 @@ for different use cases (sync operations, history tracking, etc.).
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple, Dict, Union
+from typing import Optional, Union
 
 from dsg.manifest import Manifest, FileRef, LinkRef
 from dsg.manifest_merger import SyncState
@@ -28,9 +28,9 @@ ManifestEntry = Union[FileRef, LinkRef]
 class ComparisonResult:
     """Result of comparing a file across multiple manifests."""
     pattern: str  # Binary pattern like "111", "101", "11", etc.
-    entries: Tuple[Optional[ManifestEntry], ...]  # The actual entries
-    labels: Tuple[str, ...]  # Labels for each position ("L","C","R" or "P","C","N")
-    equals: Dict[str, Optional[bool]]  # Equality comparisons between positions
+    entries: tuple[Optional[ManifestEntry], ...]  # The actual entries
+    labels: tuple[str, ...]  # Labels for each position ("L","C","R" or "P","C","N")
+    equals: dict[str, Optional[bool]]  # Equality comparisons between positions
 
 
 class ManifestComparator:
@@ -42,7 +42,7 @@ class ManifestComparator:
         manifest_b: Optional[Manifest], 
         manifest_c: Optional[Manifest],
         file_path: str,
-        labels: Tuple[str, str, str] = ("A", "B", "C")
+        labels: tuple[str, str, str] = ("A", "B", "C")
     ) -> ComparisonResult:
         """
         Generic 3-way classification returning detailed comparison info.
@@ -82,7 +82,7 @@ class ManifestComparator:
         manifest_a: Optional[Manifest],
         manifest_b: Optional[Manifest],
         file_path: str,
-        labels: Tuple[str, str] = ("A", "B")
+        labels: tuple[str, str] = ("A", "B")
     ) -> ComparisonResult:
         """
         Convenience method for 2-way comparison.

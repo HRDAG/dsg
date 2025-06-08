@@ -420,7 +420,7 @@ class Backend(ABC, FileOperations):
 
     # TODO: Add snapshot operation methods
     # @abstractmethod
-    # def list_snapshots(self) -> List[Dict[str, Any]]:
+    # def list_snapshots(self) -> list[dict[str, Any]]:
     #     """List available snapshots."""
     #     raise NotImplementedError("list_snapshots() not implemented")
     #

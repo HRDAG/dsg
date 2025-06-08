@@ -594,8 +594,9 @@ class TestSystemConfigValidation:
             "default_project_path": "/var/repos/zsd"
         }
         
-        # Should raise ValueError
-        with pytest.raises(ValueError, match="System config contains personal fields: user_id, user_name"):
+        # Should raise ConfigError
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="System config contains personal fields: user_id, user_name"):
             _validate_system_config(config_data, system_config_path)
     
     def test_system_config_valid_fields_passes(self, tmp_path):
@@ -662,8 +663,9 @@ class TestSystemConfigValidation:
             "default_project_path": "/var/repos/zsd"
         }
         
-        # Should raise ValueError mentioning only the found field
-        with pytest.raises(ValueError, match="System config contains personal fields: user_name"):
+        # Should raise ConfigError mentioning only the found field
+        from dsg.exceptions import ConfigError
+        with pytest.raises(ConfigError, match="System config contains personal fields: user_name"):
             _validate_system_config(config_data, system_config_path)
 
 
