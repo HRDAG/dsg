@@ -98,34 +98,36 @@ A data versioning system based on Scott's `snap`. But generalized across backend
     Validation: validate-config, validate-file, validate-snapshot, validate-chain  
                                                                                    
    ╭─ Options ────────────────────────────────────────────────────────────────────╮
-   │ --version                     Show version and exit                          │
-   │ --install-completion          Install completion for the current shell.      │
-   │ --show-completion             Show completion for the current shell, to copy │
-   │                               it or customize the installation.              │
-   │ --help                        Show this message and exit.                    │
+   │ --version                       Show version and exit                        │
+   │ --debug                         Enable debug logging                         │
+   │ --verbose             -v        Enable verbose output                        │
+   │ --quiet               -q        Suppress output                              │
+   │ --json                          Output results as JSON                       │
+   │ --install-completion            Install completion for the current shell.    │
+   │ --show-completion               Show completion for the current shell, to    │
+   │                                 copy it or customize the installation.       │
+   │ --help                          Show this message and exit.                  │
    ╰──────────────────────────────────────────────────────────────────────────────╯
    ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-   │ init                Setup: Initialize project configuration for NEW dsg      │
-   │                     repository.                                              │
-   │ list-repos          Setup: List all available dsg repositories.              │
-   │ clone               Setup: Clone data from existing dsg repository.          │
-   │ list-files          Core Operations: List all files in data directories with │
-   │                     metadata.                                                │
+   │ list-repos          Setup: List available repositories from discovery        │
+   │                     config.                                                  │
    │ status              Core Operations: Show sync status by comparing local     │
    │                     files with last sync.                                    │
-   │ sync                Core Operations: Synchronize local files with remote     │
+   │ list-files          Core Operations: List all files in the repository.       │
+   │ log                 History: Show repository sync history.                   │
+   │ blame               History: Show file modification history.                 │
+   │ validate-config     Validation: Validate repository configuration.           │
+   │ validate-file       Validation: Validate a specific file.                    │
+   │ validate-snapshot   Validation: Validate a repository snapshot.              │
+   │ validate-chain      Validation: Validate the entire snapshot chain.          │
+   │ init                Setup: Initialize a new data repository.                 │
+   │ clone               Setup: Clone data from existing dsg repository.          │
+   │ sync                Core Operations: Sync local changes to remote            │
    │                     repository.                                              │
-   │ log                 History: Show snapshot history for the repository.       │
-   │ blame               History: Show modification history for a file.           │
-   │ snapmount           History: Mount snapshots for browsing historical data.   │
-   │ snapfetch           History: Fetch a single file from a snapshot.            │
-   │ validate-config     Validation: Validate configuration files and optionally  │
-   │                     test backend connectivity.                               │
-   │ validate-file       Validation: Validate a file's hash against the manifest. │
-   │ validate-snapshot   Validation: Validate a single snapshot's integrity and   │
-   │                     optionally its file hashes.                              │
-   │ validate-chain      Validation: Validate the entire snapshot chain           │
-   │                     integrity.                                               │
+   │ snapmount           History: Mount a repository snapshot for read-only       │
+   │                     access.                                                  │
+   │ snapfetch           History: Fetch a specific file from a repository         │
+   │                     snapshot.                                                │
    ╰──────────────────────────────────────────────────────────────────────────────╯
    
    ```
