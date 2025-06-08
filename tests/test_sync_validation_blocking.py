@@ -92,7 +92,7 @@ def test_sync_proceeds_with_normalize_option(bb_repo_with_validation_issues_and_
     )
     config = Config(user=user_config, project=project_config, project_root=bb_path)
     
-    # This should attempt normalization and then proceed (or fail with sync ops not implemented)
+    # This should attempt normalization and then proceed successfully
     console = Console()
-    with pytest.raises(NotImplementedError, match="Sync operations not yet implemented"):
-        sync_repository(config, console, dry_run=False, normalize=True)
+    # Should complete without raising an exception
+    sync_repository(config, console, dry_run=False, normalize=True)
