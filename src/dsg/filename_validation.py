@@ -10,14 +10,8 @@ import re
 import unicodedata
 from pathlib import Path, PurePosixPath
 
-import typer
-
-
-app = typer.Typer(help="Path validation tool")
-
 
 # Global constants
-VERSION = '0.1.0'
 
 _ILLEGAL_CHARS = {
     '\x00', '\r', '\n', '\t',  # Control chars
@@ -291,48 +285,5 @@ def validate_path(path_str) -> tuple[bool, str]:
 
     return (True, "Path is valid")
 
-
-path_arg = typer.Argument(..., help="Root directory to scan recursively")
-
-@app.command()
-def walk(root_path: str = path_arg):  # pragma: no cover
-    """ diagnostic tool to see filenames that fail validation """
-    # TODO: could be used to walk-and-fix-inplace invalid filenames.
-    try:
-        root = Path(root_path).resolve()
-        if not root.exists():
-            raise typer.BadParameter(f"Path '{root_path}' does not exist")
-
-        typer.echo(f"Scanning: {root} (using Path.rglob())")
-
-        invalid_count = 0
-        total_count = 0
-
-        for path in root.rglob('*'):
-            # TODO: is this true? or should we fix directories as well?
-            if not path.is_file():  # Only validate files, skip directories
-                continue
-            total_count += 1
-            is_valid, msg = validate_path(str(path))
-            if not is_valid:
-                invalid_count += 1
-                typer.echo(f"[INVALID] {path}: {msg}", err=True)
-
-        # Summary output
-        typer.echo(f"\nValidation complete:")
-        typer.echo(f"Scanned paths: {total_count}")
-        typer.echo(f"Invalid paths: {invalid_count}")
-
-        if invalid_count > 0:
-            raise typer.Exit(1)
-
-    except Exception as e:
-        typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
-
-
-
-if __name__ == '__main__':
-    app()
 
 # done

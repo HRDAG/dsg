@@ -24,11 +24,6 @@ class ConfigError(DSGError):
     pass
 
 
-class BackendError(DSGError):
-    """Raised when backend operations fail (SSH, rsync, storage, etc.)."""
-    pass
-
-
 class ValidationError(DSGError):
     """Raised when validation of files, paths, or data fails."""
     pass
@@ -36,14 +31,4 @@ class ValidationError(DSGError):
 
 class SyncError(DSGError):
     """Raised when sync operations fail due to conflicts or other issues."""
-    pass
-
-
-class OperationError(DSGError):
-    """Raised when DSG operations (init, clone, sync) fail."""
-    pass
-
-
-class ManifestError(DSGError):
-    """Raised when manifest operations or validation fails."""
     pass

@@ -15,7 +15,7 @@ import pytest
 import yaml
 from loguru import logger
 
-from dsg.logging_setup import detect_repo_name, setup_logging, enable_debug_logging, enable_verbose_logging
+from dsg.logging_setup import detect_repo_name, setup_logging
 
 
 class TestDetectRepoName:
@@ -243,30 +243,6 @@ class TestLoggingSetup:
                 
                 # Should still have console logging
                 assert logger._core.handlers
-
-    def test_enable_debug_logging(self):
-        """Test enable_debug_logging configures logger for debug output."""
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
-            mock_user_config = MagicMock()
-            mock_user_config.local_log = None
-            mock_load_user.return_value = mock_user_config
-            
-            enable_debug_logging()
-            
-            # Should have handlers configured
-            assert logger._core.handlers
-
-    def test_enable_verbose_logging(self):
-        """Test enable_verbose_logging configures logger for verbose output."""
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
-            mock_user_config = MagicMock()
-            mock_user_config.local_log = None
-            mock_load_user.return_value = mock_user_config
-            
-            enable_verbose_logging()
-            
-            # Should have handlers configured
-            assert logger._core.handlers
 
     def test_repo_name_detection_with_global_fallback(self):
         """Test that 'global' is used when repo name detection returns None."""

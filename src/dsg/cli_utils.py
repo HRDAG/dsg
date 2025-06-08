@@ -218,19 +218,6 @@ def validate_repository_command_prerequisites(console: Console, verbose: bool = 
     return config
 
 
-def truncate_commit_message(message: str) -> str:
-    """Truncate commit message using git's convention."""
-    if not message:
-        return ""
-
-    first_line = message.split('\n')[0].strip()
-
-    if len(first_line) > 50:
-        return first_line[:47] + "..."
-
-    return first_line
-
-
 def handle_config_error(console: Console, error_message: str) -> None:
     """Handle configuration errors with consistent formatting."""
     console.print(f"[red]✗[/red] Configuration error: {error_message}")
