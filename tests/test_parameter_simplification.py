@@ -32,7 +32,9 @@ class TestParameterSimplification:
         config = Mock(spec=Config)
         
         with patch('dsg.commands.actions.init_repository') as mock_init:
-            mock_init.return_value = {'status': 'success', 'snapshot_id': 's1'}
+            from dsg.lifecycle import InitResult
+            mock_init_result = InitResult(snapshot_hash='test_snapshot_hash', normalization_result=None)
+            mock_init.return_value = mock_init_result
             
             # Test with operation-specific parameters
             result = action_commands.init(
@@ -58,7 +60,15 @@ class TestParameterSimplification:
                 normalize=False,
                 verbose=True
             )
-            assert result == {'status': 'success', 'snapshot_id': 's1'}
+            
+            # Should return structured result from action command
+            assert result['operation'] == 'init'
+            assert result['snapshot_hash'] == 'test_snapshot_hash'
+            assert result['config'] == config
+            assert result['normalize_requested'] is False
+            assert result['normalization_result'] is None
+            assert result['force'] is True
+            assert result['verbose'] is True
 
     def test_clone_handler_uses_6_parameter_model(self):
         """Test that clone handler follows 6-parameter model."""

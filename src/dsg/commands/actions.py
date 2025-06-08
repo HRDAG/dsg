@@ -71,9 +71,19 @@ def init(
     # Display results using console
     if not quiet:
         console.print("[green]Repository initialization completed[/green]")
+        console.print(f"[dim]Initialized {len(init_result.files_included)} files[/dim]")
+        if init_result.normalization_result and init_result.normalization_result.has_changes():
+            console.print(f"[dim]Normalized {init_result.normalization_result.summary()['renamed_count']} files[/dim]")
     
-    # Return the complete result - let JSON consumers decide what they need
-    return init_result
+    # Return comprehensive result including file details and normalization for JSON output
+    return {
+        'operation': 'init',
+        'config': config,
+        'normalize_requested': normalize,
+        'force': force,
+        'verbose': verbose,
+        **init_result.summary()  # Include snapshot_hash, files_included, normalization_result
+    }
 
 
 def clone(

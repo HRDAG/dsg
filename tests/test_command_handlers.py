@@ -235,7 +235,10 @@ class TestActionCommandHandlers:
         config = Mock(spec=Config)
         
         with patch('dsg.commands.actions.init_repository') as mock_init:
-            mock_init_result = {'status': 'success', 'snapshot_id': 's1'}
+            # Mock new InitResult return format
+            from dsg.lifecycle import InitResult
+            mock_init_result = InitResult(snapshot_hash='abc123', normalization_result=None)
+            mock_init_result.files_included = [{"path": "test.txt", "hash": "def456", "size": 200}]
             mock_init.return_value = mock_init_result
             
             result = action_commands.init(
@@ -243,8 +246,13 @@ class TestActionCommandHandlers:
                 verbose=True, quiet=False
             )
             
-            # Verify actual execution
-            assert result == mock_init_result
+            # Verify structured result
+            assert result['operation'] == 'init'
+            assert result['snapshot_hash'] == 'abc123'
+            assert result['normalize_requested'] is True
+            assert result['normalization_result'] is None
+            assert result['files_included_count'] == 1
+            assert len(result['files_included']) == 1
             mock_init.assert_called_once_with(
                 config=config, force=True, normalize=True, verbose=True
             )
@@ -352,7 +360,9 @@ class TestCommandHandlerIntegration:
             
             mock_status.return_value = {'status': 'test'}
             mock_discovery.return_value = {'repositories': []}
-            mock_init.return_value = {'result': 'test'}
+            from dsg.lifecycle import InitResult
+            mock_init_result = InitResult(snapshot_hash='test_hash', normalization_result=None)
+            mock_init.return_value = mock_init_result
             
             # Test info commands (include config)
             status_result = info_commands.status(console, config, verbose=False, quiet=False)

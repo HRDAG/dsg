@@ -93,6 +93,117 @@ class NormalizationResult:
         }
 
 
+@dataclass
+class InitResult:
+    """Track results of init operations including files processed."""
+    
+    snapshot_hash: str
+    files_included: list[dict[str, str]] = field(default_factory=list)
+    normalization_result: NormalizationResult | None = None
+    
+    def add_file(self, path: str, file_hash: str, size: int) -> None:
+        """Record a file that was included in the initial manifest."""
+        self.files_included.append({
+            'path': path,
+            'hash': file_hash,
+            'size': size
+        })
+    
+    def summary(self) -> dict[str, any]:
+        """Generate a summary for JSON output."""
+        return {
+            'snapshot_hash': self.snapshot_hash,
+            'files_included_count': len(self.files_included),
+            'files_included': self.files_included,
+            'normalization_result': self.normalization_result.summary() if self.normalization_result else None
+        }
+
+
+@dataclass
+class SyncResult:
+    """Track results of sync operations including file transfers."""
+    
+    files_pushed: list[dict[str, str]] = field(default_factory=list)
+    files_pulled: list[dict[str, str]] = field(default_factory=list)
+    files_deleted: list[dict[str, str]] = field(default_factory=list)
+    conflicts_resolved: list[dict[str, str]] = field(default_factory=list)
+    normalization_result: NormalizationResult | None = None
+    
+    def add_push(self, local_path: str, remote_path: str, file_hash: str) -> None:
+        """Record a file that was pushed to remote."""
+        self.files_pushed.append({
+            'local_path': local_path,
+            'remote_path': remote_path,
+            'hash': file_hash
+        })
+    
+    def add_pull(self, remote_path: str, local_path: str, file_hash: str) -> None:
+        """Record a file that was pulled from remote."""
+        self.files_pulled.append({
+            'remote_path': remote_path,
+            'local_path': local_path,
+            'hash': file_hash
+        })
+    
+    def add_delete(self, path: str, location: str, reason: str) -> None:
+        """Record a file that was deleted."""
+        self.files_deleted.append({
+            'path': path,
+            'location': location,  # 'local' or 'remote'
+            'reason': reason
+        })
+    
+    def summary(self) -> dict[str, any]:
+        """Generate a summary for JSON output."""
+        return {
+            'files_pushed_count': len(self.files_pushed),
+            'files_pulled_count': len(self.files_pulled),
+            'files_deleted_count': len(self.files_deleted),
+            'conflicts_resolved_count': len(self.conflicts_resolved),
+            'files_pushed': self.files_pushed,
+            'files_pulled': self.files_pulled,
+            'files_deleted': self.files_deleted,
+            'conflicts_resolved': self.conflicts_resolved,
+            'normalization_result': self.normalization_result.summary() if self.normalization_result else None
+        }
+
+
+@dataclass
+class CloneResult:
+    """Track results of clone operations including files downloaded."""
+    
+    files_downloaded: list[dict[str, str]] = field(default_factory=list)
+    destination_path: str = ""
+    errors: list[dict[str, str]] = field(default_factory=list)
+    
+    def add_download(self, remote_path: str, local_path: str, file_hash: str, size: int) -> None:
+        """Record a file that was downloaded from remote."""
+        self.files_downloaded.append({
+            'remote_path': remote_path,
+            'local_path': local_path,
+            'hash': file_hash,
+            'size': size
+        })
+    
+    def add_error(self, path: str, error_message: str) -> None:
+        """Record a download error."""
+        self.errors.append({
+            'path': path,
+            'error': error_message
+        })
+    
+    def summary(self) -> dict[str, any]:
+        """Generate a summary for JSON output."""
+        return {
+            'files_downloaded_count': len(self.files_downloaded),
+            'destination_path': self.destination_path,
+            'errors_count': len(self.errors),
+            'files_downloaded': self.files_downloaded,
+            'errors': self.errors
+        }
+
+
+
 def create_default_snapshot_info(snapshot_id: str, user_id: str, message: str = "Initial snapshot") -> SnapshotInfo:
     """
     Create a default SnapshotInfo for init command.
@@ -122,9 +233,10 @@ def create_default_snapshot_info(snapshot_id: str, user_id: str, message: str = 
     )
 
 
-def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) -> Manifest:
+def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) -> tuple[Manifest, NormalizationResult | None]:
     """Create manifest for init with normalization (exactly like sync)."""
     logger = loguru.logger
+    normalization_result = None  # Initialize to handle case where no normalization is needed
     
     # 1. Initial scan to detect validation issues
     scan_result = scan_directory_no_cfg(
@@ -172,7 +284,7 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
         
         logger.debug("Path normalization completed successfully")
     
-    return scan_result.manifest
+    return scan_result.manifest, normalization_result
 
 
 def sync_repository(
@@ -667,7 +779,7 @@ def create_local_metadata(
     user_id: str,
     snapshot_message: str = "Initial snapshot",
     normalize: bool = True
-) -> str:
+) -> InitResult:
     """
     Create local DSG metadata structure for init.
     
@@ -684,7 +796,7 @@ def create_local_metadata(
         normalize: Whether to fix validation warnings automatically
         
     Returns:
-        The computed snapshot hash
+        InitResult with snapshot hash, files included, and normalization results
         
     Raises:
         ValueError: If validation warnings exist and normalize=False
@@ -695,7 +807,7 @@ def create_local_metadata(
     
     # Step 1: Create manifest from filesystem (includes normalization)
     logger.debug("Creating manifest from filesystem with normalization")
-    manifest = init_create_manifest(project_root, user_id, normalize=normalize)
+    manifest, normalization_result = init_create_manifest(project_root, user_id, normalize=normalize)
     logger.info(f"Created manifest with {len(manifest.entries)} entries")
     
     # Step 2: Create snapshot info
@@ -726,11 +838,28 @@ def create_local_metadata(
     )
     logger.info("Created sync-messages.json")
     
-    logger.info(f"Successfully created local metadata with snapshot s1")
-    return snapshot_hash
+    # Step 5: Build InitResult with file details
+    logger.debug("Building InitResult with file details")
+    init_result = InitResult(
+        snapshot_hash=snapshot_hash,
+        normalization_result=normalization_result
+    )
+    
+    # Add all files from the manifest to the result
+    for file_path, entry in manifest.entries.items():
+        # Get file size from the entry if available
+        file_size = getattr(entry, 'size', 0) if hasattr(entry, 'size') else 0
+        init_result.add_file(
+            path=file_path,
+            file_hash=entry.hash,
+            size=file_size
+        )
+    
+    logger.info(f"Successfully created local metadata with snapshot s1 and {len(init_result.files_included)} files")
+    return init_result
 
 
-def init_repository(config: Config, normalize: bool = True, force: bool = False) -> str:
+def init_repository(config: Config, normalize: bool = True, force: bool = False) -> InitResult:
     """
     Initialize a complete DSG repository (local + backend).
     
@@ -740,13 +869,13 @@ def init_repository(config: Config, normalize: bool = True, force: bool = False)
         force: Whether to force initialization even with conflicts (passed to backend)
         
     Returns:
-        The computed snapshot hash
+        InitResult with snapshot hash, files included, and normalization results
     """
     logger = loguru.logger
     logger.info(f"Initializing DSG repository for {config.project.name}")
     
     # 1. Create local metadata (.dsg structure, manifests)
-    snapshot_hash = create_local_metadata(
+    init_result = create_local_metadata(
         config.project_root, 
         config.user.user_id, 
         normalize=normalize
@@ -754,7 +883,7 @@ def init_repository(config: Config, normalize: bool = True, force: bool = False)
     
     # 2. Initialize backend repository with this data
     backend = create_backend(config)
-    backend.init_repository(snapshot_hash, force=force)
+    backend.init_repository(init_result.snapshot_hash, force=force)
     
-    logger.info(f"Successfully initialized DSG repository with snapshot hash: {snapshot_hash}")
-    return snapshot_hash
+    logger.info(f"Successfully initialized DSG repository with snapshot hash: {init_result.snapshot_hash}")
+    return init_result

@@ -109,7 +109,7 @@ class TestInitCreateManifest:
         mock_scan.return_value.validation_warnings = []
         
         base_path = Path("/test/path")
-        result = init_create_manifest(base_path, "test@example.com")
+        manifest, normalization_result = init_create_manifest(base_path, "test@example.com")
         
         # Verify scan was called with correct parameters
         mock_scan.assert_called_once_with(
@@ -121,7 +121,8 @@ class TestInitCreateManifest:
             normalize_paths=True
         )
         
-        assert result == mock_manifest
+        assert manifest == mock_manifest
+        assert normalization_result is None  # No validation warnings, so no normalization
     
     @patch('dsg.lifecycle.scan_directory_no_cfg')
     @patch('dsg.lifecycle.loguru.logger')
@@ -132,11 +133,12 @@ class TestInitCreateManifest:
         mock_scan.return_value.validation_warnings = []
         
         base_path = Path("/test/path")
-        result = init_create_manifest(base_path, "test@example.com", normalize=False)
+        manifest, normalization_result = init_create_manifest(base_path, "test@example.com", normalize=False)
         
         # Should still call scan but normalization behavior may differ
         mock_scan.assert_called_once()
-        assert result == mock_manifest
+        assert manifest == mock_manifest
+        assert normalization_result is None
     
     @patch('dsg.lifecycle.scan_directory_no_cfg')
     @patch('dsg.lifecycle.loguru.logger')
@@ -153,12 +155,18 @@ class TestInitCreateManifest:
         ]
         
         base_path = Path("/test/path")
-        result = init_create_manifest(base_path, "test@example.com", normalize=True)
         
-        # Should call scan twice when normalization is enabled and warnings exist
-        assert mock_scan.call_count >= 1
-        # Returns the final manifest after normalization
-        assert result in [mock_manifest1, mock_manifest2]
+        with patch('dsg.lifecycle.normalize_problematic_paths') as mock_normalize:
+            mock_normalize.return_value = MagicMock()  # Mock NormalizationResult
+            
+            manifest, normalization_result = init_create_manifest(base_path, "test@example.com", normalize=True)
+            
+            # Should call scan twice when normalization is enabled and warnings exist
+            assert mock_scan.call_count >= 1
+            # Returns the final manifest after normalization (second scan result)
+            assert manifest == mock_manifest2
+            # Should have normalization result since warnings were fixed
+            assert normalization_result is not None
 
 
 class TestMetadataOperations:
@@ -205,7 +213,8 @@ class TestMetadataOperations:
         """Test complete local metadata creation workflow"""
         # Setup mocks
         mock_manifest_obj = MagicMock()
-        mock_manifest.return_value = mock_manifest_obj
+        mock_normalization_result = MagicMock()
+        mock_manifest.return_value = (mock_manifest_obj, mock_normalization_result)
         
         mock_snapshot_obj = MagicMock()
         mock_snapshot.return_value = mock_snapshot_obj
@@ -213,7 +222,7 @@ class TestMetadataOperations:
         mock_write.return_value = "snapshot_hash_123"
         
         base_path = Path("/test/project")
-        result = create_local_metadata(base_path, "user@test.com")
+        init_result = create_local_metadata(base_path, "user@test.com")
         
         # Verify workflow
         mock_manifest.assert_called_once_with(base_path, "user@test.com", normalize=True)
@@ -227,7 +236,8 @@ class TestMetadataOperations:
             prev_snapshot_hash=None
         )
         
-        assert result == "snapshot_hash_123"
+        assert init_result.snapshot_hash == "snapshot_hash_123"
+        assert init_result.normalization_result == mock_normalization_result
 
 
 class TestInitRepository:
@@ -239,7 +249,15 @@ class TestInitRepository:
     def test_init_repository_success(self, mock_logger, mock_local_meta, mock_backend):
         """Test successful repository initialization"""
         # Setup mocks
-        mock_local_meta.return_value = "test_snapshot_hash"
+        from dsg.lifecycle import InitResult, NormalizationResult
+        mock_norm_result = MagicMock(spec=NormalizationResult)
+        mock_init_result = InitResult(
+            snapshot_hash="test_snapshot_hash",
+            normalization_result=mock_norm_result
+        )
+        mock_init_result.files_included = [{"path": "test.txt", "hash": "abc123", "size": 100}]
+        mock_local_meta.return_value = mock_init_result
+        
         mock_backend_instance = MagicMock()
         mock_backend.return_value = mock_backend_instance
         
@@ -249,7 +267,7 @@ class TestInitRepository:
         mock_config.project_root = Path("/test/project")
         mock_config.user.user_id = "test@example.com"
         
-        result = init_repository(mock_config, normalize=True)
+        init_result = init_repository(mock_config, normalize=True)
         
         # Verify workflow
         mock_local_meta.assert_called_once_with(
@@ -260,14 +278,18 @@ class TestInitRepository:
         mock_backend.assert_called_once_with(mock_config)
         mock_backend_instance.init_repository.assert_called_once_with("test_snapshot_hash", force=False)
         
-        assert result == "test_snapshot_hash"
+        assert init_result.snapshot_hash == "test_snapshot_hash"
+        assert init_result.normalization_result is not None
+        assert len(init_result.files_included) == 1
     
     @patch('dsg.lifecycle.create_backend')
     @patch('dsg.lifecycle.create_local_metadata')
     @patch('dsg.lifecycle.loguru.logger')
     def test_init_repository_without_normalization(self, mock_logger, mock_local_meta, mock_backend):
         """Test repository initialization with normalization disabled"""
-        mock_local_meta.return_value = "test_hash"
+        from dsg.lifecycle import InitResult
+        mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
+        mock_local_meta.return_value = mock_init_result
         mock_backend_instance = MagicMock()
         mock_backend.return_value = mock_backend_instance
         
@@ -276,7 +298,7 @@ class TestInitRepository:
         mock_config.project_root = Path("/test/project")
         mock_config.user.user_id = "test@example.com"
         
-        result = init_repository(mock_config, normalize=False)
+        init_result = init_repository(mock_config, normalize=False)
         
         # Should pass normalize=False to local metadata creation
         mock_local_meta.assert_called_once_with(
@@ -285,7 +307,8 @@ class TestInitRepository:
             normalize=False
         )
         
-        assert result == "test_hash"
+        assert init_result.snapshot_hash == "test_hash" 
+        assert init_result.normalization_result is None
     
     def test_init_repository_with_real_config_structure(self):
         """Test init_repository with realistic config structure - reproduces repo_name bug"""
@@ -331,14 +354,17 @@ class TestInitRepository:
         # This should now work after the fix (config.project.name instead of config.project.repo_name)
         with patch('dsg.lifecycle.create_backend') as mock_backend, \
              patch('dsg.lifecycle.create_local_metadata') as mock_local_meta:
-            mock_local_meta.return_value = "test_hash"
+            from dsg.lifecycle import InitResult
+            mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
+            mock_local_meta.return_value = mock_init_result
             mock_backend_instance = MagicMock()
             mock_backend.return_value = mock_backend_instance
             
-            result = init_repository(config)
+            init_result = init_repository(config)
             
             # Verify the fix worked
-            assert result == "test_hash"
+            assert init_result.snapshot_hash == "test_hash"
+            assert init_result.normalization_result is None
             mock_backend.assert_called_once_with(config)
             mock_backend_instance.init_repository.assert_called_once_with("test_hash", force=False)
     
@@ -346,7 +372,9 @@ class TestInitRepository:
     @patch('dsg.lifecycle.create_local_metadata')
     def test_init_repository_backend_failure(self, mock_local_meta, mock_backend):
         """Test init_repository when backend initialization fails"""
-        mock_local_meta.return_value = "test_hash"
+        from dsg.lifecycle import InitResult
+        mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
+        mock_local_meta.return_value = mock_init_result
         mock_backend_instance = MagicMock()
         mock_backend_instance.init_repository.side_effect = Exception("Backend failed")
         mock_backend.return_value = mock_backend_instance
