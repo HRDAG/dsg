@@ -12,7 +12,7 @@ Tests for clone progress reporting functionality.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from rich.console import Console
@@ -50,6 +50,141 @@ class TestRepositoryProgressReporter:
         reporter.update_files_progress(1)
         reporter.complete_files_sync()
         reporter.report_no_files()
+        reporter.stop_progress()
+
+    def test_progress_reporter_verbose_mode_full_cycle(self):
+        """Test RepositoryProgressReporter in verbose mode with full progress cycle."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        # Start progress display
+        reporter.start_progress()
+        assert reporter.progress is not None
+        
+        # Test metadata sync cycle
+        reporter.start_metadata_sync()
+        assert reporter.metadata_task is not None
+        
+        reporter.complete_metadata_sync()
+        # metadata_task should be cleared after completion
+        
+        # Test files sync cycle with size information
+        reporter.start_files_sync(total_files=10, total_size=1024000)  # 1MB
+        assert reporter.files_task is not None
+        
+        # Update progress multiple times
+        reporter.update_files_progress(3)  # Complete 3 files
+        reporter.update_files_progress(2)  # Complete 2 more files
+        
+        reporter.complete_files_sync()
+        # files_task should be cleared after completion
+        
+        # Test cleanup
+        reporter.stop_progress()
+        assert reporter.progress is None
+
+    def test_verbose_mode_without_progress_display(self):
+        """Test verbose mode methods when progress display hasn't been started."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        # Don't call start_progress()
+        assert reporter.progress is None
+        
+        # These should fall back to console.print instead of using progress display
+        with patch.object(console, 'print') as mock_print:
+            reporter.start_metadata_sync()
+            mock_print.assert_called_with("[dim]Syncing repository metadata...[/dim]")
+            
+            reporter.complete_metadata_sync()
+            mock_print.assert_called_with("[dim]✓ Metadata sync complete[/dim]")
+            
+            reporter.start_files_sync(5, 0)
+            mock_print.assert_called_with("[dim]Copying 5 files...[/dim]")
+            
+            reporter.complete_files_sync()
+            mock_print.assert_called_with("[dim]✓ File sync complete[/dim]")
+
+    def test_format_size_edge_cases(self):
+        """Test edge cases for file size formatting."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        # Test large sizes
+        assert reporter._format_size(1024 * 1024 * 1024 * 1024) == "1.0 TB"
+        assert reporter._format_size(1536 * 1024 * 1024 * 1024) == "1.5 TB"  # 1.5 TB
+        
+        # Test partial sizes
+        assert reporter._format_size(512) == "512.0 B"
+        assert reporter._format_size(1536) == "1.5 KB"
+        assert reporter._format_size(2048) == "2.0 KB"
+        assert reporter._format_size(1536 * 1024) == "1.5 MB"
+        assert reporter._format_size(2048 * 1024) == "2.0 MB"
+        
+    def test_report_no_files_method(self):
+        """Test the report_no_files method specifically."""
+        console = Console()
+        
+        # Test non-verbose mode (should do nothing)
+        reporter = RepositoryProgressReporter(console, verbose=False)
+        with patch.object(console, 'print') as mock_print:
+            reporter.report_no_files()
+            mock_print.assert_not_called()
+        
+        # Test verbose mode
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        with patch.object(console, 'print') as mock_print:
+            reporter.report_no_files()
+            mock_print.assert_called_with("[dim]Repository has no synced data yet - only metadata copied[/dim]")
+
+    def test_update_files_progress_default_value(self):
+        """Test update_files_progress with default parameter."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        reporter.start_progress()
+        reporter.start_files_sync(5, 1000)
+        
+        # Test default parameter (should advance by 1)
+        with patch.object(reporter.progress, 'update') as mock_update:
+            reporter.update_files_progress()  # No parameter provided
+            mock_update.assert_called_with(reporter.files_task, advance=1)
+        
+        reporter.stop_progress()
+
+    def test_start_files_sync_without_size(self):
+        """Test start_files_sync when total_size is 0 or not provided."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        reporter.start_progress()
+        
+        # Test with total_size=0 (no size info displayed)
+        with patch.object(reporter.progress, 'add_task') as mock_add_task:
+            reporter.start_files_sync(total_files=3, total_size=0)
+            mock_add_task.assert_called_with(
+                "[green]Copying 3 files...",
+                total=3
+            )
+        
+        reporter.stop_progress()
+
+    def test_task_management_edge_cases(self):
+        """Test edge cases in task management."""
+        console = Console()
+        reporter = RepositoryProgressReporter(console, verbose=True)
+        
+        reporter.start_progress()
+        
+        # Test completing metadata sync without starting it
+        reporter.complete_metadata_sync()  # Should not error
+        
+        # Test completing files sync without starting it  
+        reporter.complete_files_sync()  # Should not error
+        
+        # Test updating files progress without starting files sync
+        reporter.update_files_progress(1)  # Should not error
+        
         reporter.stop_progress()
 
     def test_progress_callback_integration(self):
