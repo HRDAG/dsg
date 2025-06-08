@@ -222,7 +222,7 @@ class TransactionManager:
         self.client_tx.stage_all_then_commit(files, manifest)
 
 
-def recover_from_crash(project_root: Path):
+def recover_from_crash(project_root: Path) -> None:
     """Called on every dsg startup to detect and recover incomplete transactions"""
     transaction_marker = project_root / ".dsg" / "backup" / "transaction-in-progress"
     

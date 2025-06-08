@@ -159,7 +159,7 @@ def discovery_command_pattern(func: Callable) -> Callable:
     return wrapper
 
 
-def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY):
+def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY) -> Callable[[Callable], Callable]:
     """Unified pattern for state-changing operation commands.
     
     Args:
