@@ -8,6 +8,7 @@
 #
 # TODO: split this into components, this file is much too long
 
+import contextlib
 import socket
 import subprocess
 import shutil
@@ -27,6 +28,40 @@ from dsg.protocols import FileOperations
 from dsg.utils.execution import CommandExecutor as ce
 
 RepoType = Literal["zfs", "xfs", "local"]  # will expand to include n2s primarily
+
+
+@contextlib.contextmanager
+def create_temp_file_list(file_list: list[str]):
+    """
+    Context manager for creating temporary file lists for rsync operations.
+    
+    Creates a temporary file, writes the file list to it, and ensures proper cleanup
+    even if an exception occurs. This prevents temp file leaks that could happen
+    with manual cleanup.
+    
+    Args:
+        file_list: List of file paths to write to the temporary file
+        
+    Yields:
+        str: Path to the temporary file containing the file list
+        
+    Example:
+        with create_temp_file_list(['file1.txt', 'file2.txt']) as filelist_path:
+            rsync_cmd = ['rsync', '--files-from', filelist_path, src, dest]
+            subprocess.run(rsync_cmd)
+        # Temp file automatically cleaned up here
+    """
+    with tempfile.NamedTemporaryFile(mode='w', delete=True, suffix='.filelist') as temp_file:
+        # Write all file paths to the temporary file
+        for path in file_list:
+            temp_file.write(f"{path}\n")
+        
+        # Ensure data is written to disk before rsync reads it
+        temp_file.flush()
+        
+        # Yield the file path for use by rsync
+        yield temp_file.name
+    # Temp file automatically deleted when context exits
 
 
 class Transport(ABC):
@@ -93,28 +128,18 @@ class LocalhostTransport(Transport):
         if not file_list:
             return
 
-        # Create temporary file list for rsync
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
-            for path in file_list:
-                f.write(f"{path}\n")
-            filelist_path = f.name
-
-        try:
+        # Use context manager for automatic temp file cleanup
+        with create_temp_file_list(file_list) as filelist_path:
             rsync_cmd = [
                 "rsync", "-av",
                 f"--files-from={filelist_path}",
                 str(src_base) + "/",
                 str(dest_base) + "/"
             ]
-            ce.run_local(rsync_cmd)
-
-        except ValueError as e:
-            raise ValueError(f"LocalhostTransport rsync operation failed: {str(e)}")
-        finally:
             try:
-                os.unlink(filelist_path)
-            except OSError:
-                pass  # Ignore cleanup errors
+                ce.run_local(rsync_cmd)
+            except ValueError as e:
+                raise ValueError(f"LocalhostTransport rsync operation failed: {str(e)}")
 
     def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         """Execute command locally"""
@@ -137,13 +162,8 @@ class SSHTransport(Transport):
         if not file_list:
             return
 
-        # Create temporary file list for rsync
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
-            for path in file_list:
-                f.write(f"{path}\n")
-            filelist_path = f.name
-
-        try:
+        # Use context manager for automatic temp file cleanup
+        with create_temp_file_list(file_list) as filelist_path:
             remote_dest = f"{self.host}:{dest_base}/"
             rsync_cmd = [
                 "rsync", "-av",
@@ -152,15 +172,10 @@ class SSHTransport(Transport):
                 remote_dest
             ]
 
-            ce.run_local(rsync_cmd)
-
-        except ValueError as e:
-            raise ValueError(f"SSHTransport rsync operation failed: {str(e)}")
-        finally:
             try:
-                os.unlink(filelist_path)
-            except OSError:
-                pass  # Ignore cleanup errors
+                ce.run_local(rsync_cmd)
+            except ValueError as e:
+                raise ValueError(f"SSHTransport rsync operation failed: {str(e)}")
 
     def run_command(self, cmd: list[str]) -> tuple[int, str, str]:
         """Execute command via SSH"""
@@ -806,15 +821,6 @@ class SSHBackend(Backend):
 
         return manifest, total_files, total_size
 
-    def _create_rsync_file_list(self, manifest: 'Manifest') -> str:
-        """Create temporary file list for rsync --files-from option."""
-        import tempfile
-        
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.filelist') as f:
-            for path in manifest.entries.keys():
-                f.write(f"{path}\n")
-            return f.name
-
     def _sync_data_files(self, remote_repo_path: str, dest_path: Path, filelist_path: str, 
                         total_files: int, resume: bool, progress_callback, verbose: bool) -> None:
         """Bulk transfer data files using rsync --files-from."""
@@ -886,19 +892,11 @@ class SSHBackend(Backend):
         if manifest is None:
             return
 
-        # Step 3: Create temporary file list for rsync
-        filelist_path = self._create_rsync_file_list(manifest)
-
-        try:
+        # Step 3: Create temporary file list and sync data files
+        file_list = list(manifest.entries.keys())
+        with create_temp_file_list(file_list) as filelist_path:
             # Step 4: Bulk transfer data files using --files-from
             self._sync_data_files(remote_repo_path, dest_path, filelist_path, total_files, resume, progress_callback, verbose)
-
-        finally:
-            # Step 5: Always cleanup temp file
-            try:
-                os.unlink(filelist_path)
-            except OSError:
-                pass  # Ignore cleanup errors
 
         # Notify progress: file sync complete
         if progress_callback:
