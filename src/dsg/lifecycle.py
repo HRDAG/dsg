@@ -22,7 +22,7 @@ import datetime
 import os
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import loguru
 import orjson
@@ -44,6 +44,53 @@ class SnapshotInfo:
     user_id: str
     timestamp: datetime.datetime
     message: str
+
+
+@dataclass 
+class NormalizationResult:
+    """Track results of normalization operations within DSG scope."""
+    
+    renamed_files: list[dict[str, str]] = field(default_factory=list)
+    fixed_symlinks: list[dict[str, str]] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
+    
+    def add_rename(self, old_path: str, new_path: str) -> None:
+        """Record a successful file rename."""
+        self.renamed_files.append({
+            'old_path': old_path,
+            'new_path': new_path
+        })
+        
+    def add_symlink_fix(self, link_path: str, old_target: str, new_target: str) -> None:
+        """Record a symlink target update."""
+        self.fixed_symlinks.append({
+            'link_path': link_path,
+            'old_target': old_target,
+            'new_target': new_target
+        })
+        
+    def add_error(self, path: str, error_message: str) -> None:
+        """Record a normalization error."""
+        self.errors.append({
+            'path': path,
+            'error': error_message
+        })
+        
+    def has_changes(self) -> bool:
+        """Check if any normalization changes were made."""
+        return len(self.renamed_files) > 0 or len(self.fixed_symlinks) > 0
+        
+    def summary(self) -> dict[str, any]:
+        """Generate a summary for console display and JSON output."""
+        return {
+            'renamed_count': len(self.renamed_files),
+            'symlinks_fixed_count': len(self.fixed_symlinks),
+            'errors_count': len(self.errors),
+            'success': len(self.errors) == 0,
+            'renamed_files': self.renamed_files,
+            'fixed_symlinks': self.fixed_symlinks,
+            'errors': self.errors
+        }
 
 
 def create_default_snapshot_info(snapshot_id: str, user_id: str, message: str = "Initial snapshot") -> SnapshotInfo:
@@ -101,8 +148,9 @@ def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) 
         
         logger.debug(f"Init found {len(scan_result.validation_warnings)} paths needing normalization")
         
-        # Use sync's exact normalization function
-        normalize_problematic_paths(base_path, scan_result.validation_warnings)
+        # Use enhanced normalization function (init doesn't show console output)
+        normalization_result = normalize_problematic_paths(base_path, scan_result.validation_warnings)
+        logger.debug(f"Init normalization: {len(normalization_result.renamed_files)} renamed, {len(normalization_result.errors)} errors")
         
         # 3. Re-scan to verify normalization worked
         scan_result = scan_directory_no_cfg(
@@ -131,16 +179,18 @@ def sync_repository(
         config: Config,
         console: 'Console',
         dry_run: bool = False,
-        normalize: bool = False) -> None:
+        normalize: bool = False) -> dict[str, any]:
     """
     Synchronize local files with remote repository.
 
-    Phase 1 implementation: validation blocking only.
-
     Args:
         config: Loaded project configuration
+        console: Rich console for output
         dry_run: If True, show what would be done without syncing
         normalize: If True, fix validation warnings automatically
+
+    Returns:
+        Dictionary with sync results including normalization details for JSON output
 
     Raises:
         ValueError: If validation warnings exist and normalize=False
@@ -148,6 +198,9 @@ def sync_repository(
     
     logger = loguru.logger
     logger.debug(f"Starting sync_repository with dry_run={dry_run}, normalize={normalize}")
+
+    # Track normalization results for JSON output
+    normalization_result = None
 
     # Step 1: Scan local directory to check for validation warnings
     logger.debug("Scanning local directory for validation warnings...")
@@ -168,9 +221,18 @@ def sync_repository(
             try:
                 if dry_run:
                     _show_normalization_preview(console, scan_result.validation_warnings)
-                    return  # Exit early for dry-run mode
+                    return {
+                        'operation': 'sync',
+                        'dry_run': True,
+                        'validation_warnings_found': len(scan_result.validation_warnings),
+                        'normalize_requested': normalize
+                    }
                 else:
-                    normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
+                    normalization_result = normalize_problematic_paths(config.project_root, scan_result.validation_warnings)
+                    
+                    # Show user what was fixed
+                    if normalization_result.has_changes():
+                        _display_normalization_results(console, normalization_result)
 
                     logger.debug("Re-scanning after normalization...")
                     scan_result = scan_directory(config, compute_hashes=False, include_dsg_files=False)
@@ -194,7 +256,12 @@ def sync_repository(
     if dry_run:
         logger.debug("Dry run mode - showing operations that would be performed")
         display_sync_dry_run_preview(console)
-        return
+        return {
+            'operation': 'sync',
+            'dry_run': True,
+            'validation_warnings_found': 0,
+            'normalize_requested': normalize
+        }
 
     # Step 3: Get sync status to determine what operations are needed
     logger.debug("Getting sync status to determine operations...")
@@ -231,6 +298,17 @@ def sync_repository(
     # TODO: Implement actual file transfer operations with backend
     console.print("[green]✓[/green] Sync completed successfully")
     logger.debug("Sync operations completed")
+    
+    # Return comprehensive sync result including normalization details
+    return {
+        'operation': 'sync',
+        'success': True,
+        'conflicts_found': 0,
+        'normalization_result': normalization_result.summary() if normalization_result else None,
+        'validation_warnings_found': len(scan_result.validation_warnings) if scan_result.validation_warnings else 0,
+        'normalize_requested': normalize,
+        'dry_run': False
+    }
 
 
 def _show_normalization_preview(console: 'Console', validation_warnings: list[dict[str, str]]) -> None:
@@ -285,19 +363,23 @@ def _show_normalization_preview(console: 'Console', validation_warnings: list[di
 
 def normalize_problematic_paths(
         project_root: Path,
-        validation_warnings: list[dict[str, str]]) -> None:
+        validation_warnings: list[dict[str, str]]) -> NormalizationResult:
     """
-    Normalize paths that have validation issues using UNIFIED validation logic.
+    Normalize paths that have validation issues with enhanced result tracking.
 
     Args:
         project_root: Root directory of the project
         validation_warnings: List of validation warning dicts with 'path' and 'message' keys
+        
+    Returns:
+        NormalizationResult with detailed tracking of all operations
     """
     
     logger = loguru.logger
-    logger.debug(f"Normalizing {len(validation_warnings)} problematic paths using UNIFIED validation logic")
+    logger.debug(f"Normalizing {len(validation_warnings)} problematic paths with result tracking")
+    
+    result = NormalizationResult()
 
-    normalized_count = 0
     for warning in validation_warnings:
         path_str = warning['path']
         full_path = project_root / path_str
@@ -306,7 +388,14 @@ def normalize_problematic_paths(
 
         if not full_path.exists():
             logger.warning(f"Path not found for normalization: {full_path}")
+            result.add_error(path_str, "File not found")
             continue
+
+        # Handle symlinks by updating their targets if needed
+        if full_path.is_symlink():
+            symlink_result = _handle_symlink_normalization(full_path, project_root, result)
+            if symlink_result:
+                continue  # Symlink was handled, move to next file
 
         # Use the UNIFIED fix function that handles all validation issues
         normalized_path, was_modified = fix_problematic_path(full_path)
@@ -314,25 +403,129 @@ def normalize_problematic_paths(
         if was_modified:
             # Check if destination already exists
             if normalized_path.exists():
+                error_msg = f"Cannot normalize to {normalized_path.name}: destination exists"
                 logger.warning(f"Cannot normalize {full_path} to {normalized_path}: destination exists")
+                result.add_error(path_str, error_msg)
                 continue
 
             try:
                 # Ensure parent directory exists
                 normalized_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Rename the file/directory using the SAME logic
+                # Rename the file/directory
                 full_path.rename(normalized_path)
-                normalized_count += 1
+                
+                # Record the successful rename
+                result.add_rename(path_str, str(normalized_path.relative_to(project_root)))
                 logger.debug(f"Successfully normalized: {full_path} -> {normalized_path}")
 
             except Exception as e:
+                error_msg = f"Rename failed: {e}"
                 logger.error(f"Failed to normalize {full_path}: {e}")
-                raise ValueError(f"Normalization failed for {path_str}: {e}")
+                result.add_error(path_str, error_msg)
         else:
             logger.debug(f"Path {path_str} did not need normalization")
 
-    logger.debug(f"Successfully normalized {normalized_count} paths using UNIFIED validation logic")
+    logger.debug(f"Normalization complete: {len(result.renamed_files)} renamed, {len(result.fixed_symlinks)} symlinks fixed, {len(result.errors)} errors")
+    return result
+
+
+def _handle_symlink_normalization(symlink_path: Path, project_root: Path, result: NormalizationResult) -> bool:
+    """
+    Handle normalization of symlink targets when they are renamed.
+    
+    Args:
+        symlink_path: Path to the symlink
+        project_root: Project root directory  
+        result: NormalizationResult to track changes
+        
+    Returns:
+        True if symlink was handled (don't process further), False if should continue with normal processing
+    """
+    logger = loguru.logger
+    
+    try:
+        # Read the symlink target
+        target = symlink_path.readlink()
+        
+        # Only handle relative symlinks within the project
+        if target.is_absolute():
+            logger.debug(f"Skipping absolute symlink: {symlink_path} -> {target}")
+            return False
+            
+        # Resolve the target relative to the symlink's directory
+        symlink_dir = symlink_path.parent
+        target_path = symlink_dir / target
+        
+        try:
+            # Normalize the target path to see if it would change
+            from dsg.filename_validation import normalize_path
+            normalized_target_path, target_was_modified = normalize_path(target_path)
+            
+            if target_was_modified:
+                # Calculate the new relative target from the symlink
+                try:
+                    new_relative_target = normalized_target_path.relative_to(symlink_dir)
+                    
+                    # Update the symlink to point to the normalized target
+                    symlink_path.unlink()
+                    symlink_path.symlink_to(new_relative_target)
+                    
+                    # Record the symlink fix
+                    result.add_symlink_fix(
+                        str(symlink_path.relative_to(project_root)),
+                        str(target),
+                        str(new_relative_target)
+                    )
+                    
+                    logger.debug(f"Updated symlink target: {symlink_path} -> {new_relative_target}")
+                    return True  # Symlink was handled
+                    
+                except ValueError:
+                    # new_relative_target calculation failed, skip symlink handling
+                    logger.debug(f"Could not calculate relative target for symlink: {symlink_path}")
+                    return False
+            else:
+                logger.debug(f"Symlink target does not need normalization: {symlink_path} -> {target}")
+                return False
+                
+        except Exception as e:
+            logger.debug(f"Could not normalize symlink target {target}: {e}")
+            return False
+            
+    except Exception as e:
+        logger.warning(f"Failed to handle symlink normalization for {symlink_path}: {e}")
+        result.add_error(str(symlink_path.relative_to(project_root)), f"Symlink handling failed: {e}")
+        return True  # Don't process further since there was an error
+
+
+def _display_normalization_results(console: 'Console', result: NormalizationResult) -> None:
+    """
+    Display normalization results to the user in a clear, informative way.
+    
+    Args:
+        console: Rich console for output
+        result: NormalizationResult with all changes
+    """
+    if not result.has_changes() and len(result.errors) == 0:
+        return
+        
+    # Show successful operations
+    if result.renamed_files:
+        console.print(f"[green]✓[/green] Fixed {len(result.renamed_files)} filename(s):")
+        for rename in result.renamed_files:
+            console.print(f"  {rename['old_path']} → {rename['new_path']}")
+    
+    if result.fixed_symlinks:
+        console.print(f"[green]✓[/green] Updated {len(result.fixed_symlinks)} symlink target(s):")
+        for symlink in result.fixed_symlinks:
+            console.print(f"  {symlink['link_path']}: {symlink['old_target']} → {symlink['new_target']}")
+    
+    # Show errors if any
+    if result.errors:
+        console.print(f"[yellow]⚠[/yellow] {len(result.errors)} normalization error(s):")
+        for error in result.errors:
+            console.print(f"  {error['path']}: {error['error']}")
 
 
 def write_dsg_metadata(
