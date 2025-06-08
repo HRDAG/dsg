@@ -121,7 +121,7 @@ class SyncStatusResult:
     cache_manifest: Manifest
     remote_manifest: Optional[Manifest]
     include_remote: bool
-    warnings: list[str]
+    warnings: list[dict[str, str]]
 
 
 def get_sync_status(
@@ -139,9 +139,8 @@ def get_sync_status(
     logger.debug(f"Local manifest loaded with {len(local_manifest.entries)} entries")
 
     if scan_result.validation_warnings:
-        for validation_warning in scan_result.validation_warnings:
-            warning_msg = f"Invalid filename '{validation_warning['path']}': {validation_warning['message']}"
-            warnings.append(warning_msg)
+        # Preserve structured validation warnings instead of converting to strings
+        warnings.extend(scan_result.validation_warnings)
         logger.debug(f"Added {len(scan_result.validation_warnings)} filename validation warnings")
 
     cache_path = config.project_root / ".dsg" / "last-sync.json"

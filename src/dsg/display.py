@@ -365,29 +365,38 @@ def display_file_blame(console: Console, blame_entries: List[BlameEntry], file_p
     console.print(table)
 
 
-def format_validation_warnings(warnings: List[str]) -> Panel:
+def format_validation_warnings(warnings: List[dict]) -> Panel:
     """Format validation warnings as a Rich Panel with suggestions."""
     if not warnings:
         return None
     
-    # Parse validation warnings to extract problematic paths and suggest fixes
+    # Extract problematic paths from structured validation warnings and suggest fixes
     problem_files = []
     for warning in warnings:
-        # Extract filename from warning message format: "Invalid filename 'path': message"
-        if "Invalid filename '" in warning:
-            # Find the path between quotes
-            start = warning.find("'") + 1
-            end = warning.find("'", start)
-            if start > 0 and end > start:
-                path = warning[start:end]
-                
-                # Generate suggestion based on common patterns
-                suggestion = _suggest_filename_fix(path)
-                problem_files.append(f"• {path} → Use: {suggestion}")
+        if isinstance(warning, dict) and 'path' in warning:
+            # Work with structured validation warning dict
+            path = warning['path']
+            # Generate suggestion based on common patterns
+            suggestion = _suggest_filename_fix(path)
+            problem_files.append(f"• {path} → Use: {suggestion}")
+        elif isinstance(warning, str):
+            # Handle legacy string format for backward compatibility
+            if "Invalid filename '" in warning:
+                # Find the path between quotes
+                start = warning.find("'") + 1
+                end = warning.find("'", start)
+                if start > 0 and end > start:
+                    path = warning[start:end]
+                    suggestion = _suggest_filename_fix(path)
+                    problem_files.append(f"• {path} → Use: {suggestion}")
+                else:
+                    problem_files.append(f"• {warning}")
+            else:
+                problem_files.append(f"• {warning}")
     
     if not problem_files:
         # Fallback for warnings that don't match expected format
-        problem_files = [f"• {warning}" for warning in warnings]
+        problem_files = [f"• {str(warning)}" for warning in warnings]
     
     # Build panel content
     count = len(warnings)

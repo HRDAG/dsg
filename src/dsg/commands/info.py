@@ -21,7 +21,38 @@ from dsg.config_manager import Config
 from dsg.operations import get_sync_status, list_directory
 from dsg.history import get_repository_log, get_file_blame
 from dsg.display import display_sync_status
-from dsg.extracted.validation_utils import ValidationResult
+# Simple ValidationResult replacement for placeholder validation functions
+from dataclasses import dataclass, field
+from typing import List
+
+@dataclass
+class ValidationResult:
+    """Store validation results for structured reporting."""
+    name: str
+    description: str
+    passed: bool = False
+    message: str = ""
+    details: List[str] = field(default_factory=list)
+    
+    def set_passed(self, passed: bool, message: str = "") -> "ValidationResult":
+        """Set the pass/fail status with optional message."""
+        self.passed = passed
+        self.message = message
+        return self
+        
+    def add_detail(self, detail: str) -> None:
+        """Add a detail to the validation result."""
+        self.details.append(detail)
+        
+    def to_dict(self) -> dict:
+        """Convert validation result to dictionary for JSON output."""
+        return {
+            'name': self.name,
+            'description': self.description,
+            'passed': self.passed,
+            'message': self.message,
+            'details': self.details
+        }
 from dsg.backends import can_access_backend
 
 
