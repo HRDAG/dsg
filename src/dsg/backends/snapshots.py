@@ -1,34 +1,31 @@
 # Author: PB & Claude
 # Maintainer: PB
-# Original date: 2025.06.08
+# Original date: 2025.01.08
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
 # src/dsg/backends/snapshots.py
 
-"""
-Filesystem-specific snapshot operation implementations.
-
-This module provides concrete implementations of snapshot operations
-for different filesystem types (ZFS, XFS, etc.). Snapshot operations
-handle filesystem-specific workflows for repository initialization
-and maintenance.
-"""
+"""Snapshot operation implementations for different filesystems."""
 
 import os
 import pwd
 
 from dsg.utils.execution import CommandExecutor as ce
-from .protocols import SnapshotOperations, Transport
+from .protocols import SnapshotOperations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .transports import Transport
 
 
 class XFSOperations(SnapshotOperations):
-    """XFS operations using hardlink-based snapshots (stub for now)"""
+    """XFS operations using hardlink-based snapshots"""
 
     def __init__(self, repo_path: str) -> None:
         self.repo_path = repo_path
 
-    def init_repository(self, file_list: list[str], transport: Transport,
+    def init_repository(self, file_list: list[str], transport: 'Transport',
                        local_base: str, remote_base: str, force: bool = False) -> None:
         """TODO: Implement XFS hardlink snapshots"""
         raise NotImplementedError("XFS hardlink snapshots not yet implemented")
@@ -44,7 +41,7 @@ class ZFSOperations(SnapshotOperations):
         self.dataset_name = f"{pool_name}/{repo_name}"
         self.mount_path = f"{mount_base}/{repo_name}"
 
-    def init_repository(self, file_list: list[str], transport: Transport,
+    def init_repository(self, file_list: list[str], transport: 'Transport',
                        local_base: str, remote_base: str, force: bool = False) -> None:
         """Initialize ZFS repository with dataset creation and first snapshot"""
         # Step 1: Create ZFS dataset

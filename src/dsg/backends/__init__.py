@@ -1,54 +1,50 @@
 # Author: PB & Claude
-# Maintainer: PB
-# Original date: 2025.06.08
+# Maintainer: PB  
+# Original date: 2025.01.08
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
 # src/dsg/backends/__init__.py
 
-"""
-DSG Backend Architecture Package
+"""Backend package for DSG transport and storage operations.
 
-This package provides a clean separation of concerns for backend functionality:
-- protocols: Abstract base classes and interfaces
-- transports: How to reach backends (SSH, localhost)  
-- snapshots: Filesystem-specific operations (ZFS, XFS)
-- implementations: Complete backend implementations
-- factory: Backend creation and discovery
-- utils: Shared utilities and helpers
-
-The package maintains backward compatibility with the original backends.py API.
+This package provides:
+- Transport mechanisms (SSH, localhost)  
+- Snapshot operations (ZFS, XFS)
+- Backend implementations and factory
 """
 
-# For now, import everything from the original backends.py to maintain compatibility
-# This will be updated as we migrate components to separate modules
-from ..backends import (
-    # Factory functions
-    create_backend,
-    can_access_backend,
-    
-    # Abstract classes
-    Backend,
-    Transport, 
-    SnapshotOperations,
-    
-    # Implementations
-    LocalhostBackend,
-    SSHBackend,
-    ComposedBackend,
-    
-    # Types
-    RepoType,
-)
+# Import all components for backward compatibility
+from .types import RepoType
+from .utils import create_temp_file_list
+from .protocols import SnapshotOperations
+from .transports import Transport, LocalhostTransport, SSHTransport
+from .snapshots import XFSOperations, ZFSOperations
+from .core import Backend, LocalhostBackend, SSHBackend
+from .factory import create_backend, can_access_backend
+
+# For backward compatibility with tests that patch dsg.backends.ce and dsg.backends.Manifest
+from dsg.utils.execution import CommandExecutor as ce
+from dsg.manifest import Manifest
+from .factory import _is_effectively_localhost
+from dsg.host_utils import is_local_host
 
 __all__ = [
-    "create_backend",
-    "can_access_backend",
-    "Backend", 
+    "RepoType",
+    "create_temp_file_list", 
     "Transport",
     "SnapshotOperations",
-    "LocalhostBackend",
+    "LocalhostTransport",
+    "SSHTransport", 
+    "XFSOperations",
+    "ZFSOperations",
+    "Backend",
+    "LocalhostBackend", 
     "SSHBackend",
-    "ComposedBackend", 
-    "RepoType",
+    "create_backend",
+    "can_access_backend",
+    "ce",
+    "Manifest",
+    "_is_effectively_localhost",
+    "is_local_host",
 ]

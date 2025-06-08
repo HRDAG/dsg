@@ -1,23 +1,15 @@
 # Author: PB & Claude
 # Maintainer: PB
-# Original date: 2025.06.08
+# Original date: 2025.01.08  
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
 # src/dsg/backends/utils.py
 
-"""
-Shared utilities for backend operations.
-
-This module contains utility functions and helpers used across different
-backend components, including context managers for resource management
-and host detection utilities.
-"""
+"""Utility functions for backend operations."""
 
 import contextlib
 import tempfile
-
-from dsg.host_utils import is_local_host
 
 
 @contextlib.contextmanager
@@ -52,20 +44,3 @@ def create_temp_file_list(file_list: list[str]):
         # Yield the file path for use by rsync
         yield temp_file.name
     # Temp file automatically deleted when context exits
-
-
-def _is_effectively_localhost(ssh_config) -> bool:
-    """
-    Determine if SSH config points to localhost.
-    
-    This function checks whether the SSH configuration is pointing to the
-    local machine, allowing optimization by using local operations instead
-    of SSH when appropriate.
-    
-    Args:
-        ssh_config: SSH configuration object with host attribute
-        
-    Returns:
-        bool: True if the SSH host is effectively localhost
-    """
-    return is_local_host(ssh_config.host)

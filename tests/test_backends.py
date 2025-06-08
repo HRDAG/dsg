@@ -447,8 +447,8 @@ def test_localhost_backend_zfs_pool_name_extraction():
         backend = LocalhostBackend(repo_path, "test-repo")
         
         # Mock the dependencies to focus on pool name extraction
-        with patch('dsg.backends.ZFSOperations') as mock_zfs, \
-             patch('dsg.backends.LocalhostTransport') as mock_transport, \
+        with patch('dsg.backends.core.ZFSOperations') as mock_zfs, \
+             patch('dsg.backends.core.LocalhostTransport') as mock_transport, \
              patch('os.getcwd', return_value="/fake/current/dir"), \
              patch('os.listdir', return_value=["file1.txt"]):
             
@@ -1114,24 +1114,20 @@ class TestTransportOperations:
         assert transport.repo_name == "test-repo"
         assert transport.full_path == Path("/repo/path/test-repo")
     
-    @patch('dsg.backends.ce.run_local')
-    @patch('tempfile.NamedTemporaryFile')
-    @patch('os.unlink')
-    def test_localhost_transport_copy_files(self, mock_unlink, mock_tempfile, mock_run_local):
-        """Test LocalhostTransport file copying"""
-        # Setup mocks
-        mock_file = MagicMock()
-        mock_file.name = "/tmp/test.filelist"
-        mock_tempfile.return_value.__enter__.return_value = mock_file
+    @patch('dsg.backends.transports.ce.run_local')
+    @patch('dsg.backends.transports.create_temp_file_list')
+    def test_localhost_transport_copy_files(self, mock_create_temp_file, mock_run_local):
+        """Test LocalhostTransport file copying with context manager"""
+        # Setup mock context manager
+        mock_create_temp_file.return_value.__enter__.return_value = "/tmp/test.filelist"
         
         transport = LocalhostTransport(Path("/repo"), "test")
         file_list = ["file1.txt", "file2.txt"]
         
         transport.copy_files(file_list, "/src", "/dest")
         
-        # Verify file list was written
-        mock_file.write.assert_any_call("file1.txt\n")
-        mock_file.write.assert_any_call("file2.txt\n")
+        # Verify context manager was called with the file list
+        mock_create_temp_file.assert_called_once_with(file_list)
         
         # Verify rsync command
         expected_cmd = [
@@ -1141,9 +1137,6 @@ class TestTransportOperations:
             "/dest/"
         ]
         mock_run_local.assert_called_with(expected_cmd)
-        
-        # Verify cleanup
-        mock_unlink.assert_called_with("/tmp/test.filelist")
     
     def test_localhost_transport_copy_files_empty_list(self):
         """Test LocalhostTransport with empty file list"""
