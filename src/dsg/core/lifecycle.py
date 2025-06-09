@@ -27,15 +27,15 @@ from dataclasses import dataclass, field
 import loguru
 import orjson
 
-from dsg.config_manager import Config
+from dsg.config.manager import Config
 from dsg.backends import create_backend
-from dsg.manifest import Manifest, ManifestMetadata
-from dsg.operations import get_sync_status
-from dsg.scanner import scan_directory, scan_directory_no_cfg
-from dsg.display import display_sync_dry_run_preview, display_normalization_preview
-from dsg.filename_validation import fix_problematic_path
-from dsg.manifest_merger import SyncState
-from dsg.exceptions import SyncError, ValidationError
+from dsg.data.manifest import Manifest, ManifestMetadata
+from dsg.core.operations import get_sync_status
+from dsg.core.scanner import scan_directory, scan_directory_no_cfg
+from dsg.system.display import display_sync_dry_run_preview, display_normalization_preview
+from dsg.data.filename_validation import fix_problematic_path
+from dsg.data.manifest_merger import SyncState
+from dsg.system.exceptions import SyncError, ValidationError
 
 
 @dataclass
@@ -219,7 +219,7 @@ def create_default_snapshot_info(snapshot_id: str, user_id: str, message: str = 
     """
     # Get current time in LA timezone
     try:
-        from dsg.manifest import LA_TIMEZONE
+        from dsg.data.manifest import LA_TIMEZONE
         current_time = datetime.datetime.now(LA_TIMEZONE)
     except ImportError:
         # Fallback if import fails
@@ -674,7 +674,7 @@ def _handle_symlink_normalization(symlink_path: Path, project_root: Path, result
         
         try:
             # Normalize the target path to see if it would change
-            from dsg.filename_validation import normalize_path
+            from dsg.data.filename_validation import normalize_path
             normalized_target_path, target_was_modified = normalize_path(target_path)
             
             if target_was_modified:

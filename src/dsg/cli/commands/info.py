@@ -17,10 +17,10 @@ from pathlib import Path
 
 from rich.console import Console
 
-from dsg.config_manager import Config
-from dsg.operations import get_sync_status, list_directory
-from dsg.history import get_repository_log, get_file_blame
-from dsg.display import display_sync_status
+from dsg.config.manager import Config
+from dsg.core.operations import get_sync_status, list_directory
+from dsg.core.history import get_repository_log, get_file_blame
+from dsg.system.display import display_sync_status
 # Simple ValidationResult replacement for placeholder validation functions
 from dataclasses import dataclass, field
 

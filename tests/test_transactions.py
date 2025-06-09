@@ -59,7 +59,7 @@ class TestClientTransaction:
     
     def test_transaction_id_generation_without_snapshot_hash(self, temp_project):
         """Test transaction ID generation for non-snapshot operations"""
-        with patch('dsg.transactions.datetime') as mock_datetime:
+        with patch('dsg.core.transactions.datetime') as mock_datetime:
             mock_datetime.now.return_value = datetime(2025, 6, 7, 14, 30, 45, tzinfo=UTC)
             mock_datetime.UTC = UTC
             
@@ -280,7 +280,7 @@ class TestTransactionManager:
         backend.write_file = Mock()
         return backend
     
-    @patch('dsg.transactions.SyncLock')
+    @patch('dsg.core.transactions.SyncLock')
     def test_transaction_manager_initialization(self, mock_sync_lock_class, temp_project, mock_backend):
         """Test TransactionManager initializes components correctly"""
         mock_sync_lock = Mock()
@@ -299,7 +299,7 @@ class TestTransactionManager:
         # Verify SyncLock created with correct parameters
         mock_sync_lock_class.assert_called_once_with(mock_backend, "alice", "sync")
     
-    @patch('dsg.transactions.SyncLock')
+    @patch('dsg.core.transactions.SyncLock')
     def test_context_manager_success_path(self, mock_sync_lock_class, temp_project, mock_backend):
         """Test TransactionManager context manager success path"""
         mock_sync_lock = Mock()
@@ -314,14 +314,14 @@ class TestTransactionManager:
         # Verify lock released on successful exit
         mock_sync_lock.release.assert_called_once()
     
-    @patch('dsg.transactions.SyncLock')
+    @patch('dsg.core.transactions.SyncLock')
     def test_context_manager_exception_rollback(self, mock_sync_lock_class, temp_project, mock_backend):
         """Test TransactionManager rollback on exception"""
         mock_sync_lock = Mock()
         mock_sync_lock_class.return_value = mock_sync_lock
         
-        with patch('dsg.transactions.ClientTransaction') as mock_client_tx_class:
-            with patch('dsg.transactions.BackendTransaction') as mock_backend_tx_class:
+        with patch('dsg.core.transactions.ClientTransaction') as mock_client_tx_class:
+            with patch('dsg.core.transactions.BackendTransaction') as mock_backend_tx_class:
                 mock_client_tx = Mock()
                 mock_backend_tx = Mock()
                 mock_client_tx_class.return_value = mock_client_tx
@@ -340,14 +340,14 @@ class TestTransactionManager:
                 # Verify lock still released
                 mock_sync_lock.release.assert_called_once()
     
-    @patch('dsg.transactions.SyncLock')
+    @patch('dsg.core.transactions.SyncLock')
     def test_sync_changes_coordination(self, mock_sync_lock_class, temp_project, mock_backend):
         """Test sync_changes coordinates backend and client operations"""
         mock_sync_lock = Mock()
         mock_sync_lock_class.return_value = mock_sync_lock
         
-        with patch('dsg.transactions.ClientTransaction') as mock_client_tx_class:
-            with patch('dsg.transactions.BackendTransaction') as mock_backend_tx_class:
+        with patch('dsg.core.transactions.ClientTransaction') as mock_client_tx_class:
+            with patch('dsg.core.transactions.BackendTransaction') as mock_backend_tx_class:
                 mock_client_tx = Mock()
                 mock_backend_tx = Mock()
                 mock_client_tx_class.return_value = mock_client_tx
@@ -369,7 +369,7 @@ class TestTransactionManager:
                 
                 mock_client_tx.stage_all_then_commit.assert_called_once_with(files, mock_manifest)
     
-    @patch('dsg.transactions.SyncLock')
+    @patch('dsg.core.transactions.SyncLock')
     def test_sync_changes_requires_context_manager(self, mock_sync_lock_class, temp_project, mock_backend):
         """Test sync_changes fails if not used as context manager"""
         mock_sync_lock = Mock()

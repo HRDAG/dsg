@@ -27,8 +27,8 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from dsg.config_manager import Config
-from dsg.exceptions import ConfigError
+from dsg.config.manager import Config
+from dsg.system.exceptions import ConfigError
 from dsg.backends import can_access_backend
 
 

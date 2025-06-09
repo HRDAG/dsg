@@ -11,22 +11,22 @@ import socket
 import subprocess
 import os
 from pathlib import Path
-from dsg.config_manager import (
+from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
     SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
     SSHUserConfig
 )
-from dsg.backends import (
-    can_access_backend,
+from dsg.storage import (
     SSHBackend, 
     Backend, 
     LocalhostBackend,
     ZFSOperations,
     LocalhostTransport,
-    SSHTransport
+    SSHTransport,
+    create_backend,
+    can_access_backend
 )
-from dsg.backends import create_backend
-from dsg.host_utils import is_local_host
+from dsg.system.host_utils import is_local_host
 from unittest.mock import patch, MagicMock
 
 
@@ -230,7 +230,7 @@ def test_create_backend_local_host(legacy_format_config_objects):
 def test_create_backend_remote_host(legacy_format_config_objects):
     """Test remote host backend creation (SSH backend)"""
     legacy_format_config_objects.project.ssh.host = "remote-host"
-    from dsg.backends import SSHBackend
+    from dsg.storage.backends import SSHBackend
     backend = create_backend(legacy_format_config_objects)
     assert isinstance(backend, SSHBackend)
     assert backend.host == "remote-host"
@@ -246,7 +246,7 @@ def test_create_backend_unsupported_type(legacy_format_config_objects):
 def test_localhost_backend_clone_basic(tmp_path):
     """Test basic clone functionality with manifest-driven file copying"""
     from collections import OrderedDict
-    from dsg.manifest import Manifest
+    from dsg.data.manifest import Manifest
     
     # Create source repository with test files
     source_repo = tmp_path / "source" / "test_repo"
@@ -319,7 +319,7 @@ def test_localhost_backend_clone_symlinks(tmp_path):
     """Test that clone preserves symlinks instead of dereferencing them"""
     import os
     from collections import OrderedDict
-    from dsg.manifest import Manifest, LinkRef
+    from dsg.data.manifest import Manifest, LinkRef
     
     # Create source repository with test files and symlinks
     source_repo = tmp_path / "source" / "test_repo"
@@ -446,11 +446,16 @@ def test_localhost_backend_zfs_pool_name_extraction():
     for repo_path, expected_pool in test_cases:
         backend = LocalhostBackend(repo_path, "test-repo")
         
-        # Mock the dependencies to focus on pool name extraction
-        with patch('dsg.backends.core.ZFSOperations') as mock_zfs, \
-             patch('dsg.backends.core.LocalhostTransport') as mock_transport, \
+        # Mock the dependencies to focus on pool name extraction  
+        with patch('dsg.system.execution.CommandExecutor.run_sudo') as mock_run_sudo, \
+             patch('dsg.storage.backends.ZFSOperations') as mock_zfs, \
+             patch('dsg.storage.backends.LocalhostTransport') as mock_transport, \
              patch('os.getcwd', return_value="/fake/current/dir"), \
              patch('os.listdir', return_value=["file1.txt"]):
+            
+            # Mock successful sudo command execution
+            from dsg.system.execution import CommandResult
+            mock_run_sudo.return_value = CommandResult(returncode=0, stdout="", stderr="")
             
             mock_zfs_instance = MagicMock()
             mock_zfs.return_value = mock_zfs_instance
@@ -459,7 +464,10 @@ def test_localhost_backend_zfs_pool_name_extraction():
             backend.init_repository("fake_snapshot_hash")
             
             # Verify ZFSOperations was called with the correct pool name
-            mock_zfs.assert_called_once_with(expected_pool, "test-repo")
+            mock_zfs.assert_called_with(expected_pool, "test-repo")
+            
+            # Reset for next iteration
+            mock_zfs.reset_mock()
 
 
 # SSH Backend Tests
@@ -925,7 +933,7 @@ class TestMigratedConfigBackends:
     
     def test_backend_works_with_migrated_config(self, tmp_path):
         """Test that backends work correctly with configs migrated from legacy format."""
-        from dsg.config_manager import ProjectConfig, Config, UserConfig, ProjectSettings
+        from dsg.config.manager import ProjectConfig, Config, UserConfig, ProjectSettings
         
         # Create legacy format config file
         config_file = tmp_path / ".dsgconfig.yml"
@@ -1114,8 +1122,8 @@ class TestTransportOperations:
         assert transport.repo_name == "test-repo"
         assert transport.full_path == Path("/repo/path/test-repo")
     
-    @patch('dsg.backends.transports.ce.run_local')
-    @patch('dsg.backends.transports.create_temp_file_list')
+    @patch('dsg.storage.transports.ce.run_local')
+    @patch('dsg.storage.transports.create_temp_file_list')
     def test_localhost_transport_copy_files(self, mock_create_temp_file, mock_run_local):
         """Test LocalhostTransport file copying with context manager"""
         # Setup mock context manager
@@ -1149,7 +1157,7 @@ class TestTransportOperations:
     @patch('dsg.backends.ce.run_local')
     def test_localhost_transport_run_command(self, mock_run_local):
         """Test LocalhostTransport command execution"""
-        from dsg.utils.execution import CommandResult
+        from dsg.system.execution import CommandResult
         mock_run_local.return_value = CommandResult(returncode=0, stdout="output", stderr="error")
         transport = LocalhostTransport(Path("/repo"), "test")
         
@@ -1202,7 +1210,7 @@ class TestTransportOperations:
     @patch('dsg.backends.ce.run_ssh')
     def test_ssh_transport_run_command(self, mock_run_ssh):
         """Test SSHTransport command execution"""
-        from dsg.utils.execution import CommandResult
+        from dsg.system.execution import CommandResult
         mock_run_ssh.return_value = CommandResult(returncode=0, stdout="output", stderr="error")
         
         ssh_config = MagicMock()

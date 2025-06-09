@@ -21,9 +21,9 @@ from pathlib import Path
 from rich.console import Console
 
 from dsg.config_manager import Config
-import dsg.commands.info as info_commands
-import dsg.commands.discovery as discovery_commands
-import dsg.commands.actions as action_commands
+import dsg.cli.commands.info as info_commands
+import dsg.cli.commands.discovery as discovery_commands
+import dsg.cli.commands.actions as action_commands
 
 
 class TestInfoCommandHandlers:
@@ -34,8 +34,8 @@ class TestInfoCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.info.get_sync_status') as mock_get_status, \
-             patch('dsg.commands.info.display_sync_status') as mock_display:
+        with patch('dsg.cli.commands.info.get_sync_status') as mock_get_status, \
+             patch('dsg.cli.commands.info.display_sync_status') as mock_display:
             
             mock_sync_status = {'files_changed': 3, 'status': 'needs_sync'}
             mock_get_status.return_value = mock_sync_status
@@ -54,7 +54,7 @@ class TestInfoCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.info.get_repository_log') as mock_get_log:
+        with patch('dsg.cli.commands.info.get_repository_log') as mock_get_log:
             # Create mock objects with proper __dict__ attributes
             mock_entry1 = Mock()
             mock_entry1.__dict__ = {'snapshot_id': 's1', 'formatted_datetime': '2025-01-01'}
@@ -79,7 +79,7 @@ class TestInfoCommandHandlers:
         config = Mock(spec=Config)
         test_file = "test.txt"
         
-        with patch('dsg.commands.info.get_file_blame') as mock_get_blame:
+        with patch('dsg.cli.commands.info.get_file_blame') as mock_get_blame:
             # Create mock object with proper __dict__ attribute
             mock_entry = Mock()
             mock_entry.__dict__ = {'snapshot_id': 's1', 'formatted_datetime': '2025-01-01'}
@@ -102,7 +102,7 @@ class TestInfoCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.info.list_directory') as mock_list_dir:
+        with patch('dsg.cli.commands.info.list_directory') as mock_list_dir:
             # Create a simple object with the needed attributes (updated for new structure)
             class MockManifest:
                 def __init__(self):
@@ -137,7 +137,7 @@ class TestInfoCommandHandlers:
         config.project_root = Path("/test/project")
         config.transport = Mock(transport="ssh")
         
-        with patch('dsg.commands.info.can_access_backend') as mock_can_access:
+        with patch('dsg.cli.commands.info.can_access_backend') as mock_can_access:
             mock_can_access.return_value = True
             
             result = info_commands.validate_config(
@@ -176,8 +176,8 @@ class TestDiscoveryCommandHandlers:
         """Test that list_repos command returns properly structured data."""
         console = Mock(spec=Console)
         
-        with patch('dsg.commands.discovery.load_repository_discovery_config') as mock_load_config, \
-             patch('dsg.commands.discovery.display_repository_list') as mock_display:
+        with patch('dsg.cli.commands.discovery.load_repository_discovery_config') as mock_load_config, \
+             patch('dsg.cli.commands.discovery.display_repository_list') as mock_display:
             
             mock_config = {
                 'repositories': [
@@ -198,8 +198,8 @@ class TestDiscoveryCommandHandlers:
         """Test that list_repos handles empty or missing config gracefully."""
         console = Mock(spec=Console)
         
-        with patch('dsg.commands.discovery.load_repository_discovery_config') as mock_load_config, \
-             patch('dsg.commands.discovery.display_repository_list') as mock_display:
+        with patch('dsg.cli.commands.discovery.load_repository_discovery_config') as mock_load_config, \
+             patch('dsg.cli.commands.discovery.display_repository_list') as mock_display:
             
             mock_load_config.return_value = None
             
@@ -234,7 +234,7 @@ class TestActionCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.actions.init_repository') as mock_init:
+        with patch('dsg.cli.commands.actions.init_repository') as mock_init:
             # Mock new InitResult return format
             from dsg.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash='abc123', normalization_result=None)
@@ -254,7 +254,7 @@ class TestActionCommandHandlers:
             assert result['files_included_count'] == 1
             assert len(result['files_included']) == 1
             mock_init.assert_called_once_with(
-                config=config, force=True, normalize=True, verbose=True
+                config=config, force=True, normalize=True
             )
     
     def test_clone_command_placeholder_functionality(self):
@@ -282,7 +282,7 @@ class TestActionCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.actions.sync_repository') as mock_sync:
+        with patch('dsg.cli.commands.actions.sync_repository') as mock_sync:
             mock_sync_result = {'files_synced': 5, 'status': 'success'}
             mock_sync.return_value = mock_sync_result
             
@@ -352,11 +352,11 @@ class TestCommandHandlerIntegration:
         config = Mock(spec=Config)
         
         # Mock all external dependencies
-        with patch('dsg.commands.info.get_sync_status') as mock_status, \
-             patch('dsg.commands.info.display_sync_status'), \
-             patch('dsg.commands.discovery.load_repository_discovery_config') as mock_discovery, \
-             patch('dsg.commands.discovery.display_repository_list'), \
-             patch('dsg.commands.actions.init_repository') as mock_init:
+        with patch('dsg.cli.commands.info.get_sync_status') as mock_status, \
+             patch('dsg.cli.commands.info.display_sync_status'), \
+             patch('dsg.cli.commands.discovery.load_repository_discovery_config') as mock_discovery, \
+             patch('dsg.cli.commands.discovery.display_repository_list'), \
+             patch('dsg.cli.commands.actions.init_repository') as mock_init:
             
             mock_status.return_value = {'status': 'test'}
             mock_discovery.return_value = {'repositories': []}
@@ -384,8 +384,8 @@ class TestCommandHandlerIntegration:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.info.get_sync_status') as mock_status, \
-             patch('dsg.commands.info.display_sync_status') as mock_display:
+        with patch('dsg.cli.commands.info.get_sync_status') as mock_status, \
+             patch('dsg.cli.commands.info.display_sync_status') as mock_display:
             
             mock_status.return_value = {'status': 'test'}
             
@@ -400,8 +400,8 @@ class TestCommandHandlerIntegration:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.info.get_sync_status') as mock_status, \
-             patch('dsg.commands.info.display_sync_status'):
+        with patch('dsg.cli.commands.info.get_sync_status') as mock_status, \
+             patch('dsg.cli.commands.info.display_sync_status'):
             
             mock_status.return_value = {'status': 'test'}
             

@@ -14,9 +14,9 @@ from dataclasses import dataclass, field, fields
 
 import loguru
 
-from dsg.manifest import Manifest, ManifestMetadata, FileRef, parse_manifest_timestamp
-from dsg.config_manager import Config
-from dsg.manifest_comparison import (
+from dsg.data.manifest import Manifest, ManifestMetadata, FileRef, parse_manifest_timestamp
+from dsg.config.manager import Config
+from dsg.data.manifest_comparison import (
     ManifestComparator,
     TemporalSyncState,
     SyncStateLabels

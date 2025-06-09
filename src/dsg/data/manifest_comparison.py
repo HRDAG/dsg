@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Union
 
-from dsg.manifest import Manifest, FileRef, LinkRef
-from dsg.manifest_merger import SyncState
+from dsg.data.manifest import Manifest, FileRef, LinkRef
+from dsg.data.manifest_merger import SyncState
 
 
 ManifestEntry = Union[FileRef, LinkRef]
@@ -245,7 +245,7 @@ class SyncStateLabels:
     def format_blame_entry(cls, entry) -> str:
         """Format a blame entry for display."""
         # Import here to avoid circular dependency
-        from dsg.history import BlameEntry
+        from dsg.core.history import BlameEntry
         
         if not isinstance(entry, BlameEntry):
             raise TypeError(f"Expected BlameEntry, got {type(entry)}")

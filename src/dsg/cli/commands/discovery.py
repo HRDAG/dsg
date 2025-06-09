@@ -16,8 +16,8 @@ from typing import Any
 
 from rich.console import Console
 
-from dsg.config_manager import load_repository_discovery_config
-from dsg.display import display_repository_list
+from dsg.config.manager import load_repository_discovery_config
+from dsg.system.display import display_repository_list
 
 
 def list_repos(

@@ -13,7 +13,7 @@ from typing import Any, Callable, Optional
 import typer
 from rich.console import Console
 
-from dsg.cli_utils import (
+from dsg.cli.utils import (
     validate_project_prerequisites,
     validate_repository_command_prerequisites,
     validate_repository_setup_prerequisites,
@@ -21,8 +21,8 @@ from dsg.cli_utils import (
     handle_config_error,
     load_config_with_console
 )
-from dsg.json_collector import JSONCollector
-from dsg.logging_setup import setup_logging
+from dsg.data.json_collector import JSONCollector
+from dsg.system.logging_setup import setup_logging
 
 # Command type constants
 COMMAND_TYPE_SETUP = "setup"

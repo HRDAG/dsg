@@ -17,8 +17,8 @@ from pathlib import Path
 
 from rich.console import Console
 
-from dsg.config_manager import Config
-from dsg.lifecycle import init_repository, sync_repository
+from dsg.config.manager import Config
+from dsg.core.lifecycle import init_repository, sync_repository
 
 
 def init(
@@ -64,8 +64,7 @@ def init(
     init_result = init_repository(
         config=config,
         force=force,
-        normalize=normalize,
-        verbose=verbose
+        normalize=normalize
     )
     
     # Display results using console

@@ -16,8 +16,8 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, EmailStr, Field, model_validator, PrivateAttr
 
-from dsg.host_utils import is_local_host
-from dsg.exceptions import ConfigError
+from dsg.system.host_utils import is_local_host
+from dsg.system.exceptions import ConfigError
 
 
 # ---- Constants ----

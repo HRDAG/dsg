@@ -9,9 +9,9 @@
 import os
 import pytest
 from pathlib import Path, PurePosixPath
-from dsg.operations import list_directory, parse_cli_overrides
-from dsg.config_manager import Config
-from dsg.manifest import Manifest
+from dsg.core.operations import list_directory, parse_cli_overrides
+from dsg.config.manager import Config
+from dsg.data.manifest import Manifest
 
 @pytest.fixture
 def test_data_directory(tmp_path):

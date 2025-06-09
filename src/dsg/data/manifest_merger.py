@@ -23,9 +23,9 @@ from enum import Enum
 from pathlib import Path
 
 # Local DSG imports
-from dsg.config_manager import Config
-from dsg.manifest import Manifest, FileRef, LinkRef
-from dsg.scanner import scan_directory, hash_file
+from dsg.config.manager import Config
+from dsg.data.manifest import Manifest, FileRef, LinkRef
+from dsg.core.scanner import scan_directory, hash_file
 
 
 class SyncState(Enum):

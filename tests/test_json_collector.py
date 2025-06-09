@@ -64,7 +64,7 @@ class TestJSONCollector:
         """Test basic capture_success functionality."""
         collector = JSONCollector(enabled=True)
         
-        with patch('dsg.json_collector.datetime') as mock_datetime:
+        with patch('dsg.data.json_collector.datetime') as mock_datetime:
             mock_datetime.now.return_value.isoformat.return_value = "2025-06-07T10:00:00"
             
             collector.capture_success("test_result")
@@ -77,7 +77,7 @@ class TestJSONCollector:
         collector = JSONCollector(enabled=True)
         error = ValueError("test error")
         
-        with patch('dsg.json_collector.datetime') as mock_datetime:
+        with patch('dsg.data.json_collector.datetime') as mock_datetime:
             mock_datetime.now.return_value.isoformat.return_value = "2025-06-07T10:00:00"
             
             collector.capture_error(error)
@@ -207,7 +207,7 @@ class TestJSONCollector:
         result = Mock()
         result.files = [mock_file1, mock_file2]
         
-        with patch('dsg.json_collector.datetime') as mock_datetime:
+        with patch('dsg.data.json_collector.datetime') as mock_datetime:
             mock_datetime.now.return_value.isoformat.return_value = "2025-06-07T10:00:00"
             
             collector.capture_success(result, mock_config)
@@ -253,7 +253,7 @@ class TestJSONCollectorIntegration:
             config=config_data
         )
         
-        with patch('dsg.json_collector.datetime') as mock_datetime:
+        with patch('dsg.data.json_collector.datetime') as mock_datetime:
             mock_datetime.now.return_value.isoformat.return_value = "2025-06-07T10:00:00"
             collector.capture_success(None)
         
@@ -279,7 +279,7 @@ class TestJSONCollectorIntegration:
         
         error = RuntimeError("Something went wrong")
         
-        with patch('dsg.json_collector.datetime') as mock_datetime:
+        with patch('dsg.data.json_collector.datetime') as mock_datetime:
             mock_datetime.now.return_value.isoformat.return_value = "2025-06-07T10:00:00"
             
             collector.capture_error(error, partial_result=partial_result)

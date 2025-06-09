@@ -181,7 +181,7 @@ class TestDetectRepoName:
 class TestLoggingSetup:
     def test_setup_logging_without_local_log(self):
         """Test setup_logging when no local_log is configured."""
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
+        with patch('dsg.system.logging_setup.load_merged_user_config') as mock_load_user:
             # Mock user config without local_log
             mock_user_config = MagicMock()
             mock_user_config.local_log = None
@@ -197,8 +197,8 @@ class TestLoggingSetup:
         """Test setup_logging with local_log configured."""
         log_dir = tmp_path / "logs"
         
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
-            with patch('dsg.logging_setup.detect_repo_name') as mock_detect_repo:
+        with patch('dsg.system.logging_setup.load_merged_user_config') as mock_load_user:
+            with patch('dsg.system.logging_setup.detect_repo_name') as mock_detect_repo:
                 # Mock user config with local_log
                 mock_user_config = MagicMock()
                 mock_user_config.local_log = log_dir
@@ -216,7 +216,7 @@ class TestLoggingSetup:
 
     def test_setup_logging_handles_config_load_failure(self):
         """Test setup_logging gracefully handles user config load failures."""
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
+        with patch('dsg.system.logging_setup.load_merged_user_config') as mock_load_user:
             mock_load_user.side_effect = FileNotFoundError("No config found")
             
             # Should not raise exception
@@ -231,8 +231,8 @@ class TestLoggingSetup:
         log_path = tmp_path / "logs"
         log_path.write_text("blocking file")
         
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
-            with patch('dsg.logging_setup.detect_repo_name') as mock_detect_repo:
+        with patch('dsg.system.logging_setup.load_merged_user_config') as mock_load_user:
+            with patch('dsg.system.logging_setup.detect_repo_name') as mock_detect_repo:
                 mock_user_config = MagicMock()
                 mock_user_config.local_log = log_path  # Points to existing file, not dir
                 mock_load_user.return_value = mock_user_config
@@ -246,8 +246,8 @@ class TestLoggingSetup:
 
     def test_repo_name_detection_with_global_fallback(self):
         """Test that 'global' is used when repo name detection returns None."""
-        with patch('dsg.logging_setup.load_merged_user_config') as mock_load_user:
-            with patch('dsg.logging_setup.detect_repo_name') as mock_detect_repo:
+        with patch('dsg.system.logging_setup.load_merged_user_config') as mock_load_user:
+            with patch('dsg.system.logging_setup.detect_repo_name') as mock_detect_repo:
                 mock_user_config = MagicMock()
                 mock_user_config.local_log = Path("/tmp/logs")
                 mock_load_user.return_value = mock_user_config

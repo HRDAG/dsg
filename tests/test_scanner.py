@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 import xxhash
 
-from dsg.scanner import (
+from dsg.core.scanner import (
     _is_hidden_path,
     _is_dsg_path,
     _is_in_data_dir,
@@ -25,8 +25,8 @@ from dsg.scanner import (
     hash_file,
     ScanResult
 )
-from dsg.manifest import FileRef, LinkRef, Manifest
-from dsg.config_manager import Config, UserConfig, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
+from dsg.data.manifest import FileRef, LinkRef, Manifest
+from dsg.config.manager import Config, UserConfig, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
 
 
 @pytest.fixture

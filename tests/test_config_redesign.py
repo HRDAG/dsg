@@ -484,7 +484,7 @@ def test_validate_config_missing_user_config(basic_repo_structure, monkeypatch):
     monkeypatch.chdir(basic_repo_structure["repo_dir"])
     
     # Mock config loading to fail
-    with patch('dsg.config_manager.load_merged_user_config') as mock_load_user:
+    with patch('dsg.config.manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         errors = validate_config(check_backend=False)

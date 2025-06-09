@@ -17,8 +17,8 @@ from datetime import datetime
 import orjson
 import yaml
 
-from dsg.host_utils import is_local_host
-from dsg.utils.execution import CommandExecutor as ce
+from dsg.system.host_utils import is_local_host
+from dsg.system.execution import CommandExecutor as ce
 
 
 @dataclass(frozen=True)

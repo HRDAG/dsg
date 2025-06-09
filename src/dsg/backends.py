@@ -10,17 +10,18 @@
 # For backward compatibility, we re-export the main functionality.
 
 # Import all components from the new modular structure
-from dsg.backends.types import RepoType
-from dsg.backends.utils import create_temp_file_list
-from dsg.backends.protocols import SnapshotOperations
-from dsg.backends.transports import Transport, LocalhostTransport, SSHTransport
-from dsg.backends.snapshots import XFSOperations, ZFSOperations
-from dsg.backends.core import Backend, LocalhostBackend, SSHBackend
-from dsg.backends.factory import create_backend, can_access_backend
+from dsg.storage.types import RepoType
+from dsg.storage.utils import create_temp_file_list
+from dsg.storage.protocols import SnapshotOperations
+from dsg.storage.transports import Transport, LocalhostTransport, SSHTransport
+from dsg.storage.snapshots import XFSOperations, ZFSOperations
+from dsg.storage.backends import Backend, LocalhostBackend, SSHBackend
+from dsg.storage.factory import create_backend, can_access_backend, _is_effectively_localhost
 
 # For backward compatibility with tests that patch dsg.backends.ce and dsg.backends.Manifest
-from dsg.utils.execution import CommandExecutor as ce
-from dsg.manifest import Manifest
+from dsg.system.execution import CommandExecutor as ce
+from dsg.data.manifest import Manifest
+from dsg.system.host_utils import is_local_host
 
 # Maintain full backward compatibility by re-exporting everything
 __all__ = [

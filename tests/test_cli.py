@@ -272,7 +272,7 @@ def test_list_repos_missing_config():
     from unittest.mock import patch
     
     # Mock the config loading to raise FileNotFoundError
-    with patch('dsg.commands.discovery.load_repository_discovery_config') as mock_load:
+    with patch('dsg.cli.commands.discovery.load_repository_discovery_config') as mock_load:
         mock_load.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         result = runner.invoke(app, ["list-repos"])
@@ -397,7 +397,7 @@ default_project_path: /tmp/test_projects
 def test_clone_command_integration():
     """Test complete dsg clone command workflow with localhost backend."""
     from collections import OrderedDict
-    from dsg.manifest import Manifest
+    from dsg.data.manifest import Manifest
     
     # Create user config
     with tempfile.TemporaryDirectory() as user_config_dir:

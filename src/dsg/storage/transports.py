@@ -11,7 +11,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from dsg.utils.execution import CommandExecutor as ce
+from dsg.system.execution import CommandExecutor as ce
 from .utils import create_temp_file_list
 
 

@@ -234,7 +234,7 @@ class Manifest(BaseModel):
         Returns:
             Tuple of (final_path, normalized_rel_path, was_logically_normalized)
         """
-        from dsg.filename_validation import normalize_path
+        from dsg.data.filename_validation import normalize_path
 
         # Use the robust component-wise normalization from filename_validation
         normalized_full_path, was_modified = normalize_path(full_path)
@@ -286,7 +286,7 @@ class Manifest(BaseModel):
 
         # Optionally normalize the path
         if normalize_paths:
-            from dsg.filename_validation import validate_path
+            from dsg.data.filename_validation import validate_path
 
             # Check if path needs normalization
             is_valid, message = validate_path(rel_path)

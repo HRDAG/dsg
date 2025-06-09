@@ -17,9 +17,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 # Local DSG imports
-from dsg.history import LogEntry, BlameEntry
-from dsg.manifest import Manifest
-from dsg.repository_discovery import RepositoryInfo
+from dsg.core.history import LogEntry, BlameEntry
+from dsg.data.manifest import Manifest
+from dsg.config.discovery import RepositoryInfo
 
 
 def manifest_to_table(
@@ -450,9 +450,9 @@ def _suggest_filename_fix(path: str) -> str:
 
 def display_sync_status(console: Console, status_result) -> None:
     """Display sync status results in user-friendly format."""
-    from dsg.operations import SyncStatusResult
-    from dsg.manifest_merger import SyncState
-    from dsg.manifest_comparison import SyncStateLabels
+    from dsg.core.operations import SyncStatusResult
+    from dsg.data.manifest_merger import SyncState
+    from dsg.data.manifest_comparison import SyncStateLabels
     
     if not isinstance(status_result, SyncStatusResult):
         console.print("[red]Error: Invalid status result[/red]")

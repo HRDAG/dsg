@@ -26,17 +26,17 @@ import typer
 from rich.console import Console
 
 # Local DSG imports
-from dsg.cli_patterns import (
+from dsg.cli.patterns import (
     info_command_pattern,
     discovery_command_pattern, 
     operation_command_pattern,
     COMMAND_TYPE_SETUP,
     COMMAND_TYPE_REPOSITORY
 )
-from dsg.cli_utils import handle_operation_error
-from dsg.commands import info as info_commands
-from dsg.commands import discovery as discovery_commands  
-from dsg.commands import actions as action_commands
+from dsg.cli.utils import handle_operation_error
+from dsg.cli.commands import info as info_commands
+from dsg.cli.commands import discovery as discovery_commands  
+from dsg.cli.commands import actions as action_commands
 
 # Initialize Typer app
 app = typer.Typer(

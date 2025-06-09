@@ -185,7 +185,7 @@ class TestBackendFactory:
         backend = create_backend(config)
         assert isinstance(backend, SSHBackend)
     
-    @patch('dsg.backends.factory.is_local_host')
+    @patch('dsg.storage.factory.is_local_host')
     def test_ssh_localhost_hostname_fallback(self, mock_is_local_host, nonexistent_path_setup):
         """Test SSH config where path doesn't exist but hostname is localhost."""
         mock_is_local_host.return_value = True
@@ -213,7 +213,7 @@ class TestLocalhostDetection:
         result = _is_effectively_localhost(config.project.ssh)
         assert result is True
     
-    @patch('dsg.backends.factory.is_local_host')
+    @patch('dsg.storage.factory.is_local_host')
     def test_path_not_accessible_falls_back_to_hostname(self, mock_is_local_host, nonexistent_path_setup):
         """Test path not accessible falls back to hostname detection."""
         mock_is_local_host.return_value = True
@@ -227,7 +227,7 @@ class TestLocalhostDetection:
         assert result is True
         mock_is_local_host.assert_called_once_with("localhost")
     
-    @patch('dsg.backends.factory.is_local_host')
+    @patch('dsg.storage.factory.is_local_host')
     def test_remote_hostname_returns_false(self, mock_is_local_host, remote_repo_setup):
         """Test remote hostname returns False."""
         mock_is_local_host.return_value = False

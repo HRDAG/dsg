@@ -15,7 +15,7 @@ import socket
 import pytest
 import typer
 
-from dsg.config_manager import (
+from dsg.config.manager import (
     Config, ProjectConfig, load_merged_user_config, UserConfig,
     SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
     SSHUserConfig, find_project_config_path
@@ -185,7 +185,7 @@ def test_config_load_project_only(basic_repo_structure, monkeypatch):
     from unittest.mock import patch
     
     # Mock the user config loading to raise FileNotFoundError
-    with patch('dsg.config_manager.load_merged_user_config') as mock_load_user:
+    with patch('dsg.config.manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         # Change to project directory
@@ -305,7 +305,7 @@ def test_config_without_user_config(basic_repo_structure, monkeypatch):
     from unittest.mock import patch
     
     # Mock the user config loading to raise FileNotFoundError
-    with patch('dsg.config_manager.load_merged_user_config') as mock_load_user:
+    with patch('dsg.config.manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         monkeypatch.chdir(basic_repo_structure["repo_dir"])
@@ -371,7 +371,7 @@ def test_project_config_handles_directory_paths():
 
 def test_validate_config_valid_configuration(complete_config_setup):
     """Test validate_config with a valid configuration."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     from tests.conftest import with_config_paths
     
     # Run validation with proper config paths
@@ -384,7 +384,7 @@ def test_validate_config_valid_configuration(complete_config_setup):
 
 def test_validate_config_missing_project_config(tmp_path, monkeypatch):
     """Test validate_config with missing project config."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     
     # Change to an empty directory with no config
     monkeypatch.chdir(tmp_path)
@@ -399,7 +399,7 @@ def test_validate_config_missing_project_config(tmp_path, monkeypatch):
 
 def test_validate_config_invalid_project_config(complete_config_setup):
     """Test validate_config with invalid project config."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     from tests.conftest import with_config_paths
     
     # Corrupt the project config by removing a required field
@@ -421,7 +421,7 @@ def test_validate_config_invalid_project_config(complete_config_setup):
 
 def test_validate_config_invalid_user_config(basic_repo_structure, tmp_path):
     """Test validate_config with valid project config but invalid user config."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     from tests.conftest import with_config_paths
     
     # Set up invalid user config with bad email
@@ -446,7 +446,7 @@ user_id: invalid-email  # Not a valid email
 @patch("dsg.backends.can_access_backend")
 def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tmp_path):
     """Test validate_config with check_backend=True."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     from tests.conftest import with_config_paths
     
     # Create a real user config file
@@ -476,7 +476,7 @@ user_id: test@example.com
 
 def test_validate_config_project_file_error(complete_config_setup):
     """Test validate_config with a project config file that can't be read."""
-    from dsg.config_manager import validate_config
+    from dsg.config.manager import validate_config
     from tests.conftest import with_config_paths
     
     # Corrupt the project config file (make it unreadable YAML)
@@ -581,7 +581,7 @@ class TestSystemConfigValidation:
     
     def test_system_config_with_personal_fields_raises_error(self, tmp_path):
         """Test that system config with personal fields raises ValueError."""
-        from dsg.config_manager import _validate_system_config
+        from dsg.config.manager import _validate_system_config
         
         # Create a system config path
         system_config_path = Path("/etc/dsg/dsg.yml")
@@ -601,7 +601,7 @@ class TestSystemConfigValidation:
     
     def test_system_config_valid_fields_passes(self, tmp_path):
         """Test that system config with only valid fields passes validation."""
-        from dsg.config_manager import _validate_system_config
+        from dsg.config.manager import _validate_system_config
         
         # Create a system config path
         system_config_path = Path("/etc/dsg/dsg.yml")
@@ -618,7 +618,7 @@ class TestSystemConfigValidation:
     
     def test_non_system_config_not_validated(self, tmp_path):
         """Test that non-system configs are not validated."""
-        from dsg.config_manager import _validate_system_config
+        from dsg.config.manager import _validate_system_config
         
         # Create a user config path (not in /etc/dsg/)
         user_config_path = Path.home() / ".config" / "dsg" / "dsg.yml"
@@ -637,7 +637,7 @@ class TestSystemConfigValidation:
     
     def test_system_config_empty_data_passes(self, tmp_path):
         """Test that empty system config data passes validation."""
-        from dsg.config_manager import _validate_system_config
+        from dsg.config.manager import _validate_system_config
         
         # Create a system config path
         system_config_path = Path("/etc/dsg/dsg.yml")
@@ -651,7 +651,7 @@ class TestSystemConfigValidation:
     
     def test_system_config_partial_personal_fields_raises_error(self, tmp_path):
         """Test that system config with only some personal fields still raises error."""
-        from dsg.config_manager import _validate_system_config
+        from dsg.config.manager import _validate_system_config
         
         # Create a system config path
         system_config_path = Path("/etc/dsg/dsg.yml")
@@ -674,7 +674,7 @@ class TestValidateConfigLocalLog:
     
     def test_validate_config_with_valid_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with valid local_log directory."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         
         # Create log directory
         log_dir = tmp_path / "logs"
@@ -702,7 +702,7 @@ local_log: {log_dir}
 
     def test_validate_config_with_nonexistent_local_log_creatable(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with nonexistent but creatable local_log directory."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         
         # Use nonexistent but creatable path
         log_dir = tmp_path / "logs" / "dsg"
@@ -729,7 +729,7 @@ local_log: {log_dir}
 
     def test_validate_config_with_relative_local_log_path(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with relative local_log path (should fail)."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         
         # Set up user config with relative local_log path
         user_dir = tmp_path / "userconfig"
@@ -754,7 +754,7 @@ local_log: ./logs
 
     def test_validate_config_with_local_log_file_not_directory(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config when local_log points to a file instead of directory."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         
         # Create a file where we want the log directory
         log_file = tmp_path / "logs.txt"
@@ -783,7 +783,7 @@ local_log: {log_file}
 
     def test_validate_config_with_unwritable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with unwritable local_log directory."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         import os
         
         # Create log directory and make it read-only
@@ -821,7 +821,7 @@ local_log: {log_dir}
 
     def test_validate_config_with_uncreatable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with local_log that cannot be created."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         import os
         
         # Create a file where we want to create the parent directory
@@ -854,7 +854,7 @@ local_log: {log_dir}
 
     def test_validate_config_without_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config when local_log is not specified (should work normally)."""
-        from dsg.config_manager import validate_config
+        from dsg.config.manager import validate_config
         
         # Set up user config without local_log
         user_dir = tmp_path / "userconfig"
@@ -881,7 +881,7 @@ class TestConfigMigrationIntegration:
     
     def test_basic_migration_works(self, tmp_path):
         """Test that basic migration from legacy format works."""
-        from dsg.config_manager import ProjectConfig
+        from dsg.config.manager import ProjectConfig
         
         config_file = tmp_path / ".dsgconfig.yml"
         config_content = {

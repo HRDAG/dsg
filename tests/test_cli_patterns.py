@@ -65,9 +65,9 @@ class TestInfoCommandPattern:
             return {'status': 'success', 'data': 'test_data'}
         
         # Mock the dependencies
-        with patch('dsg.cli_patterns.load_config_with_console') as mock_load_config, \
-             patch('dsg.cli_patterns.setup_logging') as mock_setup_logging, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.load_config_with_console') as mock_load_config, \
+             patch('dsg.cli.patterns.setup_logging') as mock_setup_logging, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             # Setup mocks
             mock_config = Mock(spec=Config)
@@ -91,8 +91,8 @@ class TestInfoCommandPattern:
         def mock_command(console, config, verbose=False, quiet=False):
             return {'test': 'data'}
         
-        with patch('dsg.cli_patterns.load_config_with_console') as mock_load_config, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.load_config_with_console') as mock_load_config, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_load_config.return_value = mock_config
@@ -113,8 +113,8 @@ class TestInfoCommandPattern:
         def mock_command(console, config, verbose=False, quiet=False):
             return {'test': 'data'}
         
-        with patch('dsg.cli_patterns.load_config_with_console') as mock_load_config, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.load_config_with_console') as mock_load_config, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             # Mock config loading failure
             mock_load_config.side_effect = Exception("Config loading failed")
@@ -147,7 +147,7 @@ class TestDiscoveryCommandPattern:
         def mock_list_repos(console, verbose=False, quiet=False):
             return {'repositories': ['repo1', 'repo2']}
         
-        with patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             mock_collector = Mock()
             mock_json_collector.return_value = mock_collector
             
@@ -165,8 +165,8 @@ class TestDiscoveryCommandPattern:
         def mock_failing_command(console, verbose=False, quiet=False):
             raise Exception("Discovery command failed")
         
-        with patch('dsg.cli_patterns.JSONCollector') as mock_json_collector, \
-             patch('dsg.cli_patterns.handle_operation_error') as mock_handle_error:
+        with patch('dsg.cli.patterns.JSONCollector') as mock_json_collector, \
+             patch('dsg.cli.patterns.handle_operation_error') as mock_handle_error:
             
             mock_collector = Mock()
             mock_json_collector.return_value = mock_collector
@@ -190,8 +190,8 @@ class TestOperationCommandPattern:
                              normalize=False, verbose=False, quiet=False):
             return {'operation': 'init', 'status': 'success'}
         
-        with patch('dsg.cli_patterns.validate_repository_setup_prerequisites') as mock_validate, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.validate_repository_setup_prerequisites') as mock_validate, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_validate.return_value = mock_config
@@ -214,8 +214,8 @@ class TestOperationCommandPattern:
                              normalize=False, verbose=False, quiet=False):
             return {'operation': 'sync', 'status': 'success'}
         
-        with patch('dsg.cli_patterns.validate_repository_command_prerequisites') as mock_validate, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.validate_repository_command_prerequisites') as mock_validate, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_validate.return_value = mock_config
@@ -238,8 +238,8 @@ class TestOperationCommandPattern:
                         normalize=False, verbose=False, quiet=False):
             return {'dry_run': dry_run}
         
-        with patch('dsg.cli_patterns.validate_repository_command_prerequisites') as mock_validate, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.validate_repository_command_prerequisites') as mock_validate, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_validate.return_value = mock_config
@@ -261,7 +261,7 @@ class TestOperationCommandPattern:
                         normalize=False, verbose=False, quiet=False):
             return {'test': 'data'}
         
-        with patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             mock_collector = Mock()
             mock_json_collector.return_value = mock_collector
             
@@ -278,8 +278,8 @@ class TestOperationCommandPattern:
                         normalize=False, verbose=False, quiet=False):
             raise KeyboardInterrupt()
         
-        with patch('dsg.cli_patterns.validate_repository_command_prerequisites') as mock_validate, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.validate_repository_command_prerequisites') as mock_validate, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_validate.return_value = mock_config
@@ -314,9 +314,9 @@ class TestPatternIntegration:
                          normalize=False, verbose=False, quiet=False):
             return {'type': 'operation'}
         
-        with patch('dsg.cli_patterns.load_config_with_console') as mock_load_config, \
-             patch('dsg.cli_patterns.validate_repository_setup_prerequisites') as mock_validate, \
-             patch('dsg.cli_patterns.JSONCollector') as mock_json_collector:
+        with patch('dsg.cli.patterns.load_config_with_console') as mock_load_config, \
+             patch('dsg.cli.patterns.validate_repository_setup_prerequisites') as mock_validate, \
+             patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             mock_config = Mock(spec=Config)
             mock_load_config.return_value = mock_config

@@ -115,9 +115,9 @@ class TestEnsureDsgNotExists:
 class TestValidateProjectPrerequisites:
     """Tests for validate_project_prerequisites function."""
     
-    @patch('dsg.cli_utils.validate_backend_connectivity')
-    @patch('dsg.cli_utils.load_config_with_console')
-    @patch('dsg.cli_utils.ensure_dsgconfig_exists')
+    @patch('dsg.cli.utils.validate_backend_connectivity')
+    @patch('dsg.cli.utils.load_config_with_console')
+    @patch('dsg.cli.utils.ensure_dsgconfig_exists')
     def test_full_validation(self, mock_ensure_config, mock_load_config, mock_validate_backend):
         """Test full validation with backend check."""
         mock_config = Mock()
@@ -131,9 +131,9 @@ class TestValidateProjectPrerequisites:
         mock_validate_backend.assert_called_once_with(console, mock_config, verbose=True)
         assert result == mock_config
     
-    @patch('dsg.cli_utils.validate_backend_connectivity')
-    @patch('dsg.cli_utils.load_config_with_console')
-    @patch('dsg.cli_utils.ensure_dsgconfig_exists')
+    @patch('dsg.cli.utils.validate_backend_connectivity')
+    @patch('dsg.cli.utils.load_config_with_console')
+    @patch('dsg.cli.utils.ensure_dsgconfig_exists')
     def test_no_backend_check(self, mock_ensure_config, mock_load_config, mock_validate_backend):
         """Test validation without backend check."""
         mock_config = Mock()
@@ -151,8 +151,8 @@ class TestValidateProjectPrerequisites:
 class TestValidateRepositorySetupPrerequisites:
     """Tests for validate_repository_setup_prerequisites function."""
     
-    @patch('dsg.cli_utils.ensure_dsg_not_exists')
-    @patch('dsg.cli_utils.validate_project_prerequisites')
+    @patch('dsg.cli.utils.ensure_dsg_not_exists')
+    @patch('dsg.cli.utils.validate_project_prerequisites')
     def test_clone_prerequisites(self, mock_validate_project, mock_ensure_dsg_not_exists):
         """Test clone prerequisites validation."""
         mock_config = Mock()
@@ -169,8 +169,8 @@ class TestValidateRepositorySetupPrerequisites:
 class TestValidateRepositoryCommandPrerequisites:
     """Tests for validate_repository_command_prerequisites function."""
     
-    @patch('dsg.cli_utils.ensure_dsg_exists')
-    @patch('dsg.cli_utils.validate_project_prerequisites')
+    @patch('dsg.cli.utils.ensure_dsg_exists')
+    @patch('dsg.cli.utils.validate_project_prerequisites')
     def test_repository_command_prerequisites(self, mock_validate_project, mock_ensure_dsg_exists):
         """Test repository command prerequisites validation."""
         mock_config = Mock()

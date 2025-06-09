@@ -70,7 +70,7 @@ class TestIsLocalHost:
         # Should return False for unknown hosts when socket calls fail
         assert not is_local_host("unknown-host")
 
-    @patch("dsg.host_utils._is_local_interface_address")
+    @patch("dsg.system.host_utils._is_local_interface_address")
     @patch("socket.gethostname")
     @patch("socket.getfqdn")
     def test_local_interface_check(

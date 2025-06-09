@@ -31,7 +31,7 @@ class TestParameterSimplification:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.actions.init_repository') as mock_init:
+        with patch('dsg.cli.commands.actions.init_repository') as mock_init:
             from dsg.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash='test_snapshot_hash', normalization_result=None)
             mock_init.return_value = mock_init_result
@@ -57,8 +57,7 @@ class TestParameterSimplification:
             mock_init.assert_called_once_with(
                 config=config,
                 force=True,
-                normalize=False,
-                verbose=True
+                normalize=False
             )
             
             # Should return structured result from action command
@@ -100,7 +99,7 @@ class TestParameterSimplification:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        with patch('dsg.commands.actions.sync_repository') as mock_sync:
+        with patch('dsg.cli.commands.actions.sync_repository') as mock_sync:
             mock_sync.return_value = {'files_synced': 5, 'status': 'success'}
             
             # Test with operation-specific parameters

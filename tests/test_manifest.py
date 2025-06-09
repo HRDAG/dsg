@@ -14,7 +14,7 @@ import unicodedata
 from unittest.mock import patch
 from pathlib import Path
 
-from dsg.manifest import (
+from dsg.data.manifest import (
     FileRef,
     LinkRef,
     ManifestMetadata,

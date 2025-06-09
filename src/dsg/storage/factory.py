@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from dsg.host_utils import is_local_host
-from .core import Backend, LocalhostBackend, SSHBackend
+from dsg.system.host_utils import is_local_host
+from .backends import Backend, LocalhostBackend, SSHBackend
 
 if TYPE_CHECKING:
-    from dsg.config_manager import Config
+    from dsg.config.manager import Config
 
 
 def create_backend(config: 'Config') -> Backend:
@@ -93,7 +93,7 @@ def _is_effectively_localhost(ssh_config) -> bool:
     if config_file.exists():
         try:
             # Import here to avoid circular dependency
-            from dsg.config_manager import ProjectConfig
+            from dsg.config.manager import ProjectConfig
 
             # Read the config at that path
             local_config = ProjectConfig.load(config_file)

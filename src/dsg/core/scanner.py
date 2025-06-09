@@ -19,9 +19,9 @@ from pydantic import BaseModel
 import xxhash
 
 # Local DSG imports
-from dsg.config_manager import Config
-from dsg.manifest import Manifest, ManifestEntry, FileRef
-from dsg.filename_validation import validate_path
+from dsg.config.manager import Config
+from dsg.data.manifest import Manifest, ManifestEntry, FileRef
+from dsg.data.filename_validation import validate_path
 
 logger = loguru.logger
 

@@ -11,7 +11,7 @@
 import os
 import pwd
 
-from dsg.utils.execution import CommandExecutor as ce
+from dsg.system.execution import CommandExecutor as ce
 from .protocols import SnapshotOperations
 from typing import TYPE_CHECKING
 

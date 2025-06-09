@@ -23,7 +23,7 @@ import orjson
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 
-from dsg.lifecycle import (
+from dsg.core.lifecycle import (
     SnapshotInfo, 
     create_default_snapshot_info,
     init_create_manifest,
@@ -34,8 +34,8 @@ from dsg.lifecycle import (
     normalize_problematic_paths,
     build_sync_messages_file
 )
-from dsg.config_manager import Config
-from dsg.manifest import Manifest
+from dsg.config.manager import Config
+from dsg.data.manifest import Manifest
 
 
 class TestSnapshotInfo:
@@ -56,7 +56,7 @@ class TestSnapshotInfo:
         assert snapshot.timestamp == timestamp
         assert snapshot.message == "Test snapshot"
     
-    @patch('dsg.lifecycle.datetime')
+    @patch('dsg.core.lifecycle.datetime')
     def test_create_default_snapshot_info(self, mock_datetime):
         """Test create_default_snapshot_info with mocked timezone"""
         # Mock datetime.now() 
@@ -99,8 +99,8 @@ class TestSnapshotInfo:
 class TestInitCreateManifest:
     """Tests for init_create_manifest function"""
     
-    @patch('dsg.lifecycle.scan_directory_no_cfg')
-    @patch('dsg.lifecycle.loguru.logger')
+    @patch('dsg.core.lifecycle.scan_directory_no_cfg')
+    @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_create_manifest_basic(self, mock_logger, mock_scan):
         """Test basic manifest creation for init"""
         # Setup mock scan result
@@ -124,8 +124,8 @@ class TestInitCreateManifest:
         assert manifest == mock_manifest
         assert normalization_result is None  # No validation warnings, so no normalization
     
-    @patch('dsg.lifecycle.scan_directory_no_cfg')
-    @patch('dsg.lifecycle.loguru.logger')
+    @patch('dsg.core.lifecycle.scan_directory_no_cfg')
+    @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_create_manifest_with_normalization_disabled(self, mock_logger, mock_scan):
         """Test manifest creation with normalization disabled"""
         mock_manifest = MagicMock()
@@ -140,8 +140,8 @@ class TestInitCreateManifest:
         assert manifest == mock_manifest
         assert normalization_result is None
     
-    @patch('dsg.lifecycle.scan_directory_no_cfg')
-    @patch('dsg.lifecycle.loguru.logger')
+    @patch('dsg.core.lifecycle.scan_directory_no_cfg')
+    @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_create_manifest_with_validation_warnings(self, mock_logger, mock_scan):
         """Test manifest creation when validation warnings exist"""
         # Setup first scan result with warnings
@@ -205,10 +205,10 @@ class TestMetadataOperations:
         # Verify core functionality - metadata writing completed successfully  
         assert result == "test_hash_123"
     
-    @patch('dsg.lifecycle.build_sync_messages_file')
-    @patch('dsg.lifecycle.init_create_manifest')
-    @patch('dsg.lifecycle.create_default_snapshot_info')
-    @patch('dsg.lifecycle.write_dsg_metadata')
+    @patch('dsg.core.lifecycle.build_sync_messages_file')
+    @patch('dsg.core.lifecycle.init_create_manifest')
+    @patch('dsg.core.lifecycle.create_default_snapshot_info')
+    @patch('dsg.core.lifecycle.write_dsg_metadata')
     def test_create_local_metadata(self, mock_write, mock_snapshot, mock_manifest, mock_sync_messages):
         """Test complete local metadata creation workflow"""
         # Setup mocks
@@ -243,9 +243,9 @@ class TestMetadataOperations:
 class TestInitRepository:
     """Tests for the main init_repository workflow"""
     
-    @patch('dsg.lifecycle.create_backend')
-    @patch('dsg.lifecycle.create_local_metadata')
-    @patch('dsg.lifecycle.loguru.logger')
+    @patch('dsg.core.lifecycle.create_backend')
+    @patch('dsg.core.lifecycle.create_local_metadata')
+    @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_repository_success(self, mock_logger, mock_local_meta, mock_backend):
         """Test successful repository initialization"""
         # Setup mocks
@@ -282,9 +282,9 @@ class TestInitRepository:
         assert init_result.normalization_result is not None
         assert len(init_result.files_included) == 1
     
-    @patch('dsg.lifecycle.create_backend')
-    @patch('dsg.lifecycle.create_local_metadata')
-    @patch('dsg.lifecycle.loguru.logger')
+    @patch('dsg.core.lifecycle.create_backend')
+    @patch('dsg.core.lifecycle.create_local_metadata')
+    @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_repository_without_normalization(self, mock_logger, mock_local_meta, mock_backend):
         """Test repository initialization with normalization disabled"""
         from dsg.lifecycle import InitResult
@@ -344,7 +344,7 @@ class TestInitRepository:
             user_id="test@example.com"
         )
         
-        from dsg.config_manager import Config
+        from dsg.config.manager import Config
         config = Config(
             user=user_config,
             project=project_config,
@@ -352,8 +352,8 @@ class TestInitRepository:
         )
         
         # This should now work after the fix (config.project.name instead of config.project.repo_name)
-        with patch('dsg.lifecycle.create_backend') as mock_backend, \
-             patch('dsg.lifecycle.create_local_metadata') as mock_local_meta:
+        with patch('dsg.core.lifecycle.create_backend') as mock_backend, \
+             patch('dsg.core.lifecycle.create_local_metadata') as mock_local_meta:
             from dsg.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
             mock_local_meta.return_value = mock_init_result
@@ -368,8 +368,8 @@ class TestInitRepository:
             mock_backend.assert_called_once_with(config)
             mock_backend_instance.init_repository.assert_called_once_with("test_hash", force=False)
     
-    @patch('dsg.lifecycle.create_backend')
-    @patch('dsg.lifecycle.create_local_metadata')
+    @patch('dsg.core.lifecycle.create_backend')
+    @patch('dsg.core.lifecycle.create_local_metadata')
     def test_init_repository_backend_failure(self, mock_local_meta, mock_backend):
         """Test init_repository when backend initialization fails"""
         from dsg.lifecycle import InitResult

@@ -12,7 +12,7 @@ from typing import Optional
 
 from loguru import logger
 
-from dsg.config_manager import load_merged_user_config
+from dsg.config.manager import load_merged_user_config
 
 
 def detect_repo_name() -> Optional[str]:
@@ -22,7 +22,7 @@ def detect_repo_name() -> Optional[str]:
         Repository name or None if not detected
     """
     try:
-        from dsg.config_manager import find_project_config_path, ProjectConfig
+        from dsg.config.manager import find_project_config_path, ProjectConfig
         
         config_path = find_project_config_path()
         config = ProjectConfig.load(config_path)

@@ -17,7 +17,7 @@ from typing import Dict, Any
 
 import pytest
 
-from dsg.config_manager import (
+from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
     SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
     SSHUserConfig
@@ -286,7 +286,7 @@ def create_test_files(repo_dir: Path) -> Dict[str, Path]:
 def load_config_with_paths(project_root: Path, user_config_dir: Path):
     """Helper to load Config with explicit paths instead of environment variables."""
     import os
-    from dsg.config_manager import Config
+    from dsg.config.manager import Config
     
     # Temporarily set environment variable for config loading
     old_config_home = os.environ.get("DSG_CONFIG_HOME")

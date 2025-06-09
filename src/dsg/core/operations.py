@@ -15,13 +15,13 @@ from typing import Optional, Any
 import loguru
 
 from dsg.backends import create_backend
-from dsg.config_manager import Config
-from dsg.display import display_sync_dry_run_preview, display_normalization_preview
-from dsg.exceptions import ConfigError
-from dsg.filename_validation import fix_problematic_path
-from dsg.manifest import Manifest
-from dsg.manifest_merger import ManifestMerger, SyncState
-from dsg.scanner import scan_directory, scan_directory_no_cfg, ScanResult
+from dsg.config.manager import Config
+from dsg.system.display import display_sync_dry_run_preview, display_normalization_preview
+from dsg.system.exceptions import ConfigError
+from dsg.data.filename_validation import fix_problematic_path
+from dsg.data.manifest import Manifest
+from dsg.data.manifest_merger import ManifestMerger, SyncState
+from dsg.core.scanner import scan_directory, scan_directory_no_cfg, ScanResult
 
 logger = loguru.logger
 

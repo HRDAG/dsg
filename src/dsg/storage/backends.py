@@ -18,9 +18,9 @@ from typing import Optional
 import paramiko
 from loguru import logger
 
-from dsg.manifest import Manifest
-from dsg.protocols import FileOperations
-from dsg.utils.execution import CommandExecutor as ce
+from dsg.data.manifest import Manifest
+from dsg.core.protocols import FileOperations
+from dsg.system.execution import CommandExecutor as ce
 from .transports import LocalhostTransport
 from .snapshots import ZFSOperations
 from .utils import create_temp_file_list
