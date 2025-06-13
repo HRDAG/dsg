@@ -22,6 +22,7 @@ import datetime
 import orjson
 from pathlib import Path
 from unittest.mock import patch, MagicMock, call
+from unittest import mock
 
 from dsg.core.lifecycle import (
     SnapshotInfo, 
@@ -385,6 +386,237 @@ class TestInitRepository:
         
         with pytest.raises(Exception, match="Backend failed"):
             init_repository(mock_config)
+
+
+class TestSyncOperations:
+    """Tests for sync operation execution and manifest-level sync logic"""
+    
+    @patch('dsg.core.lifecycle.get_sync_status')
+    @patch('dsg.core.lifecycle._determine_sync_operation_type')
+    @patch('dsg.core.lifecycle._execute_bulk_upload')
+    def test_execute_sync_operations_init_like(self, mock_bulk_upload, mock_determine_type, mock_get_sync_status):
+        """Test _execute_sync_operations with init-like sync (L != C but C == R)"""
+        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+        from dsg.data.manifest_merger import SyncState
+        from rich.console import Console
+        
+        # Setup mocks for init-like sync
+        mock_determine_type.return_value = SyncOperationType.INIT_LIKE
+        mock_sync_status = MagicMock()
+        mock_sync_status.sync_states = {
+            'changed_file.txt': SyncState.sLCR__C_eq_R_ne_L,
+            'new_file.txt': SyncState.sLxCxR__only_L
+        }
+        mock_get_sync_status.return_value = mock_sync_status
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        # Execute
+        _execute_sync_operations(mock_config, console)
+        
+        # Verify init-like workflow
+        mock_determine_type.assert_called_once()
+        mock_bulk_upload.assert_called_once_with(mock_config, mock.ANY, console)
+        
+    @patch('dsg.core.lifecycle.get_sync_status')
+    @patch('dsg.core.lifecycle._determine_sync_operation_type')
+    @patch('dsg.core.lifecycle._execute_bulk_download')
+    def test_execute_sync_operations_clone_like(self, mock_bulk_download, mock_determine_type, mock_get_sync_status):
+        """Test _execute_sync_operations with clone-like sync (L == C but C != R)"""
+        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+        from dsg.data.manifest_merger import SyncState
+        from rich.console import Console
+        
+        # Setup mocks for clone-like sync
+        mock_determine_type.return_value = SyncOperationType.CLONE_LIKE
+        mock_sync_status = MagicMock()
+        mock_sync_status.sync_states = {
+            'remote_changed.txt': SyncState.sLCR__L_eq_C_ne_R,
+            'remote_new.txt': SyncState.sxLCxR__only_R
+        }
+        mock_get_sync_status.return_value = mock_sync_status
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        # Execute
+        _execute_sync_operations(mock_config, console)
+        
+        # Verify clone-like workflow
+        mock_determine_type.assert_called_once()
+        mock_bulk_download.assert_called_once_with(mock_config, mock.ANY, console)
+
+    @patch('dsg.core.lifecycle.get_sync_status')
+    @patch('dsg.core.lifecycle._determine_sync_operation_type')
+    @patch('dsg.core.lifecycle._execute_file_by_file_sync')
+    def test_execute_sync_operations_mixed(self, mock_file_by_file, mock_determine_type, mock_get_sync_status):
+        """Test _execute_sync_operations with mixed sync (complex state)"""
+        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+        from dsg.data.manifest_merger import SyncState
+        from rich.console import Console
+        
+        # Setup mocks for mixed sync
+        mock_determine_type.return_value = SyncOperationType.MIXED
+        mock_sync_status = MagicMock()
+        mock_sync_status.sync_states = {
+            'conflict_file.txt': SyncState.sLCR__all_ne,
+            'local_only.txt': SyncState.sLxCxR__only_L,
+            'remote_only.txt': SyncState.sxLCxR__only_R
+        }
+        mock_get_sync_status.return_value = mock_sync_status
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        # Execute
+        _execute_sync_operations(mock_config, console)
+        
+        # Verify mixed workflow
+        mock_determine_type.assert_called_once()
+        mock_file_by_file.assert_called_once_with(mock_config, mock_sync_status.sync_states, console)
+
+    def test_determine_sync_operation_type_init_like(self):
+        """Test manifest-level sync type detection for init-like scenario"""
+        from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
+        from dsg.data.manifest import Manifest
+        
+        # Create manifests for init-like: L != C but C == R
+        local_manifest = MagicMock(spec=Manifest)
+        local_manifest.metadata = MagicMock()
+        local_manifest.metadata.entries_hash = "local_hash_123"
+        
+        cache_manifest = MagicMock(spec=Manifest)
+        cache_manifest.metadata = MagicMock()
+        cache_manifest.metadata.entries_hash = "cache_hash_456"
+        
+        remote_manifest = MagicMock(spec=Manifest)
+        remote_manifest.metadata = MagicMock()
+        remote_manifest.metadata.entries_hash = "cache_hash_456"  # Same as cache
+        
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        assert result == SyncOperationType.INIT_LIKE
+
+    def test_determine_sync_operation_type_clone_like(self):
+        """Test manifest-level sync type detection for clone-like scenario"""
+        from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
+        from dsg.data.manifest import Manifest
+        
+        # Create manifests for clone-like: L == C but C != R
+        local_manifest = MagicMock(spec=Manifest)
+        local_manifest.metadata = MagicMock()
+        local_manifest.metadata.entries_hash = "local_cache_hash_123"
+        
+        cache_manifest = MagicMock(spec=Manifest)
+        cache_manifest.metadata = MagicMock()
+        cache_manifest.metadata.entries_hash = "local_cache_hash_123"  # Same as local
+        
+        remote_manifest = MagicMock(spec=Manifest)
+        remote_manifest.metadata = MagicMock()
+        remote_manifest.metadata.entries_hash = "remote_hash_456"
+        
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        assert result == SyncOperationType.CLONE_LIKE
+
+    def test_determine_sync_operation_type_mixed(self):
+        """Test manifest-level sync type detection for mixed scenario"""
+        from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
+        from dsg.data.manifest import Manifest
+        
+        # Create manifests for mixed: All different hashes
+        local_manifest = MagicMock(spec=Manifest)
+        local_manifest.metadata = MagicMock()
+        local_manifest.metadata.entries_hash = "local_hash_123"
+        
+        cache_manifest = MagicMock(spec=Manifest)
+        cache_manifest.metadata = MagicMock()
+        cache_manifest.metadata.entries_hash = "cache_hash_456"
+        
+        remote_manifest = MagicMock(spec=Manifest)
+        remote_manifest.metadata = MagicMock()
+        remote_manifest.metadata.entries_hash = "remote_hash_789"
+        
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        assert result == SyncOperationType.MIXED
+
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_bulk_upload(self, mock_create_backend):
+        """Test bulk upload operation for init-like sync"""
+        from dsg.core.lifecycle import _execute_bulk_upload
+        from rich.console import Console
+        
+        # Setup backend mock
+        mock_backend = MagicMock()
+        mock_create_backend.return_value = mock_backend
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        changed_files = [
+            {'path': 'file1.txt', 'action': 'upload'},
+            {'path': 'file2.txt', 'action': 'upload'}
+        ]
+        
+        # Execute
+        _execute_bulk_upload(mock_config, changed_files, console)
+        
+        # Verify backend operations
+        mock_create_backend.assert_called_once_with(mock_config)
+        assert mock_backend.copy_file.call_count == 2
+
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_bulk_download(self, mock_create_backend):
+        """Test bulk download operation for clone-like sync"""
+        from dsg.core.lifecycle import _execute_bulk_download
+        from rich.console import Console
+        
+        # Setup backend mock
+        mock_backend = MagicMock()
+        mock_create_backend.return_value = mock_backend
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        changed_files = [
+            {'path': 'remote_file1.txt', 'action': 'download'},
+            {'path': 'remote_file2.txt', 'action': 'download'}
+        ]
+        
+        # Execute
+        _execute_bulk_download(mock_config, changed_files, console)
+        
+        # Verify backend operations
+        mock_create_backend.assert_called_once_with(mock_config)
+        assert mock_backend.read_file.call_count == 2
+
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_file_by_file_sync(self, mock_create_backend):
+        """Test file-by-file sync operation for mixed scenarios"""
+        from dsg.core.lifecycle import _execute_file_by_file_sync
+        from dsg.data.manifest_merger import SyncState
+        from rich.console import Console
+        
+        # Setup backend mock
+        mock_backend = MagicMock()
+        mock_create_backend.return_value = mock_backend
+        
+        mock_config = MagicMock()
+        console = Console()
+        
+        sync_states = {
+            'upload_file.txt': SyncState.sLxCxR__only_L,
+            'download_file.txt': SyncState.sxLCxR__only_R,
+            'no_action.txt': SyncState.sLCR__all_eq
+        }
+        
+        # Execute
+        _execute_file_by_file_sync(mock_config, sync_states, console)
+        
+        # Verify backend operations
+        mock_create_backend.assert_called_once_with(mock_config)
+        # Should have 1 upload + 1 download = 2 operations (no_action file skipped)
+        assert mock_backend.copy_file.call_count == 1  # Upload
+        assert mock_backend.read_file.call_count == 1  # Download
 
 
 # done.

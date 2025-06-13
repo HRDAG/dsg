@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
+from enum import Enum
 
 import loguru
 import orjson
@@ -36,6 +37,13 @@ from dsg.system.display import display_sync_dry_run_preview, display_normalizati
 from dsg.data.filename_validation import fix_problematic_path
 from dsg.data.manifest_merger import SyncState
 from dsg.system.exceptions import SyncError, ValidationError
+
+
+class SyncOperationType(Enum):
+    """Types of sync operations based on manifest-level analysis."""
+    INIT_LIKE = "init_like"  # L != C but C == R (bulk upload)
+    CLONE_LIKE = "clone_like"  # L == C but C != R (bulk download)
+    MIXED = "mixed"  # Complex state requiring file-by-file analysis
 
 
 @dataclass
@@ -399,21 +407,232 @@ def _display_conflicts_and_exit(console: 'Console', conflicts: list[str]) -> Non
     raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
 
 
-def _execute_sync_operations(console: 'Console') -> None:
+def _determine_sync_operation_type(local: Manifest, cache: Manifest, remote: Manifest) -> SyncOperationType:
     """
-    Perform the actual sync operations.
+    Determine the type of sync operation needed based on manifest hashes.
     
     Args:
+        local: Local manifest
+        cache: Cache manifest  
+        remote: Remote manifest
+        
+    Returns:
+        SyncOperationType indicating the optimal sync strategy
+    """
+    # Compare manifest entry hashes to determine sync type
+    local_hash = local.metadata.entries_hash if local.metadata else ""
+    cache_hash = cache.metadata.entries_hash if cache.metadata else ""
+    remote_hash = remote.metadata.entries_hash if remote.metadata else ""
+    
+    if local_hash != cache_hash and cache_hash == remote_hash:
+        return SyncOperationType.INIT_LIKE  # Local has changes, upload needed
+    elif local_hash == cache_hash and cache_hash != remote_hash:
+        return SyncOperationType.CLONE_LIKE  # Remote has changes, download needed
+    else:
+        return SyncOperationType.MIXED  # Complex state, need file-by-file analysis
+
+
+def _execute_bulk_upload(config: Config, changed_files: list[dict], console: 'Console') -> None:
+    """
+    Execute bulk upload operation for init-like sync.
+    
+    Args:
+        config: DSG configuration
+        changed_files: List of files to upload
+        console: Rich console for output
+    """
+    logger = loguru.logger
+    backend = create_backend(config)
+    
+    console.print(f"[blue]Uploading {len(changed_files)} files...[/blue]")
+    
+    for file_info in changed_files:
+        file_path = file_info['path']
+        local_path = config.project_root / file_path
+        logger.debug(f"Uploading: {file_path}")
+        backend.copy_file(local_path, file_path)
+    
+    console.print("[green]✓[/green] Upload completed")
+
+
+def _execute_bulk_download(config: Config, changed_files: list[dict], console: 'Console') -> None:
+    """
+    Execute bulk download operation for clone-like sync.
+    
+    Args:
+        config: DSG configuration
+        changed_files: List of files to download
+        console: Rich console for output
+    """
+    logger = loguru.logger
+    backend = create_backend(config)
+    
+    console.print(f"[blue]Downloading {len(changed_files)} files...[/blue]")
+    
+    for file_info in changed_files:
+        file_path = file_info['path']
+        local_path = config.project_root / file_path
+        logger.debug(f"Downloading: {file_path}")
+        
+        # Read from remote and write locally
+        content = backend.read_file(file_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(content)
+    
+    console.print("[green]✓[/green] Download completed")
+
+
+def _execute_file_by_file_sync(config: Config, sync_states: dict[str, SyncState], console: 'Console') -> None:
+    """
+    Execute file-by-file sync operation for mixed scenarios.
+    
+    Args:
+        config: DSG configuration
+        sync_states: Dict mapping file paths to their sync states
+        console: Rich console for output
+    """
+    logger = loguru.logger
+    backend = create_backend(config)
+    
+    upload_files = []
+    download_files = []
+    
+    # Categorize operations based on sync states
+    for file_path, sync_state in sync_states.items():
+        if sync_state in [SyncState.sLxCxR__only_L, SyncState.sLCR__C_eq_R_ne_L, SyncState.sLCxR__L_eq_C]:
+            upload_files.append(file_path)
+        elif sync_state in [SyncState.sxLCxR__only_R, SyncState.sLCR__L_eq_C_ne_R]:
+            download_files.append(file_path)
+        # Skip files that don't need action (e.g., sLCR__all_eq)
+    
+    total_ops = len(upload_files) + len(download_files)
+    console.print(f"[blue]Syncing {total_ops} files ({len(upload_files)} uploads, {len(download_files)} downloads)...[/blue]")
+    
+    # Execute uploads
+    for file_path in upload_files:
+        local_path = config.project_root / file_path
+        logger.debug(f"Uploading: {file_path}")
+        backend.copy_file(local_path, file_path)
+    
+    # Execute downloads
+    for file_path in download_files:
+        local_path = config.project_root / file_path
+        logger.debug(f"Downloading: {file_path}")
+        content = backend.read_file(file_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(content)
+    
+    console.print("[green]✓[/green] File-by-file sync completed")
+
+
+def _execute_sync_operations(config: Config, console: 'Console') -> None:
+    """
+    Perform the actual sync operations using manifest-level analysis.
+    
+    Args:
+        config: DSG configuration
         console: Rich console for output
     """
     logger = loguru.logger
     logger.debug("No conflicts found - proceeding with sync...")
     
-    console.print("[dim]Synchronizing files...[/dim]")
+    # Get sync status to determine what operations are needed
+    sync_status = get_sync_status(config, include_remote=True, verbose=True)
     
-    # TODO: Implement actual file transfer operations with backend
-    console.print("[green]✓[/green] Sync completed successfully")
+    # Determine sync operation type based on manifest relationships
+    operation_type = _determine_sync_operation_type(
+        sync_status.local_manifest, 
+        sync_status.cache_manifest, 
+        sync_status.remote_manifest
+    )
+    
+    console.print("[dim]Analyzing sync requirements...[/dim]")
+    
+    # Execute appropriate sync strategy
+    if operation_type == SyncOperationType.INIT_LIKE:
+        # Bulk upload: local has changes, remote is current
+        changed_files = [
+            {'path': path, 'action': 'upload'} 
+            for path, state in sync_status.sync_states.items()
+            if state in [SyncState.sLxCxR__only_L, SyncState.sLCR__C_eq_R_ne_L, SyncState.sLCxR__L_eq_C]
+        ]
+        _execute_bulk_upload(config, changed_files, console)
+        
+    elif operation_type == SyncOperationType.CLONE_LIKE:
+        # Bulk download: remote has changes, local is current  
+        changed_files = [
+            {'path': path, 'action': 'download'}
+            for path, state in sync_status.sync_states.items()
+            if state in [SyncState.sxLCxR__only_R, SyncState.sLCR__L_eq_C_ne_R]
+        ]
+        _execute_bulk_download(config, changed_files, console)
+        
+    else:  # SyncOperationType.MIXED
+        # File-by-file: complex state requiring individual analysis
+        _execute_file_by_file_sync(config, sync_status.sync_states, console)
+    
+    # CRITICAL: Update remote manifest after file transfers
+    # This was the missing piece causing collaborative workflow failures
+    logger.debug("Updating remote and cache manifests after file transfers...")
+    _update_manifests_after_sync(config, console)
+    
     logger.debug("Sync operations completed")
+
+
+def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
+    """
+    Update remote and cache manifests after file transfer operations.
+    
+    This is critical for collaborative workflows - after uploading files to remote,
+    we must update the remote manifest to reflect the new file hashes. Otherwise,
+    subsequent syncs will see identical hashes and think everything is synchronized.
+    
+    Args:
+        config: DSG configuration
+        console: Rich console for output
+    """
+    logger = loguru.logger
+    
+    # Step 1: Regenerate local manifest to reflect current state after transfers
+    logger.debug("Regenerating local manifest after file transfers...")
+    scan_result = scan_directory(config, compute_hashes=True, include_dsg_files=False)
+    updated_manifest = scan_result.manifest
+    logger.debug(f"Updated manifest has {len(updated_manifest.entries)} entries")
+    
+    # Step 2: Update remote manifest via backend
+    try:
+        logger.debug("Updating remote manifest...")
+        backend = create_backend(config)
+        
+        # Convert manifest to JSON bytes for backend.write_file()
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w+b', suffix='.json') as temp_file:
+            # Write to temp file first
+            updated_manifest.to_json(Path(temp_file.name), include_metadata=True)
+            
+            # Read back as bytes
+            temp_file.seek(0)
+            manifest_bytes = temp_file.read()
+            
+            # Write to remote backend
+            backend.write_file(".dsg/last-sync.json", manifest_bytes)
+            logger.debug("Remote manifest updated successfully")
+    
+    except Exception as e:
+        logger.error(f"Failed to update remote manifest: {e}")
+        console.print(f"[yellow]⚠[/yellow] Warning: Failed to update remote manifest: {e}")
+        # Don't fail the sync - the files were transferred successfully
+    
+    # Step 3: Update local cache manifest
+    try:
+        logger.debug("Updating local cache manifest...")
+        cache_path = config.project_root / ".dsg" / "last-sync.json"
+        updated_manifest.to_json(cache_path, include_metadata=True)
+        logger.debug("Local cache manifest updated successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to update cache manifest: {e}")
+        console.print(f"[yellow]⚠[/yellow] Warning: Failed to update cache manifest: {e}")
 
 
 def sync_repository(
@@ -476,7 +695,7 @@ def sync_repository(
         _display_conflicts_and_exit(console, conflicts)
 
     # Step 4: Execute sync operations
-    _execute_sync_operations(console)
+    _execute_sync_operations(config, console)
     
     # Step 5: Return results
     return {

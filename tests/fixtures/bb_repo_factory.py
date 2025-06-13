@@ -701,11 +701,15 @@ def modify_local_file(
 def create_local_file(
         repo_path: Path,
         relative_path: str,
-        content: str) -> None:
+        content: str | bytes,
+        binary: bool = False) -> None:
     """Add new file to local working directory (L state)."""
     file_path = repo_path / relative_path
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(content)
+    if binary and isinstance(content, bytes):
+        file_path.write_bytes(content)
+    else:
+        file_path.write_text(str(content))
 
 
 def delete_local_file(
@@ -824,6 +828,119 @@ def regenerate_remote_manifest(
     """Update remote manifest after file changes (R state)."""
     new_manifest = regenerate_manifest(remote_config)
     new_manifest.to_json(remote_manifest_path, include_metadata=True)
+
+
+# ---- Sync Integration Test Helper Functions ----
+
+def local_file_exists(setup: dict, file_path: str) -> bool:
+    """Check if a file exists in the local repository."""
+    local_path = setup["local_path"]
+    return (local_path / file_path).exists()
+
+
+def remote_file_exists(setup: dict, file_path: str) -> bool:
+    """Check if a file exists in the remote repository."""
+    remote_path = setup["remote_path"]
+    return (remote_path / file_path).exists()
+
+
+def local_file_content_matches(setup: dict, file_path: str, expected_content: str) -> bool:
+    """Check if local file content matches expected content."""
+    local_path = setup["local_path"]
+    file_full_path = local_path / file_path
+    if not file_full_path.exists():
+        return False
+    actual_content = file_full_path.read_text()
+    return expected_content in actual_content
+
+
+def remote_file_content_matches(setup: dict, file_path: str, expected_content: str) -> bool:
+    """Check if remote file content matches expected content."""
+    remote_path = setup["remote_path"]
+    file_full_path = remote_path / file_path
+    if not file_full_path.exists():
+        return False
+    actual_content = file_full_path.read_text()
+    return expected_content in actual_content
+
+
+def read_remote_file(setup: dict, file_path: str, binary: bool = False) -> str | bytes:
+    """Read content from a remote file."""
+    remote_path = setup["remote_path"]
+    file_full_path = remote_path / file_path
+    if not file_full_path.exists():
+        raise FileNotFoundError(f"Remote file not found: {file_path}")
+    
+    if binary:
+        return file_full_path.read_bytes()
+    else:
+        return file_full_path.read_text()
+
+
+def cache_manifest_updated(setup: dict) -> bool:
+    """Check if cache manifest has been updated (newer than setup time)."""
+    local_path = setup["local_path"]
+    cache_manifest_path = local_path / ".dsg" / "last-sync.json"
+    
+    if not cache_manifest_path.exists():
+        return False
+    
+    # Check if cache manifest was modified recently (within last 10 seconds)
+    import time
+    current_time = time.time()
+    file_mtime = cache_manifest_path.stat().st_mtime
+    return (current_time - file_mtime) < 10
+
+
+def create_init_like_state(setup: dict, file_path: str, content: str = "init-like content") -> None:
+    """Create init-like sync state: L != C but C == R (local has changes)."""
+    # For init-like: local has new content, but cache and remote are identical (without the file)
+    # Since cache and remote start identical, just add to local 
+    create_local_file(setup["local_path"], file_path, content)
+    # Cache and remote remain unchanged (identical without the new file)
+
+
+def create_clone_like_state(setup: dict, file_path: str, content: str = "clone-like content") -> None:
+    """Create clone-like sync state: L == C but C != R (remote has changes)."""
+    # Create or modify remote file
+    create_remote_file(setup["remote_path"], file_path, content, setup["remote_config"])
+    regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+    
+    # Local and cache should still match (they don't have the remote changes)
+
+
+def create_mixed_state(setup: dict) -> dict[str, str]:
+    """Create mixed sync state with multiple files in different states."""
+    files_created = {}
+    
+    # File 1: Only local (will be uploaded) - use input data_dir
+    local_only_content = "Local only content"
+    local_only_file = "task1/import/input/local_only.txt"
+    create_local_file(setup["local_path"], local_only_file, local_only_content)
+    files_created[local_only_file] = "upload"
+    
+    # File 2: Only remote (will be downloaded) - use output data_dir
+    remote_only_content = "Remote only content"
+    remote_only_file = "task1/analysis/output/remote_only.txt"
+    create_remote_file(setup["remote_path"], remote_only_file, remote_only_content, setup["remote_config"])
+    regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+    files_created[remote_only_file] = "download"
+    
+    # File 3: Exists in all but local changed (will be uploaded) - use hand data_dir
+    # First create in all locations
+    shared_file = "task1/import/hand/shared_file.txt"
+    original_content = "Original shared content"
+    create_local_file(setup["local_path"], shared_file, original_content)
+    create_remote_file(setup["remote_path"], shared_file, original_content, setup["remote_config"])
+    regenerate_cache_from_current_local(setup["local_config"], setup["last_sync_path"])
+    regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+    
+    # Then modify only local
+    modified_content = "Modified local content"
+    modify_local_file(setup["local_path"], shared_file, modified_content)
+    files_created[shared_file] = "upload"
+    
+    return files_created
 
 
 # ---- Illegal Filename Helper Functions ----
