@@ -394,7 +394,9 @@ class TestSyncOperations:
     @patch('dsg.core.lifecycle.get_sync_status')
     @patch('dsg.core.lifecycle._determine_sync_operation_type')
     @patch('dsg.core.lifecycle._execute_bulk_upload')
-    def test_execute_sync_operations_init_like(self, mock_bulk_upload, mock_determine_type, mock_get_sync_status):
+    @patch('dsg.core.lifecycle._update_manifests_after_sync')
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_sync_operations_init_like(self, mock_create_backend, mock_update_manifests, mock_bulk_upload, mock_determine_type, mock_get_sync_status):
         """Test _execute_sync_operations with init-like sync (L != C but C == R)"""
         from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
         from dsg.data.manifest_merger import SyncState
@@ -408,8 +410,11 @@ class TestSyncOperations:
             'new_file.txt': SyncState.sLxCxR__only_L
         }
         mock_get_sync_status.return_value = mock_sync_status
+        mock_create_backend.return_value = MagicMock()
+        mock_update_manifests.return_value = None
         
         mock_config = MagicMock()
+        mock_config.user.user_id = "test_user"
         console = Console()
         
         # Execute
@@ -422,7 +427,9 @@ class TestSyncOperations:
     @patch('dsg.core.lifecycle.get_sync_status')
     @patch('dsg.core.lifecycle._determine_sync_operation_type')
     @patch('dsg.core.lifecycle._execute_bulk_download')
-    def test_execute_sync_operations_clone_like(self, mock_bulk_download, mock_determine_type, mock_get_sync_status):
+    @patch('dsg.core.lifecycle._update_manifests_after_sync')
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_sync_operations_clone_like(self, mock_create_backend, mock_update_manifests, mock_bulk_download, mock_determine_type, mock_get_sync_status):
         """Test _execute_sync_operations with clone-like sync (L == C but C != R)"""
         from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
         from dsg.data.manifest_merger import SyncState
@@ -436,8 +443,11 @@ class TestSyncOperations:
             'remote_new.txt': SyncState.sxLCxR__only_R
         }
         mock_get_sync_status.return_value = mock_sync_status
+        mock_create_backend.return_value = MagicMock()
+        mock_update_manifests.return_value = None
         
         mock_config = MagicMock()
+        mock_config.user.user_id = "test_user"
         console = Console()
         
         # Execute
@@ -450,7 +460,9 @@ class TestSyncOperations:
     @patch('dsg.core.lifecycle.get_sync_status')
     @patch('dsg.core.lifecycle._determine_sync_operation_type')
     @patch('dsg.core.lifecycle._execute_file_by_file_sync')
-    def test_execute_sync_operations_mixed(self, mock_file_by_file, mock_determine_type, mock_get_sync_status):
+    @patch('dsg.core.lifecycle._update_manifests_after_sync')
+    @patch('dsg.core.lifecycle.create_backend')
+    def test_execute_sync_operations_mixed(self, mock_create_backend, mock_update_manifests, mock_file_by_file, mock_determine_type, mock_get_sync_status):
         """Test _execute_sync_operations with mixed sync (complex state)"""
         from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
         from dsg.data.manifest_merger import SyncState
@@ -465,8 +477,11 @@ class TestSyncOperations:
             'remote_only.txt': SyncState.sxLCxR__only_R
         }
         mock_get_sync_status.return_value = mock_sync_status
+        mock_create_backend.return_value = MagicMock()
+        mock_update_manifests.return_value = None
         
         mock_config = MagicMock()
+        mock_config.user.user_id = "test_user"
         console = Console()
         
         # Execute
@@ -494,7 +509,7 @@ class TestSyncOperations:
         remote_manifest.metadata = MagicMock()
         remote_manifest.metadata.entries_hash = "cache_hash_456"  # Same as cache
         
-        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest, {})
         assert result == SyncOperationType.INIT_LIKE
 
     def test_determine_sync_operation_type_clone_like(self):
@@ -515,7 +530,7 @@ class TestSyncOperations:
         remote_manifest.metadata = MagicMock()
         remote_manifest.metadata.entries_hash = "remote_hash_456"
         
-        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest, {})
         assert result == SyncOperationType.CLONE_LIKE
 
     def test_determine_sync_operation_type_mixed(self):
@@ -536,7 +551,7 @@ class TestSyncOperations:
         remote_manifest.metadata = MagicMock()
         remote_manifest.metadata.entries_hash = "remote_hash_789"
         
-        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest)
+        result = _determine_sync_operation_type(local_manifest, cache_manifest, remote_manifest, {})
         assert result == SyncOperationType.MIXED
 
     @patch('dsg.core.lifecycle.create_backend')
