@@ -249,7 +249,13 @@ class LocalhostBackend(Backend):
         """Copy a file from local filesystem to the backend."""
         dest_path = self.full_path / rel_dest_path
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, dest_path)
+        
+        # Remove existing destination if it exists to handle file type changes
+        # (e.g., regular file → symlink or symlink → regular file)
+        if dest_path.exists() or dest_path.is_symlink():
+            dest_path.unlink()
+        
+        shutil.copy2(source_path, dest_path, follow_symlinks=False)
 
     def clone(self, dest_path: Path, resume: bool = False, progress_callback=None, verbose: bool = False) -> None:
         """Clone repository from local source to destination directory."""

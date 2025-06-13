@@ -20,6 +20,7 @@ filesystem operations, and backend repository interactions.
 
 import datetime
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from enum import Enum
 
 import loguru
 import orjson
+import lz4.frame
 
 from dsg.config.manager import Config
 from dsg.backends import create_backend
@@ -211,6 +213,78 @@ class CloneResult:
             'errors': self.errors
         }
 
+
+
+def _get_next_snapshot_id(sync_messages_path: Path) -> str:
+    """
+    Get the next snapshot ID by examining existing sync-messages.json.
+    
+    Args:
+        sync_messages_path: Path to sync-messages.json file
+        
+    Returns:
+        Next snapshot ID (e.g., 's2', 's3', etc.)
+    """
+    if not sync_messages_path.exists():
+        return "s1"  # First snapshot
+    
+    try:
+        with open(sync_messages_path, 'rb') as f:
+            sync_messages = orjson.loads(f.read())
+        
+        snapshots = sync_messages.get("snapshots", {})
+        if not snapshots:
+            return "s1"
+        
+        # Find highest snapshot number
+        max_num = 0
+        for snapshot_id in snapshots.keys():
+            if snapshot_id.startswith('s') and snapshot_id[1:].isdigit():
+                num = int(snapshot_id[1:])
+                max_num = max(max_num, num)
+        
+        return f"s{max_num + 1}"
+        
+    except Exception:
+        # If we can't parse, default to s1
+        return "s1"
+
+
+def _get_current_snapshot_id(sync_messages_path: Path) -> str | None:
+    """
+    Get the current (latest) snapshot ID from sync-messages.json.
+    
+    Args:
+        sync_messages_path: Path to sync-messages.json file
+        
+    Returns:
+        Current snapshot ID or None if no snapshots exist
+    """
+    if not sync_messages_path.exists():
+        return None
+    
+    try:
+        with open(sync_messages_path, 'rb') as f:
+            sync_messages = orjson.loads(f.read())
+        
+        snapshots = sync_messages.get("snapshots", {})
+        if not snapshots:
+            return None
+        
+        # Find highest snapshot number
+        max_num = 0
+        current_id = None
+        for snapshot_id in snapshots.keys():
+            if snapshot_id.startswith('s') and snapshot_id[1:].isdigit():
+                num = int(snapshot_id[1:])
+                if num > max_num:
+                    max_num = num
+                    current_id = snapshot_id
+        
+        return current_id
+        
+    except Exception:
+        return None
 
 
 def create_default_snapshot_info(snapshot_id: str, user_id: str, message: str = "Initial snapshot") -> SnapshotInfo:
@@ -579,33 +653,180 @@ def _execute_sync_operations(config: Config, console: 'Console') -> None:
     logger.debug("Sync operations completed")
 
 
+def _archive_previous_snapshots(archive_dir: Path, snapshot_id: str, prev_manifest: Manifest | None = None) -> None:
+    """
+    Archive previous snapshot manifest with LZ4 compression.
+    
+    Args:
+        archive_dir: Path to .dsg/archive directory
+        snapshot_id: Current snapshot ID being created
+        prev_manifest: Previous manifest to archive (if any)
+    """
+    logger = loguru.logger
+    
+    if prev_manifest is None:
+        logger.debug(f"No previous manifest to archive for snapshot {snapshot_id}")
+        return
+    
+    try:
+        # Generate JSON for the previous manifest
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as temp_file:
+            prev_manifest.to_json(Path(temp_file.name), include_metadata=True)
+            temp_file.seek(0)
+            
+            # Read back as bytes for compression
+            with open(temp_file.name, 'rb') as f:
+                json_data = f.read()
+        
+        # Compress with LZ4
+        compressed_data = lz4.frame.compress(json_data)
+        
+        # Write to archive
+        prev_snapshot_id = prev_manifest.metadata.snapshot_id if prev_manifest.metadata else "unknown"
+        archive_path = archive_dir / f"{prev_snapshot_id}-sync.json.lz4"
+        
+        with open(archive_path, 'wb') as f:
+            f.write(compressed_data)
+        
+        logger.debug(f"Archived previous snapshot {prev_snapshot_id} to {archive_path}")
+        
+        # Clean up temp file
+        os.unlink(temp_file.name)
+        
+    except Exception as e:
+        logger.warning(f"Failed to archive previous snapshot: {e}")
+
+
+def _build_sync_messages_file(manifest: Manifest, dsg_dir: Path, snapshot_id: str) -> None:
+    """
+    Update sync-messages.json with new snapshot metadata.
+    
+    Args:
+        manifest: Current manifest with metadata
+        dsg_dir: Path to .dsg directory
+        snapshot_id: Current snapshot ID
+    """
+    logger = loguru.logger
+    sync_messages_path = dsg_dir / "sync-messages.json"
+    
+    if not manifest.metadata:
+        raise ValueError("Manifest must have metadata to update sync-messages.json")
+    
+    # Load existing sync messages or create new structure
+    sync_messages = {
+        "metadata_version": "0.1.0",
+        "snapshots": {}
+    }
+    
+    if sync_messages_path.exists():
+        try:
+            with open(sync_messages_path, 'rb') as f:
+                existing_data = orjson.loads(f.read())
+            
+            # Handle legacy format with "messages" array vs new format with "snapshots" dict
+            if "snapshots" in existing_data:
+                sync_messages = existing_data
+            else:
+                # Legacy format - convert to new format but preserve existing data
+                logger.debug("Converting legacy sync-messages.json format to new snapshot format")
+                sync_messages = {
+                    "metadata_version": "0.1.0",
+                    "snapshots": {},
+                    "legacy_messages": existing_data.get("messages", [])  # Preserve old messages
+                }
+                
+        except Exception as e:
+            logger.warning(f"Could not load existing sync-messages.json: {e}")
+    
+    # Ensure snapshots key exists
+    if "snapshots" not in sync_messages:
+        sync_messages["snapshots"] = {}
+    
+    # Add current snapshot metadata
+    current_metadata = manifest.metadata.model_dump()
+    sync_messages["snapshots"][snapshot_id] = current_metadata
+    
+    # Write updated sync-messages.json
+    sync_messages_json = orjson.dumps(sync_messages, option=orjson.OPT_INDENT_2)
+    with open(sync_messages_path, 'wb') as f:
+        f.write(sync_messages_json)
+    
+    logger.debug(f"Updated sync-messages.json with snapshot {snapshot_id}")
+
+
 def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
     """
-    Update remote and cache manifests after file transfer operations.
+    Complete metadata management after sync operations using migration architecture patterns.
     
-    This is critical for collaborative workflows - after uploading files to remote,
-    we must update the remote manifest to reflect the new file hashes. Otherwise,
-    subsequent syncs will see identical hashes and think everything is synchronized.
+    This implements the production-proven pattern from v0.1.0 migration:
+    1. Generate new manifest with updated snapshot metadata
+    2. Archive previous snapshot (if any) with LZ4 compression
+    3. Update sync-messages.json with snapshot chain
+    4. Update remote and cache manifests atomically
     
     Args:
         config: DSG configuration
         console: Rich console for output
     """
     logger = loguru.logger
+    dsg_dir = config.project_root / ".dsg"
+    sync_messages_path = dsg_dir / "sync-messages.json"
     
-    # Step 1: Regenerate local manifest to reflect current state after transfers
-    logger.debug("Regenerating local manifest after file transfers...")
+    # Step 1: Load current cache manifest (previous state)
+    cache_path = dsg_dir / "last-sync.json"
+    prev_manifest = None
+    if cache_path.exists():
+        try:
+            prev_manifest = Manifest.from_json(cache_path)
+            logger.debug(f"Loaded previous manifest with {len(prev_manifest.entries)} entries")
+        except Exception as e:
+            logger.warning(f"Could not load previous manifest: {e}")
+    
+    # Step 2: Generate new manifest with updated snapshot metadata
+    logger.debug("Regenerating manifest after file transfers...")
     scan_result = scan_directory(config, compute_hashes=True, include_dsg_files=False)
     updated_manifest = scan_result.manifest
-    logger.debug(f"Updated manifest has {len(updated_manifest.entries)} entries")
     
-    # Step 2: Update remote manifest via backend
+    # Determine snapshot IDs
+    current_snapshot_id = _get_current_snapshot_id(sync_messages_path)
+    next_snapshot_id = _get_next_snapshot_id(sync_messages_path)
+    
+    # Generate metadata for the new snapshot
+    if not updated_manifest.metadata:
+        logger.debug("Generating new manifest metadata")
+        updated_manifest.generate_metadata(next_snapshot_id, config.user.user_id)
+    
+    # Set snapshot chain
+    updated_manifest.metadata.snapshot_id = next_snapshot_id
+    updated_manifest.metadata.snapshot_previous = current_snapshot_id
+    updated_manifest.metadata.snapshot_message = "Sync operation"
+    updated_manifest.metadata.snapshot_notes = "sync"
+    
+    # Compute snapshot hash (includes message and previous hash)
+    prev_snapshot_hash = prev_manifest.metadata.snapshot_hash if prev_manifest and prev_manifest.metadata else None
+    snapshot_hash = updated_manifest.compute_snapshot_hash(
+        "Sync operation",
+        prev_snapshot_hash
+    )
+    updated_manifest.metadata.snapshot_hash = snapshot_hash
+    
+    logger.debug(f"New snapshot: {next_snapshot_id} (hash: {snapshot_hash})")
+    
+    # Step 3: Archive previous snapshot with LZ4 compression
+    if prev_manifest:
+        archive_dir = dsg_dir / "archive"
+        archive_dir.mkdir(exist_ok=True)
+        _archive_previous_snapshots(archive_dir, next_snapshot_id, prev_manifest)
+    
+    # Step 4: Update sync-messages.json with new snapshot
+    _build_sync_messages_file(updated_manifest, dsg_dir, next_snapshot_id)
+    
+    # Step 5: Update remote manifest via backend
     try:
         logger.debug("Updating remote manifest...")
         backend = create_backend(config)
         
         # Convert manifest to JSON bytes for backend.write_file()
-        import tempfile
         with tempfile.NamedTemporaryFile(mode='w+b', suffix='.json') as temp_file:
             # Write to temp file first
             updated_manifest.to_json(Path(temp_file.name), include_metadata=True)
@@ -623,16 +844,17 @@ def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
         console.print(f"[yellow]⚠[/yellow] Warning: Failed to update remote manifest: {e}")
         # Don't fail the sync - the files were transferred successfully
     
-    # Step 3: Update local cache manifest
+    # Step 6: Update local cache manifest
     try:
         logger.debug("Updating local cache manifest...")
-        cache_path = config.project_root / ".dsg" / "last-sync.json"
         updated_manifest.to_json(cache_path, include_metadata=True)
         logger.debug("Local cache manifest updated successfully")
         
     except Exception as e:
         logger.error(f"Failed to update cache manifest: {e}")
         console.print(f"[yellow]⚠[/yellow] Warning: Failed to update cache manifest: {e}")
+    
+    logger.info(f"Complete metadata management finished for snapshot {next_snapshot_id}")
 
 
 def sync_repository(
