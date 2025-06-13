@@ -60,3 +60,14 @@ class FileOperations(Protocol):
             Creates parent directories as needed
         """
         ...
+        
+    def delete_file(self, rel_path: str) -> None:
+        """Delete a file from the backend.
+        
+        Args:
+            rel_path: Relative path from repository root
+            
+        Note:
+            Should not raise error if file doesn't exist
+        """
+        ...

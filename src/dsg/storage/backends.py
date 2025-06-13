@@ -245,6 +245,12 @@ class LocalhostBackend(Backend):
         """Check if a file exists in the local filesystem."""
         return (self.full_path / rel_path).is_file()
 
+    def delete_file(self, rel_path: str) -> None:
+        """Delete a file from the local filesystem."""
+        full_path = self.full_path / rel_path
+        if full_path.exists() or full_path.is_symlink():
+            full_path.unlink()
+
     def copy_file(self, source_path: Path, rel_dest_path: str) -> None:
         """Copy a file from local filesystem to the backend."""
         dest_path = self.full_path / rel_dest_path

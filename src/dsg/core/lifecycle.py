@@ -443,8 +443,10 @@ def _check_sync_conflicts(config: Config) -> list[str]:
     status_result = get_sync_status(config, include_remote=True, verbose=True)
     
     conflict_states = [
-        SyncState.sLCR__all_ne,  # All three copies differ
-        SyncState.sLxCR__L_ne_R  # Cache missing; local and remote differ
+        SyncState.sLCR__all_ne,   # All three copies differ
+        SyncState.sLxCR__L_ne_R,  # Cache missing; local and remote differ
+        SyncState.sxLCR__C_ne_R,  # Local missing; remote and cache differ (ambiguous deletion vs download)
+        SyncState.sLCxR__L_ne_C   # Remote missing; local and cache differ (ambiguous deletion vs upload)
     ]
     
     conflicts = []
@@ -481,18 +483,31 @@ def _display_conflicts_and_exit(console: 'Console', conflicts: list[str]) -> Non
     raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
 
 
-def _determine_sync_operation_type(local: Manifest, cache: Manifest, remote: Manifest) -> SyncOperationType:
+def _determine_sync_operation_type(local: Manifest, cache: Manifest, remote: Manifest, sync_states: dict) -> SyncOperationType:
     """
-    Determine the type of sync operation needed based on manifest hashes.
+    Determine the type of sync operation needed based on manifest hashes and sync states.
     
     Args:
         local: Local manifest
         cache: Cache manifest  
         remote: Remote manifest
+        sync_states: Dict mapping file paths to their sync states
         
     Returns:
         SyncOperationType indicating the optimal sync strategy
     """
+    # Check if any deletion or cache-only operations are needed
+    deletion_states = {
+        SyncState.sxLCR__C_eq_R,     # Delete from remote
+        SyncState.sLCxR__L_eq_C,     # Delete local
+        SyncState.sLCR__L_eq_R_ne_C, # Cache update
+        SyncState.sLxCR__L_eq_R      # Cache update
+    }
+    
+    for state in sync_states.values():
+        if state in deletion_states:
+            return SyncOperationType.MIXED  # Need file-by-file for deletions/cache updates
+    
     # Compare manifest entry hashes to determine sync type
     local_hash = local.metadata.entries_hash if local.metadata else ""
     cache_hash = cache.metadata.entries_hash if cache.metadata else ""
@@ -570,17 +585,26 @@ def _execute_file_by_file_sync(config: Config, sync_states: dict[str, SyncState]
     
     upload_files = []
     download_files = []
+    delete_remote_files = []
+    delete_local_files = []
+    cache_update_files = []
     
     # Categorize operations based on sync states
     for file_path, sync_state in sync_states.items():
-        if sync_state in [SyncState.sLxCxR__only_L, SyncState.sLCR__C_eq_R_ne_L, SyncState.sLCxR__L_eq_C]:
+        if sync_state in [SyncState.sLxCxR__only_L, SyncState.sLCR__C_eq_R_ne_L]:
             upload_files.append(file_path)
         elif sync_state in [SyncState.sxLCxR__only_R, SyncState.sLCR__L_eq_C_ne_R]:
             download_files.append(file_path)
-        # Skip files that don't need action (e.g., sLCR__all_eq)
+        elif sync_state == SyncState.sxLCR__C_eq_R:
+            delete_remote_files.append(file_path)  # Propagate local deletion
+        elif sync_state == SyncState.sLCxR__L_eq_C:
+            delete_local_files.append(file_path)   # Propagate remote deletion
+        elif sync_state in [SyncState.sLCR__L_eq_R_ne_C, SyncState.sLxCR__L_eq_R]:
+            cache_update_files.append(file_path)   # Update cache to match L=R
+        # Skip: sLCR__all_eq (no-op), sxLxCxR__none (no-op), sxLCRx__only_C (cache cleanup handled elsewhere)
     
-    total_ops = len(upload_files) + len(download_files)
-    console.print(f"[blue]Syncing {total_ops} files ({len(upload_files)} uploads, {len(download_files)} downloads)...[/blue]")
+    total_ops = len(upload_files) + len(download_files) + len(delete_remote_files) + len(delete_local_files) + len(cache_update_files)
+    console.print(f"[blue]Syncing {total_ops} files ({len(upload_files)} uploads, {len(download_files)} downloads, {len(delete_remote_files)} remote deletions, {len(delete_local_files)} local deletions, {len(cache_update_files)} cache updates)...[/blue]")
     
     # Execute uploads
     for file_path in upload_files:
@@ -595,6 +619,21 @@ def _execute_file_by_file_sync(config: Config, sync_states: dict[str, SyncState]
         content = backend.read_file(file_path)
         local_path.parent.mkdir(parents=True, exist_ok=True)
         local_path.write_bytes(content)
+    
+    # Execute remote deletions (propagate local deletions)
+    for file_path in delete_remote_files:
+        logger.debug(f"Deleting from remote: {file_path}")
+        backend.delete_file(file_path)
+    
+    # Execute local deletions (propagate remote deletions)
+    for file_path in delete_local_files:
+        local_path = config.project_root / file_path
+        logger.debug(f"Deleting locally: {file_path}")
+        if local_path.exists():
+            local_path.unlink()
+    
+    # Cache updates are handled during manifest update phase
+    # (they don't require file operations, just manifest regeneration)
     
     console.print("[green]✓[/green] File-by-file sync completed")
 
@@ -617,7 +656,8 @@ def _execute_sync_operations(config: Config, console: 'Console') -> None:
     operation_type = _determine_sync_operation_type(
         sync_status.local_manifest, 
         sync_status.cache_manifest, 
-        sync_status.remote_manifest
+        sync_status.remote_manifest,
+        sync_status.sync_states
     )
     
     console.print("[dim]Analyzing sync requirements...[/dim]")
