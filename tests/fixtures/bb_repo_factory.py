@@ -913,32 +913,38 @@ def create_mixed_state(setup: dict) -> dict[str, str]:
     """Create mixed sync state with multiple files in different states."""
     files_created = {}
     
+    # File 3: Create shared file first and establish proper cache state
+    # This creates sLCR__C_eq_R_ne_L state: local ≠ cache = remote
+    shared_file = "task1/import/hand/shared_file.txt"
+    original_content = "Original shared content"
+    
+    # Step 1: Create file with original content locally and remotely
+    create_local_file(setup["local_path"], shared_file, original_content)
+    create_remote_file(setup["remote_path"], shared_file, original_content, setup["remote_config"])
+    
+    # Step 2: Manually create cache entry to match current state
+    regenerate_cache_from_current_local(setup["local_config"], setup["last_sync_path"])
+    regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+    
+    # Step 3: Now modify only local (creates L≠C=R state)
+    modified_content = "Modified local content"
+    modify_local_file(setup["local_path"], shared_file, modified_content)
+    files_created[shared_file] = "upload"
+    
     # File 1: Only local (will be uploaded) - use input data_dir
+    # Create AFTER establishing cache so it's not in cache
     local_only_content = "Local only content"
     local_only_file = "task1/import/input/local_only.txt"
     create_local_file(setup["local_path"], local_only_file, local_only_content)
     files_created[local_only_file] = "upload"
     
     # File 2: Only remote (will be downloaded) - use output data_dir
+    # Create AFTER establishing cache so it's not in cache
     remote_only_content = "Remote only content"
     remote_only_file = "task1/analysis/output/remote_only.txt"
     create_remote_file(setup["remote_path"], remote_only_file, remote_only_content, setup["remote_config"])
     regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
     files_created[remote_only_file] = "download"
-    
-    # File 3: Exists in all but local changed (will be uploaded) - use hand data_dir
-    # First create in all locations
-    shared_file = "task1/import/hand/shared_file.txt"
-    original_content = "Original shared content"
-    create_local_file(setup["local_path"], shared_file, original_content)
-    create_remote_file(setup["remote_path"], shared_file, original_content, setup["remote_config"])
-    regenerate_cache_from_current_local(setup["local_config"], setup["last_sync_path"])
-    regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
-    
-    # Then modify only local
-    modified_content = "Modified local content"
-    modify_local_file(setup["local_path"], shared_file, modified_content)
-    files_created[shared_file] = "upload"
     
     return files_created
 
@@ -979,5 +985,159 @@ def create_local_file_with_illegal_name(
         # Return a placeholder path for testing error handling
         print(f"Warning: Could not create file with illegal name '{illegal_name}': {e}")
         return repo_path / "UNCREATABLE_ILLEGAL_FILE"
+
+# ---- Edge Case Content Helper Functions ----
+
+def create_edge_case_content_files(repo_path: Path) -> dict[str, str]:
+    """Create files with various content edge cases for comprehensive testing."""
+    files_created = {}
+    
+    edge_case_dir = repo_path / "task1" / "import" / "input" / "edge_cases"
+    edge_case_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Text encoding variations
+    encoding_files = {
+        "utf8_with_bom.txt": b'\xef\xbb\xbf' + "Hello 世界 café".encode('utf-8'),
+        "utf16_le.txt": "Hello 世界 café".encode('utf-16le'),
+        "latin1_subset.txt": "Hello café résumé".encode('latin-1'),
+    }
+    
+    for filename, content in encoding_files.items():
+        file_path = edge_case_dir / filename
+        file_path.write_bytes(content)
+        files_created[str(file_path.relative_to(repo_path))] = "encoding test"
+    
+    # Line ending variations
+    line_ending_files = {
+        "crlf_windows.txt": "Line 1\r\nLine 2\r\nLine 3\r\n",
+        "lf_unix.txt": "Line 1\nLine 2\nLine 3\n",
+        "cr_classic_mac.txt": "Line 1\rLine 2\rLine 3\r",
+        "mixed_endings.txt": "Line 1\nLine 2\r\nLine 3\rLine 4\n",
+        "no_final_newline.txt": "Line 1\nLine 2\nLine 3",
+    }
+    
+    for filename, content in line_ending_files.items():
+        file_path = edge_case_dir / filename
+        file_path.write_text(content, encoding='utf-8')
+        files_created[str(file_path.relative_to(repo_path))] = "line endings"
+    
+    # Unicode normalization edge cases
+    unicode_files = {
+        "nfc_normalized.txt": "café",  # NFC (é as single character)
+        "nfd_decomposed.txt": "cafe\u0301",  # NFD (e + combining acute)
+        "mixed_normalization.txt": "café vs cafe\u0301",  # Mixed NFC and NFD
+        "bidirectional.txt": "Hello \u202Eworld\u202C normal text",  # RTL override
+        "zero_width.txt": "Hello\u200B\u200Cworld",  # Zero-width space and non-joiner
+        "emoji_complex.txt": "Hello 👋🏽 world 🌍",  # Emoji with skin tone modifiers
+    }
+    
+    for filename, content in unicode_files.items():
+        file_path = edge_case_dir / filename
+        file_path.write_text(content, encoding='utf-8')
+        files_created[str(file_path.relative_to(repo_path))] = "unicode edge case"
+    
+    # Size and structure edge cases
+    size_files = {
+        "empty_file.txt": "",
+        "single_char.txt": "x",
+        "whitespace_only.txt": "   \t\n  \r\n  ",
+        "very_long_line.txt": "x" * 5000 + "\nshort line",
+        "many_short_lines.txt": "\n".join(f"Line {i:04d}" for i in range(1000)),
+        "binary_like_text.txt": "Hello\x00World\x01\x02\x03",
+    }
+    
+    for filename, content in size_files.items():
+        file_path = edge_case_dir / filename
+        if filename == "binary_like_text.txt":
+            # Handle binary-like content that contains null bytes
+            file_path.write_bytes(content.encode('latin-1'))
+        else:
+            file_path.write_text(content, encoding='utf-8')
+        files_created[str(file_path.relative_to(repo_path))] = "size/structure edge case"
+    
+    return files_created
+
+
+def create_problematic_symlinks(repo_path: Path) -> dict[str, str]:
+    """Create various symlink scenarios that might cause issues."""
+    symlinks_created = {}
+    
+    # Ensure source and target directories exist
+    source_dir = repo_path / "task1" / "import" / "input"
+    target_dir = repo_path / "task1" / "import" / "output"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create some target files
+    (source_dir / "target_file.txt").write_text("I am a symlink target")
+    (source_dir / "unicode_tärget.txt").write_text("Unicode filename target")
+    
+    symlink_scenarios = [
+        ("relative_symlink.txt", "../input/target_file.txt", "relative symlink"),
+        ("broken_symlink.txt", "nonexistent_file.txt", "broken symlink"),
+        ("unicode_target_symlink.txt", "../input/unicode_tärget.txt", "unicode target"),
+        ("self_referential.txt", "self_referential.txt", "self-referential"),
+    ]
+    
+    for symlink_name, target, description in symlink_scenarios:
+        try:
+            symlink_path = target_dir / symlink_name
+            if symlink_path.exists() or symlink_path.is_symlink():
+                symlink_path.unlink()
+            symlink_path.symlink_to(target)
+            symlinks_created[str(symlink_path.relative_to(repo_path))] = description
+        except (OSError, ValueError) as e:
+            # Some symlinks might not be creatable on certain filesystems
+            print(f"Warning: Could not create symlink '{symlink_name}': {e}")
+    
+    return symlinks_created
+
+
+def verify_file_content_exactly(file_path: Path, expected_content: bytes) -> bool:
+    """Verify file content matches exactly at byte level."""
+    if not file_path.exists():
+        return False
+    actual_content = file_path.read_bytes()
+    return actual_content == expected_content
+
+
+def verify_text_file_content(file_path: Path, expected_text: str, encoding: str = 'utf-8') -> bool:
+    """Verify text file content matches exactly with specific encoding."""
+    if not file_path.exists():
+        return False
+    try:
+        actual_text = file_path.read_text(encoding=encoding)
+        return actual_text == expected_text
+    except (UnicodeDecodeError, OSError):
+        return False
+
+
+def create_hash_collision_test_files(repo_path: Path) -> dict[str, str]:
+    """Create files that might expose hash computation edge cases."""
+    files_created = {}
+    
+    hash_test_dir = repo_path / "task1" / "import" / "input" / "hash_tests"
+    hash_test_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Files that might cause hash issues
+    hash_test_files = {
+        "null_bytes.dat": b"Hello\x00\x00\x00World",
+        "high_entropy.dat": bytes(range(256)),  # All possible byte values
+        "repeated_pattern.txt": "ABCD" * 1000,  # Repeated pattern
+        "almost_empty.txt": "\n",  # Just a newline
+        "trailing_spaces.txt": "Line with trailing spaces   \n",
+        "unicode_normalization.txt": "café\u0301",  # Might normalize differently
+    }
+    
+    for filename, content in hash_test_files.items():
+        file_path = hash_test_dir / filename
+        if isinstance(content, bytes):
+            file_path.write_bytes(content)
+        else:
+            file_path.write_text(content, encoding='utf-8')
+        files_created[str(file_path.relative_to(repo_path))] = "hash test"
+    
+    return files_created
+
 
 # done.

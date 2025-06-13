@@ -793,9 +793,9 @@ class TestSyncEdgeCases:
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result2["success"] == True
         
-        # Remote should still have the file (file was deleted locally, not from remote)
-        assert remote_file_exists(setup, vanishing_file)
-        assert remote_file_exists(setup, permanent_file)
+        # DSG propagates local deletions to remote (sync state sxLCR__C_eq_R -> delete from remote)
+        assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted from remote"
+        assert remote_file_exists(setup, permanent_file), "Permanent file should still exist"
         
         # Phase 3: File reappears with different content (simulating recovery, user restoration, etc.)
         reappeared_content = "id,magic_data,timestamp,status\n1,reappeared,2024-06-13T11:00:00,restored\n3,new_after_recovery,2024-06-13T11:01:00,fresh\n"
@@ -812,18 +812,23 @@ class TestSyncEdgeCases:
         assert "new_after_recovery" in remote_vanishing_content
         assert "restored" in remote_vanishing_content
         
-        # Phase 4: Multiple files vanish simultaneously (simulating directory corruption)
-        local_vanishing_path.unlink()
+        # Phase 4: Multiple files vanish simultaneously (simulating directory corruption)  
+        local_vanishing_path.unlink()  # Delete the reappeared file again
         permanent_path = setup["local_path"] / permanent_file
-        permanent_path.unlink()
+        permanent_path.unlink()  # Delete permanent file
         
         # Create new file to ensure sync still works
         survivor_file = "task1/import/input/post_disaster.txt"
         create_local_file(setup["local_path"], survivor_file, "Survived the vanishing act\n")
         
-        # Sync after mass vanishing
+        # Sync after mass vanishing - should propagate all deletions
         result4 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result4["success"] == True
+        
+        # All vanished files should be deleted from remote, survivor should be uploaded
+        assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted"
+        assert not remote_file_exists(setup, permanent_file), "Permanent file should be deleted" 
+        assert remote_file_exists(setup, survivor_file), "Survivor file should be uploaded"
         
         # New file should sync successfully despite other files vanishing
         assert remote_file_exists(setup, survivor_file)
