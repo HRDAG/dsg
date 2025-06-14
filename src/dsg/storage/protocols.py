@@ -36,3 +36,47 @@ class SnapshotOperations(ABC):
             force: Whether to force initialization, overwriting existing data
         """
         raise NotImplementedError("init_repository() not implemented")
+
+    def supports_atomic_sync(self) -> bool:
+        """Check if this filesystem supports atomic sync operations.
+        
+        Returns:
+            True if atomic sync is supported, False otherwise
+        """
+        return False
+
+    def begin_atomic_sync(self, snapshot_id: str) -> str:
+        """Begin atomic sync operation.
+        
+        Args:
+            snapshot_id: Unique identifier for this sync operation
+            
+        Returns:
+            Working path/location for sync operations
+            
+        Raises:
+            NotImplementedError: If atomic sync is not supported
+        """
+        raise NotImplementedError("Atomic sync not supported by this filesystem")
+
+    def commit_atomic_sync(self, snapshot_id: str) -> None:
+        """Commit atomic sync operation.
+        
+        Args:
+            snapshot_id: Unique identifier for this sync operation
+            
+        Raises:
+            NotImplementedError: If atomic sync is not supported
+        """
+        raise NotImplementedError("Atomic sync not supported by this filesystem")
+
+    def rollback_atomic_sync(self, snapshot_id: str) -> None:
+        """Rollback atomic sync operation.
+        
+        Args:
+            snapshot_id: Unique identifier for this sync operation
+            
+        Raises:
+            NotImplementedError: If atomic sync is not supported
+        """
+        raise NotImplementedError("Atomic sync not supported by this filesystem")

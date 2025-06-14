@@ -642,12 +642,94 @@ def _execute_sync_operations(config: Config, console: 'Console') -> None:
     """
     Perform the actual sync operations using manifest-level analysis.
     
+    Uses atomic sync when available (ZFS backends) for guaranteed consistency,
+    otherwise falls back to incremental sync operations.
+    
     Args:
         config: DSG configuration
         console: Rich console for output
     """
     logger = loguru.logger
     logger.debug("No conflicts found - proceeding with sync...")
+    
+    # Check if backend supports atomic sync
+    backend = create_backend(config)
+    if backend.supports_atomic_sync():
+        logger.debug("Backend supports atomic sync - using atomic operations")
+        _execute_atomic_sync_operations(config, console, backend)
+    else:
+        logger.debug("Backend does not support atomic sync - using incremental operations")
+        _execute_incremental_sync_operations(config, console)
+
+
+def _execute_atomic_sync_operations(config: Config, console: 'Console', backend) -> None:
+    """
+    Execute sync operations atomically using ZFS clone/promote strategy.
+    
+    Either the entire sync succeeds or it's completely rolled back.
+    """
+    import uuid
+    logger = loguru.logger
+    
+    # Generate unique snapshot ID for this sync operation
+    snapshot_id = f"sync-{uuid.uuid4().hex[:8]}"
+    atomic_working_path = None
+    
+    try:
+        console.print("[dim]Preparing atomic sync operation...[/dim]")
+        
+        # Begin atomic sync - creates ZFS clone for work
+        atomic_working_path = backend.begin_atomic_sync(snapshot_id)
+        logger.debug(f"Atomic sync working path: {atomic_working_path}")
+        
+        if atomic_working_path:
+            # Temporarily modify config to point to atomic working directory
+            original_project_root = config.project_root
+            config.project_root = Path(atomic_working_path)
+            
+            console.print("[dim]Performing sync operations on atomic clone...[/dim]")
+            
+            # Execute normal sync operations on the clone
+            _execute_incremental_sync_operations(config, console)
+            
+            # Restore original config
+            config.project_root = original_project_root
+            
+            console.print("[dim]Committing atomic sync...[/dim]")
+            
+            # Commit atomic sync - promotes clone to become new repository state
+            backend.commit_atomic_sync(snapshot_id)
+            
+            console.print("[green]✓[/green] Atomic sync completed successfully")
+            logger.debug(f"Atomic sync {snapshot_id} committed successfully")
+        
+    except Exception as e:
+        logger.error(f"Atomic sync {snapshot_id} failed: {e}")
+        console.print(f"[red]✗[/red] Atomic sync failed: {e}")
+        
+        # Rollback atomic sync on any failure
+        try:
+            if atomic_working_path:
+                backend.rollback_atomic_sync(snapshot_id)
+                console.print("[yellow]⚠[/yellow] Atomic sync rolled back - repository state unchanged")
+                logger.debug(f"Atomic sync {snapshot_id} rolled back successfully")
+        except Exception as rollback_error:
+            logger.error(f"Failed to rollback atomic sync {snapshot_id}: {rollback_error}")
+            console.print(f"[red]✗[/red] Failed to rollback atomic sync: {rollback_error}")
+        
+        # Re-raise original error
+        raise
+
+
+def _execute_incremental_sync_operations(config: Config, console: 'Console') -> None:
+    """
+    Perform incremental sync operations (original implementation).
+    
+    Args:
+        config: DSG configuration  
+        console: Rich console for output
+    """
+    logger = loguru.logger
     
     # Get sync status to determine what operations are needed
     sync_status = get_sync_status(config, include_remote=True, verbose=True)

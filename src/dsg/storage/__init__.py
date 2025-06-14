@@ -1,50 +1,65 @@
 # Author: PB & Claude
-# Maintainer: PB  
-# Original date: 2025.01.08
+# Maintainer: PB
+# Original date: 2025-06-13
 # License: (c) HRDAG, 2025, GPL-2 or newer
 #
 # ------
 # src/dsg/storage/__init__.py
 
-"""Storage package for DSG transport and storage operations.
+"""
+Storage layer for DSG - handles all data I/O operations.
 
-This package provides:
-- Transport mechanisms (SSH, localhost)  
-- Snapshot operations (ZFS, XFS)
-- Backend implementations and factory
+This module provides abstractions for:
+- Client filesystem operations (staging, atomic updates)
+- Remote filesystem operations (ZFS, XFS backends)
+- Transport operations (SSH, local data movement)
 """
 
-# Import all components for backward compatibility
-from .types import RepoType
-from .utils import create_temp_file_list
-from .protocols import SnapshotOperations
-from .transports import Transport, LocalhostTransport, SSHTransport
-from .snapshots import XFSOperations, ZFSOperations
-from .backends import Backend, LocalhostBackend, SSHBackend
-from .factory import create_backend, can_access_backend
+# New transaction-based storage layer
+from .client import ClientFilesystem
+from .remote import ZFSFilesystem, XFSFilesystem
+from .io_transports import LocalhostTransport, SSHTransport, create_transport
 
-# For backward compatibility with tests that patch dsg.backends.ce and dsg.backends.Manifest
-from dsg.system.execution import CommandExecutor as ce
-from dsg.data.manifest import Manifest
-from .factory import _is_effectively_localhost
-from dsg.system.host_utils import is_local_host
+# Legacy ZFS operations (used by remote.py)
+from .snapshots import ZFSOperations, XFSOperations
+
+# Legacy backend classes for backward compatibility
+try:
+    from .backends import Backend, LocalhostBackend, SSHBackend
+    from .factory import create_backend, can_access_backend
+    legacy_backends_available = True
+except ImportError:
+    legacy_backends_available = False
+    # Create compatibility stubs
+    class Backend:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("Legacy Backend class - use new transaction system")
+    
+    class LocalhostBackend(Backend):
+        pass
+    
+    class SSHBackend(Backend):
+        pass
+    
+    def create_backend(*args, **kwargs):
+        raise NotImplementedError("Use new transaction system instead")
+    
+    def can_access_backend(*args, **kwargs):
+        raise NotImplementedError("Use new transaction system instead")
 
 __all__ = [
-    "RepoType",
-    "create_temp_file_list", 
-    "Transport",
-    "SnapshotOperations",
-    "LocalhostTransport",
-    "SSHTransport", 
-    "XFSOperations",
-    "ZFSOperations",
-    "Backend",
-    "LocalhostBackend", 
-    "SSHBackend",
-    "create_backend",
-    "can_access_backend",
-    "ce",
-    "Manifest",
-    "_is_effectively_localhost",
-    "is_local_host",
+    'ClientFilesystem',
+    'ZFSFilesystem',
+    'XFSFilesystem', 
+    'LocalhostTransport',
+    'SSHTransport',
+    'create_transport',
+    'ZFSOperations',
+    'XFSOperations',
+    # Legacy compatibility
+    'Backend',
+    'LocalhostBackend', 
+    'SSHBackend',
+    'create_backend',
+    'can_access_backend',
 ]
