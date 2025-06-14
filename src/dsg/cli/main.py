@@ -157,13 +157,14 @@ def blame(
 @app.command(name="validate-config")
 def validate_config_command(
     check_backend: bool = typer.Option(True, "--backend/--no-backend", help="Test backend connectivity"),
+    fix_legacy: bool = typer.Option(False, "--fix-legacy", help="Convert legacy config format to modern format"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed validation information"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress output"),
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ) -> Any:
     """[bold red]Validation[/bold red]: Validate repository configuration."""
     decorated_handler = info_command_pattern(
-        lambda console, config, verbose, quiet: info_commands.validate_config(console, config, check_backend=check_backend, verbose=verbose, quiet=quiet)
+        lambda console, config, verbose, quiet: info_commands.validate_config(console, config, check_backend=check_backend, fix_legacy=fix_legacy, verbose=verbose, quiet=quiet)
     )
     return decorated_handler(verbose=verbose, quiet=quiet, to_json=to_json)
 

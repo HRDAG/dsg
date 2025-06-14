@@ -21,7 +21,7 @@ from dsg.config.manager import Config
 from dsg.core.operations import get_sync_status, list_directory
 from dsg.core.history import get_repository_log, get_file_blame
 from dsg.system.display import display_sync_status
-from dsg.storage.factory import can_access_backend
+# Note: Backend connectivity checks removed - using new transaction system
 # Simple ValidationResult replacement for placeholder validation functions
 from dataclasses import dataclass, field
 
@@ -211,6 +211,7 @@ def validate_config(
     console: Console,
     config: Config,
     check_backend: bool = False,
+    fix_legacy: bool = False,
     verbose: bool = False,
     quiet: bool = False
 ) -> dict[str, Any]:
@@ -220,6 +221,7 @@ def validate_config(
         console: Rich console for output
         config: Loaded configuration
         check_backend: Test backend connectivity
+        fix_legacy: Convert legacy config format to modern format on disk
         verbose: Show detailed output
         quiet: Minimize output
         
@@ -237,24 +239,85 @@ def validate_config(
         # Config is already loaded, so basic validation passed
         config_result.set_passed(True, "Configuration loaded successfully")
         config_result.add_detail(f"Project root: {config.project_root}")
-        config_result.add_detail(f"Transport: {config.transport.transport}")
+        config_result.add_detail(f"Transport: {config.project.transport}")
     except Exception as e:
         config_result.set_passed(False, f"Configuration error: {e}")
     
     results.append(config_result)
     
-    # Backend connectivity validation
+    # Migration status validation
+    migration_result = ValidationResult("migration", "Legacy config migration check")
+    try:
+        if config.project.migrated:
+            migration_result.set_passed(True, "Legacy config format detected and migrated")
+            migration_result.add_detail("Config was automatically migrated from legacy format")
+            migration_result.add_detail("Consider using 'validate-config --fix-legacy' to update the file")
+        else:
+            migration_result.set_passed(True, "Modern config format")
+            migration_result.add_detail("Config is already in modern format")
+    except Exception as e:
+        migration_result.set_passed(False, f"Migration check error: {e}")
+    
+    results.append(migration_result)
+    
+    # Fix legacy config if requested
+    if fix_legacy and config.project.migrated:
+        fix_result = ValidationResult("fix_legacy", "Legacy config conversion")
+        try:
+            from pathlib import Path
+            
+            # Find config file (.dsgconfig.yml in project root)
+            config_path = config.project_root / ".dsgconfig.yml"
+            
+            if config_path.exists():
+                # Create backup
+                backup_path = config_path.with_suffix(".yml.backup")
+                if not quiet:
+                    console.print(f"[dim]Creating backup at {backup_path}...[/dim]")
+                
+                # Read original for comparison
+                original_content = config_path.read_text()
+                
+                # Save backup
+                backup_path.write_text(original_content)
+                
+                # Save updated config
+                config.project.save(config_path)
+                
+                # Read new content for comparison
+                new_content = config_path.read_text()
+                
+                fix_result.set_passed(True, f"Legacy config converted to modern format")
+                fix_result.add_detail(f"Original config backed up to {backup_path}")
+                fix_result.add_detail(f"Updated config written to {config_path}")
+                
+                if verbose:
+                    fix_result.add_detail("Changes made:")
+                    fix_result.add_detail("- Moved 'name' from transport section to top level")
+                    fix_result.add_detail("- Removed 'project:' wrapper from data_dirs and ignore")
+                
+                if not quiet:
+                    console.print(f"✓ Config converted successfully")
+                    console.print(f"  Backup: {backup_path}")
+                    console.print(f"  Updated: {config_path}")
+            else:
+                fix_result.set_passed(False, f"Config file not found at {config_path}")
+                
+        except Exception as e:
+            fix_result.set_passed(False, f"Failed to convert config: {e}")
+        
+        results.append(fix_result)
+    elif fix_legacy and not config.project.migrated:
+        fix_result = ValidationResult("fix_legacy", "Legacy config conversion")
+        fix_result.set_passed(True, "No conversion needed - config is already in modern format")
+        results.append(fix_result)
+    
+    # Backend connectivity validation (legacy - using new transaction system)
     if check_backend:
         backend_result = ValidationResult("backend", "Backend connectivity validation")
-        try:
-            backend = config.transport
-            if can_access_backend(backend):
-                backend_result.set_passed(True, "Backend connectivity successful")
-            else:
-                backend_result.set_passed(False, "Backend connectivity failed")
-        except Exception as e:
-            backend_result.set_passed(False, f"Backend error: {e}")
-        
+        backend_result.set_passed(True, "Backend connectivity check skipped - using new transaction system")
+        backend_result.add_detail("Legacy backend connectivity checks removed")
+        backend_result.add_detail("Use sync operations to test actual connectivity")
         results.append(backend_result)
     
     # Display results

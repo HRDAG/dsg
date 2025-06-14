@@ -158,7 +158,7 @@ class IgnoreSettings(BaseModel):
 
 # ---- Legacy Config Migration ----
 
-def migrate_legacy_config_data(data: dict) -> dict:
+def migrate_legacy_config_data(data: dict) -> tuple[dict, bool]:
     """Migrate legacy config format to new format.
     
     This function handles silent migration of legacy config formats:
@@ -170,13 +170,14 @@ def migrate_legacy_config_data(data: dict) -> dict:
         data: Raw config dictionary from YAML
         
     Returns:
-        Migrated config dictionary compatible with new format
+        Tuple of (migrated_config_dict, was_migrated_flag)
     """
     if not isinstance(data, dict):
-        return data
+        return data, False
     
     # Create a copy to avoid modifying the original
     migrated = data.copy()
+    was_migrated = False
     
     # 1. Migrate name from transport section to top level
     for transport in ["ssh", "rclone", "ipfs"]:
@@ -185,6 +186,7 @@ def migrate_legacy_config_data(data: dict) -> dict:
             if "name" in transport_config and "name" not in migrated:
                 # Copy name to top level (but preserve in transport section for compatibility)
                 migrated["name"] = transport_config["name"]
+                was_migrated = True
     
     # 2. Flatten project wrapper
     if "project" in migrated and isinstance(migrated["project"], dict):
@@ -192,12 +194,14 @@ def migrate_legacy_config_data(data: dict) -> dict:
         # Move data_dirs and ignore to top level
         if "data_dirs" in project_data:
             migrated["data_dirs"] = project_data["data_dirs"]
+            was_migrated = True
         if "ignore" in project_data:
             migrated["ignore"] = project_data["ignore"]
+            was_migrated = True
         # Remove project wrapper
         del migrated["project"]
     
-    return migrated
+    return migrated, was_migrated
 
 
 # ---- Main Project Config ----
@@ -215,6 +219,9 @@ class ProjectConfig(BaseModel):
     # Project settings (flattened, no more project: wrapper)
     data_dirs: set[str] = Field(default_factory=lambda: {"input", "output", "frozen"})
     ignore: IgnoreSettings = Field(default_factory=IgnoreSettings)
+    
+    # Migration tracking
+    migrated: bool = Field(default=False, description="True if config was migrated from legacy format")
 
 
     @model_validator(mode="after")
@@ -250,13 +257,73 @@ class ProjectConfig(BaseModel):
             data = yaml.safe_load(f)
 
         # Apply legacy config migration before validation
-        migrated_data = migrate_legacy_config_data(data)
+        migrated_data, was_migrated = migrate_legacy_config_data(data)
         
         try:
-            return cls.model_validate(migrated_data)
+            config = cls.model_validate(migrated_data)
+            # Set migration flag if migration occurred
+            config.migrated = was_migrated
+            return config
         except Exception as e:
             from dsg.system.exceptions import ConfigError
             raise ConfigError(str(e)) from e
+
+    def save(self, config_path: Path) -> None:
+        """Save project config to file in new format.
+        
+        Writes the current configuration to disk using the modern format
+        without legacy fields or project wrapper.
+        
+        Args:
+            config_path: Path to write the config file
+        """
+        # Build clean config dict without internal fields
+        config_dict = {}
+        
+        # Core fields
+        config_dict["name"] = self.name
+        config_dict["transport"] = self.transport
+        
+        # Transport config (exclude internal 'name' field for new format)
+        if self.ssh:
+            ssh_dict = self.ssh.model_dump(exclude={"name"}, mode="python")
+            # Convert Path objects to strings
+            if "path" in ssh_dict:
+                ssh_dict["path"] = str(ssh_dict["path"])
+            # Only include name in transport if it's different from top-level name
+            if self.ssh.name and self.ssh.name != self.name:
+                ssh_dict["name"] = self.ssh.name
+            config_dict["ssh"] = ssh_dict
+        elif self.rclone:
+            rclone_dict = self.rclone.model_dump(exclude={"name"}, mode="python")
+            if "path" in rclone_dict:
+                rclone_dict["path"] = str(rclone_dict["path"])
+            if self.rclone.name and self.rclone.name != self.name:
+                rclone_dict["name"] = self.rclone.name
+            config_dict["rclone"] = rclone_dict
+        elif self.ipfs:
+            ipfs_dict = self.ipfs.model_dump(exclude={"name"}, mode="python")
+            if self.ipfs.name and self.ipfs.name != self.name:
+                ipfs_dict["name"] = self.ipfs.name
+            config_dict["ipfs"] = ipfs_dict
+        
+        # Project settings (flattened, no project wrapper)
+        config_dict["data_dirs"] = sorted(self.data_dirs)  # Sort for consistent output
+        
+        # Handle ignore settings - convert sets to lists for YAML
+        ignore_dict = self.ignore.model_dump(mode="python")
+        # Convert sets to sorted lists for consistent YAML output
+        if "paths" in ignore_dict:
+            ignore_dict["paths"] = sorted(ignore_dict["paths"])
+        if "names" in ignore_dict:
+            ignore_dict["names"] = sorted(ignore_dict["names"])
+        if "suffixes" in ignore_dict:
+            ignore_dict["suffixes"] = sorted(ignore_dict["suffixes"])
+        config_dict["ignore"] = ignore_dict
+        
+        # Write to file with proper YAML formatting
+        with config_path.open("w", encoding="utf-8") as f:
+            yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
 
 
 # ---- User Config Models ----
