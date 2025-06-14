@@ -328,3 +328,33 @@ from tests.fixtures.bb_repo_factory import (
     bb_clone_integration_setup,
     bb_local_remote_setup
 )
+
+
+def pytest_runtest_teardown(item, nextitem):
+    """Clean up any directories with restrictive permissions after each test."""
+    import subprocess
+    import os
+    
+    # Find any pytest temp directories with permission issues and fix them
+    temp_dirs = [
+        "/tmp/pytest-of-pball",
+        "/tmp/pytest-current"
+    ]
+    
+    for temp_dir in temp_dirs:
+        if os.path.exists(temp_dir):
+            try:
+                # Recursively fix permissions on pytest temp directories
+                subprocess.run(
+                    ["find", temp_dir, "-type", "d", "-exec", "chmod", "755", "{}", "+"],
+                    capture_output=True,
+                    check=False
+                )
+                subprocess.run(
+                    ["find", temp_dir, "-type", "f", "-exec", "chmod", "644", "{}", "+"],
+                    capture_output=True,
+                    check=False
+                )
+            except Exception:
+                # Best effort cleanup - don't fail tests for cleanup issues
+                pass
