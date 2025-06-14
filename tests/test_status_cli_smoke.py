@@ -18,11 +18,9 @@ import shutil
 from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from dsg.cli import app
-from tests.fixtures.bb_repo_factory import bb_repo_structure
 
 
 @contextmanager

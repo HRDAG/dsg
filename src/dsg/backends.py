@@ -16,12 +16,11 @@ from dsg.storage.protocols import SnapshotOperations
 from dsg.storage.transports import Transport, LocalhostTransport, SSHTransport
 from dsg.storage.snapshots import XFSOperations, ZFSOperations
 from dsg.storage.backends import Backend, LocalhostBackend, SSHBackend
-from dsg.storage.factory import create_backend, can_access_backend, _is_effectively_localhost
+from dsg.storage.factory import create_backend, can_access_backend
 
 # For backward compatibility with tests that patch dsg.backends.ce and dsg.backends.Manifest
 from dsg.system.execution import CommandExecutor as ce
 from dsg.data.manifest import Manifest
-from dsg.system.host_utils import is_local_host
 
 # Maintain full backward compatibility by re-exporting everything
 __all__ = [

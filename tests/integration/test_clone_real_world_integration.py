@@ -19,14 +19,14 @@ import tempfile
 import shutil
 from pathlib import Path
 from collections import OrderedDict
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 import pytest
 
-from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.backends import LocalhostBackend, SSHBackend
 from dsg.backends import create_backend
-from dsg.manifest import Manifest, FileRef, _dt
+from dsg.data.manifest import Manifest, FileRef, _dt
 
 
 class TestCloneRealWorldIntegration:
@@ -103,9 +103,7 @@ class TestCloneRealWorldIntegration:
                 name=source_repo_name,
                 transport='ssh',
                 ssh=ssh_config,
-                project=ProjectSettings(
-                    data_dirs=["task1/input", "task1/output", "task2/input"]
-                )
+                data_dirs={"task1/input", "task1/output", "task2/input"}
             )
             
             user = UserConfig(
@@ -177,8 +175,7 @@ class TestCloneRealWorldIntegration:
             project = ProjectConfig(
                 name="tmpx",
                 transport='ssh',
-                ssh=ssh_config,
-                project=ProjectSettings()
+                ssh=ssh_config
             )
             
             user = UserConfig(
@@ -199,7 +196,7 @@ class TestCloneRealWorldIntegration:
             with patch('dsg.backends.ce.run_with_progress') as mock_run:
                 
                 def rsync_side_effect(*args, **kwargs):
-                    cmd_args = args[0]
+                    args[0]
                     
                     # First call: metadata sync - create .dsg structure
                     if mock_run.call_count == 1:
@@ -241,7 +238,7 @@ class TestCloneRealWorldIntegration:
                                 file_path.parent.mkdir(parents=True, exist_ok=True)
                                 file_path.write_text(f"Simulated content for {rel_path}")
                     
-                    from dsg.utils.execution import CommandResult
+                    from dsg.system.execution import CommandResult
                     return CommandResult(returncode=0, stdout="", stderr="")
                 
                 mock_run.side_effect = rsync_side_effect
@@ -304,8 +301,7 @@ class TestCloneRealWorldIntegration:
             project = ProjectConfig(
                 name="empty_repo",
                 transport='ssh',
-                ssh=ssh_config,
-                project=ProjectSettings()
+                ssh=ssh_config
             )
             
             user = UserConfig(

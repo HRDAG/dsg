@@ -12,16 +12,13 @@ IMPORTANT: These tests run on real filesystems, not mocks, to catch
 platform-specific behavior like the macOS HFS+/APFS NFD/NFC coexistence.
 """
 
-import os
-import sys
 import tempfile
 import unicodedata
 import pytest
 from pathlib import Path
-from collections import OrderedDict
 
-from dsg.manifest import Manifest, FileRef
-from dsg.scanner import scan_directory_no_cfg
+from dsg.data.manifest import Manifest, FileRef
+from dsg.core.scanner import scan_directory_no_cfg
 
 
 class TestDirectoryNormalization:

@@ -11,21 +11,18 @@ Tests for the redesigned config system.
 This shows both new tests and how existing tests would be adapted.
 """
 
-import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import yaml
-import socket
 
 import pytest
-import typer
 
 # These imports will exist after implementation
-from dsg.config_manager import (
+from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
     SSHRepositoryConfig, RcloneRepositoryConfig, IPFSRepositoryConfig,
-    ProjectSettings, IgnoreSettings,
-    SSHUserConfig, RcloneUserConfig, IPFSUserConfig,
-    load_merged_user_config, find_project_config_path,
+    IgnoreSettings,
+    SSHUserConfig, IPFSUserConfig,
+    find_project_config_path,
     validate_config
 )
 
@@ -73,20 +70,24 @@ class TestProjectConfigModels:
         assert config.name == "project-backup"
     
     def test_project_settings_defaults(self):
-        """Test project settings with default values."""
-        settings = ProjectSettings(
+        """Test project config with default values."""
+        config = ProjectConfig(
+            name="test",
+            transport="ssh",
+            ssh=SSHRepositoryConfig(host="localhost", path=Path("/tmp"), type="zfs"),
             data_dirs={"input", "output"},
             ignore=IgnoreSettings()
         )
-        assert settings.data_dirs == {"input", "output"}
-        assert ".DS_Store" in settings.ignore.names
-        assert ".pyc" in settings.ignore.suffixes
-        assert "__pycache__" in settings.ignore.names
+        assert config.data_dirs == {"input", "output"}
+        assert ".DS_Store" in config.ignore.names
+        assert ".pyc" in config.ignore.suffixes
+        assert "__pycache__" in config.ignore.names
     
     def test_project_config_transport_validation(self):
         """Test that project config validates transport consistency."""
         # Valid SSH config
         ssh_config = ProjectConfig(
+            name="BB",
             transport="ssh",
             ssh=SSHRepositoryConfig(
                 host="scott",
@@ -94,35 +95,33 @@ class TestProjectConfigModels:
                 name="BB",
                 type="zfs"
             ),
-            project=ProjectSettings(
-                data_dirs={"input"},
-                ignore=IgnoreSettings()
-            )
+            data_dirs={"input"},
+            ignore=IgnoreSettings()
         )
         assert ssh_config.transport == "ssh"
         assert ssh_config.ssh is not None
         
         # Invalid: transport=ssh but rclone config provided
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="SSH config required when transport=ssh"):
             ProjectConfig(
+                name="test",
                 transport="ssh",
                 rclone=RcloneRepositoryConfig(
                     remote="myremote",
                     path=Path("/data"),
                     name="test"
                 ),
-                project=ProjectSettings(
-                    data_dirs={"input"},
-                    ignore=IgnoreSettings()
-                )
+                data_dirs={"input"},
+                ignore=IgnoreSettings()
             )
     
     def test_project_config_multiple_transports_invalid(self):
         """Test that only one transport config can be set."""
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="Exactly one transport config must be set"):
             ProjectConfig(
+                name="test",
                 transport="ssh",
                 ssh=SSHRepositoryConfig(
                     host="scott",
@@ -135,10 +134,8 @@ class TestProjectConfigModels:
                     path=Path("/data"),
                     name="test"
                 ),
-                project=ProjectSettings(
-                    data_dirs={"input"},
-                    ignore=IgnoreSettings()
-                )
+                data_dirs={"input"},
+                ignore=IgnoreSettings()
             )
 
 
@@ -195,18 +192,17 @@ class TestConfigLoading:
     def test_load_ssh_project_config(self, tmp_path):
         """Test loading SSH transport config from .dsgconfig.yml"""
         config_content = """
+name: BB
 transport: ssh
 ssh:
   host: scott
   path: /var/repos/zsd
-  name: BB
   type: zfs
-project:
-  data_dirs:
+data_dirs:
     - input
     - output
     - frozen
-  ignore:
+ignore:
     paths:
       - temp/
       - .venv/
@@ -227,25 +223,24 @@ project:
         assert config.transport == "ssh"
         assert config.ssh.host == "scott"
         assert config.ssh.path == Path("/var/repos/zsd")
-        assert config.ssh.name == "BB"
+        assert config.name == "BB"
         assert config.ssh.type == "zfs"
-        assert config.project.data_dirs == {"input", "output", "frozen"}
-        assert "temp" in config.project.ignore.paths
-        assert ".DS_Store" in config.project.ignore.names
+        assert config.data_dirs == {"input", "output", "frozen"}
+        assert "temp" in config.ignore.paths
+        assert ".DS_Store" in config.ignore.names
     
     def test_load_ipfs_project_config(self, tmp_path):
         """Test loading IPFS transport config."""
         config_content = """
+name: research-data
 transport: ipfs
 ipfs:
   did: did:key:z6Mkhn3rpi3pxisaGDX9jABfdWoyH5cKENd2Pgv9q8fRwqxC
-  name: research-data
   encrypted: true
-project:
-  data_dirs:
+data_dirs:
     - input
     - analysis
-  ignore:
+ignore:
     names:
       - .ipynb_checkpoints
 """
@@ -258,7 +253,7 @@ project:
         config = ProjectConfig.model_validate(data)
         assert config.transport == "ipfs"
         assert config.ipfs.encrypted is True
-        assert "analysis" in config.project.data_dirs
+        assert "analysis" in config.data_dirs
     
     def test_find_project_config_walks_up_tree(self, tmp_path):
         """Test that config finder walks up directory tree."""
@@ -284,14 +279,13 @@ project:
         project_dir.mkdir()
         project_config = project_dir / ".dsgconfig.yml"
         project_config.write_text("""
+name: test-project
 transport: ssh
 ssh:
   host: scott
   path: /var/repos/zsd
-  name: BB
   type: zfs
-project:
-  data_dirs:
+data_dirs:
     - input
 """)
         
@@ -323,13 +317,13 @@ class TestTransportConfigValidation:
     def test_invalid_transport_mismatch(self, tmp_path):
         """Test error when transport type doesn't match config section."""
         config_content = """
+name: BB
 transport: ssh
 rclone:  # Wrong section for ssh transport
   remote: myremote
   path: /data
   name: test
-project:
-  data_dirs:
+data_dirs:
     - input
 """
         config_file = tmp_path / ".dsgconfig.yml"
@@ -338,17 +332,17 @@ project:
         with config_file.open() as f:
             data = yaml.safe_load(f)
         
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="SSH config required"):
             ProjectConfig.model_validate(data)
     
     def test_missing_transport_config(self, tmp_path):
         """Test error when transport config section is missing."""
         config_content = """
+name: test-repo
 transport: ipfs
 # Missing ipfs section
-project:
-  data_dirs:
+data_dirs:
     - input
 """
         config_file = tmp_path / ".dsgconfig.yml"
@@ -357,7 +351,7 @@ project:
         with config_file.open() as f:
             data = yaml.safe_load(f)
         
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="Exactly one transport config must be set"):
             ProjectConfig.model_validate(data)
 
@@ -391,15 +385,15 @@ def test_config_load_success_redesigned(complete_config_setup, monkeypatch):
     # Project config tests - note the new access pattern
     assert cfg.project is not None
     assert cfg.project.transport == "ssh"
-    assert cfg.project.ssh.name == complete_config_setup["repo_name"]
+    assert cfg.project.name == complete_config_setup["repo_name"]
     assert cfg.project.ssh.host == "scott"
     assert cfg.project.ssh.type == "zfs"
     assert cfg.project.ssh.path == Path("/var/repos/dsg")
     
     # Project settings
-    assert "input" in cfg.project.project.data_dirs
-    assert "output" in cfg.project.project.data_dirs
-    assert "graphs/plot1.png" in cfg.project.project.ignore.paths
+    assert "input" in cfg.project.data_dirs
+    assert "output" in cfg.project.data_dirs
+    assert "graphs/plot1.png" in cfg.project.ignore.paths
     
     assert isinstance(cfg.project_root, Path)
     assert cfg.project_root == complete_config_setup["project_root"]
@@ -415,7 +409,6 @@ def test_missing_project_config_redesigned(tmp_path, monkeypatch):
 @pytest.mark.parametrize("field", [
     "host",
     "path", 
-    "name",
     "type",
 ])
 def test_missing_ssh_fields_redesigned(complete_config_setup, field, monkeypatch):

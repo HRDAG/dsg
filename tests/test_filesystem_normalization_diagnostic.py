@@ -6,7 +6,6 @@ This test demonstrates the differences between macOS HFS+/APFS and Linux/Windows
 in handling Unicode normalization forms (NFC vs NFD).
 """
 
-import os
 import pytest
 import sys
 import unicodedata
@@ -78,7 +77,7 @@ def test_filesystem_normalization():
             if original_path.name != nfc_name:
                 try:
                     original_path.rename(nfc_path)
-                    print(f"  Rename successful")
+                    print("  Rename successful")
                     
                     # Check what's actually on disk after rename
                     files_after = list(tmpdir.glob("*"))
@@ -114,7 +113,7 @@ def test_filesystem_normalization():
         nfc_path = tmpdir / nfc_name
         try:
             nfc_path.write_text("NFC content")
-            print(f"  Created both NFD and NFC files")
+            print("  Created both NFD and NFC files")
             
             files = list(tmpdir.glob("*"))
             print(f"  Files on disk: {len(files)}")

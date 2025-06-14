@@ -8,12 +8,10 @@
 
 """Test the extracted manifest comparison utilities."""
 
-import pytest
 from pathlib import Path
-from typing import Optional
 
-from dsg.manifest import Manifest, FileRef, LinkRef
-from dsg.manifest_comparison import (
+from dsg.data.manifest import Manifest, FileRef
+from dsg.data.manifest_comparison import (
     ManifestComparator,
     TemporalSyncState,
     SyncStateLabels,
@@ -272,7 +270,7 @@ class TestSyncStateLabels:
     
     def test_sync_state_to_status_display(self):
         """Test mapping sync states to status display strings."""
-        from dsg.manifest_merger import SyncState
+        from dsg.data.manifest_merger import SyncState
         
         # Test a few key mappings
         assert SyncStateLabels.sync_state_to_status(SyncState.sLxCxR__only_L) == "new (local only)"
@@ -284,7 +282,7 @@ class TestSyncStateLabels:
     
     def test_format_blame_entry(self):
         """Test formatting blame entries for display."""
-        from dsg.history import BlameEntry
+        from dsg.core.history import BlameEntry
         
         entry = BlameEntry(
             snapshot_id="s0042",
@@ -324,7 +322,7 @@ class TestIntegrationWithHistory:
         """Test that refactored logic produces same results as original."""
         # This will be implemented when we refactor history.py
         # For now, just test the concept
-        from dsg.manifest import Manifest, FileRef
+        from dsg.data.manifest import Manifest, FileRef
         
         # Simulate two snapshots
         file_v1 = FileRef(type="file", path="data.csv", filesize=100, mtime="2009-02-13T23:31:30-08:00", hash="v1")

@@ -29,7 +29,7 @@ from rich.console import Console
 
 from dsg.config.manager import Config
 from dsg.system.exceptions import ConfigError
-from dsg.backends import can_access_backend
+from dsg.storage.factory import can_access_backend
 
 
 def ensure_dsgconfig_exists(console: Console) -> None:

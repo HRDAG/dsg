@@ -18,9 +18,8 @@ D. SSH to localhost via hostname (host=localhost/hostname)
 
 import socket
 import tempfile
-import yaml
 from pathlib import Path
-from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
 from dsg.backends import create_backend
 from dsg.backends import LocalhostBackend, SSHBackend
 

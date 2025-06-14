@@ -18,16 +18,14 @@ import tempfile
 import shutil
 import yaml
 from pathlib import Path
-from collections import OrderedDict
-from unittest.mock import patch, Mock
 
 import pytest
 
-from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings
-from dsg.backends import LocalhostBackend, SSHBackend
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
+from dsg.backends import LocalhostBackend
 from dsg.backends import create_backend
-from dsg.manifest import Manifest, FileRef
-from dsg.scanner import scan_directory_no_cfg
+from dsg.data.manifest import Manifest
+from dsg.core.scanner import scan_directory_no_cfg
 
 
 class TestRealWorldCloneValidation:
@@ -69,20 +67,18 @@ class TestRealWorldCloneValidation:
             # Step 2: Create a modern .dsgconfig.yml based on legacy config
             # Convert legacy config.yml structure to modern format
             modern_config = {
+                "name": source_repo_name,
                 "transport": "ssh",
                 "ssh": {
                     "host": legacy_config_data.get("host", "localhost"),
                     "path": str(source_base),  # Adjust for our test setup
-                    "name": source_repo_name,
                     "type": legacy_config_data.get("repo_type", "zfs")
                 },
-                "project": {
-                    "data_dirs": legacy_config_data.get("data_dirs", ["input", "output"]),
-                    "ignore": {
-                        "names": legacy_config_data.get("ignored_names", []),
-                        "suffixes": legacy_config_data.get("ignored_suffixes", []),
-                        "paths": legacy_config_data.get("ignored_paths", [])
-                    }
+                "data_dirs": legacy_config_data.get("data_dirs", ["input", "output"]),
+                "ignore": {
+                    "names": legacy_config_data.get("ignored_names", []),
+                    "suffixes": legacy_config_data.get("ignored_suffixes", []),
+                    "paths": legacy_config_data.get("ignored_paths", [])
                 }
             }
             
@@ -130,19 +126,16 @@ class TestRealWorldCloneValidation:
                 type=legacy_config_data.get("repo_type", "zfs")
             )
             
-            project_settings = ProjectSettings(
+            project = ProjectConfig(
+                name=source_repo_name,
+                transport='ssh',
+                ssh=ssh_config,
                 data_dirs=set(legacy_config_data.get("data_dirs", ["input", "output"])),
                 ignore=IgnoreSettings(
                     names=set(legacy_config_data.get("ignored_names", [])),
                     suffixes=set(legacy_config_data.get("ignored_suffixes", [])),
                     paths=set(legacy_config_data.get("ignored_paths", []))
                 )
-            )
-            
-            project = ProjectConfig(
-                transport='ssh',
-                ssh=ssh_config,
-                project=project_settings
             )
             
             user = UserConfig(
@@ -176,7 +169,7 @@ class TestRealWorldCloneValidation:
             shutil.copytree(example_repo_path, test_repo)
             
             # Run scanner with ignore patterns from legacy config
-            ignore_settings = IgnoreSettings(
+            IgnoreSettings(
                 names=set(legacy_config_data.get("ignored_names", [])),
                 suffixes=set(legacy_config_data.get("ignored_suffixes", [])),
                 paths=set(legacy_config_data.get("ignored_paths", []))
@@ -277,16 +270,14 @@ class TestRealWorldCloneValidation:
             
             # Create proper .dsgconfig.yml
             config_content = {
+                "name": "tmpx",
                 "transport": "ssh",
                 "ssh": {
                     "host": socket.gethostname(),
                     "path": str(source_base),
-                    "name": "tmpx",
                     "type": "zfs"
                 },
-                "project": {
-                    "data_dirs": ["task1/input", "task1/output", "task2/input"]
-                }
+                "data_dirs": ["task1/input", "task1/output", "task2/input"]
             }
             
             config_file = source_repo / ".dsgconfig.yml"
@@ -313,7 +304,7 @@ class TestRealWorldCloneValidation:
             dest_repo.mkdir()
             
             # Simulate what the CLI would do
-            from dsg.config_manager import Config
+            from dsg.config.manager import Config
             
             # This would normally be loaded from environment/config files
             # For test, we create the config programmatically
@@ -327,9 +318,10 @@ class TestRealWorldCloneValidation:
             )
             
             project = ProjectConfig(
+                name="tmpx",
                 transport="ssh",
                 ssh=ssh_config,
-                project=ProjectSettings(data_dirs={"task1/input", "task1/output", "task2/input"})
+                data_dirs={"task1/input", "task1/output", "task2/input"}
             )
             
             cfg = Config(user=user, project=project, project_root=dest_repo)

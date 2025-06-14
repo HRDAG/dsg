@@ -15,12 +15,11 @@ These tests validate that the command handlers work correctly:
 - actions.py: State-changing operation commands
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 from rich.console import Console
 
-from dsg.config_manager import Config
+from dsg.config.manager import Config
 import dsg.cli.commands.info as info_commands
 import dsg.cli.commands.discovery as discovery_commands
 import dsg.cli.commands.actions as action_commands
@@ -236,7 +235,7 @@ class TestActionCommandHandlers:
         
         with patch('dsg.cli.commands.actions.init_repository') as mock_init:
             # Mock new InitResult return format
-            from dsg.lifecycle import InitResult
+            from dsg.core.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash='abc123', normalization_result=None)
             mock_init_result.files_included = [{"path": "test.txt", "hash": "def456", "size": 200}]
             mock_init.return_value = mock_init_result
@@ -360,7 +359,7 @@ class TestCommandHandlerIntegration:
             
             mock_status.return_value = {'status': 'test'}
             mock_discovery.return_value = {'repositories': []}
-            from dsg.lifecycle import InitResult
+            from dsg.core.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash='test_hash', normalization_result=None)
             mock_init.return_value = mock_init_result
             
@@ -385,7 +384,7 @@ class TestCommandHandlerIntegration:
         config = Mock(spec=Config)
         
         with patch('dsg.cli.commands.info.get_sync_status') as mock_status, \
-             patch('dsg.cli.commands.info.display_sync_status') as mock_display:
+             patch('dsg.cli.commands.info.display_sync_status'):
             
             mock_status.return_value = {'status': 'test'}
             

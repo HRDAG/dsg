@@ -14,28 +14,21 @@ and validate each possible combination of Local (L), Cache (C), and Remote (R)
 file states for comprehensive status/sync testing.
 """
 
-from pathlib import Path
 from typing import Dict, Any
 
-import pytest
 
-from dsg.manifest_merger import SyncState
-from dsg.manifest import Manifest
+from dsg.data.manifest_merger import SyncState
+from dsg.data.manifest import Manifest
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     modify_local_file,
     create_local_file,
     delete_local_file,
-    modify_cache_entry,
     add_cache_entry,
     remove_cache_entry,
     regenerate_cache_from_current_local,
     modify_remote_file,
     create_remote_file,
     delete_remote_file,
-    regenerate_remote_manifest,
 )
 
 
@@ -202,7 +195,7 @@ def test_create_sync_state_all_eq(bb_local_remote_setup):
     # Note: We only regenerate hashes for local filesystem. Remote hashes must match
     # remote .dsg/last-sync.json by construction, and local cache is just read from
     # the local .dsg/last-sync.json file.
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -279,7 +272,7 @@ def test_create_sync_state_all_different(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify entries are NOT equal for sLCR__all_ne state
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -317,7 +310,6 @@ def test_create_sync_state_cache_eq_remote(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify cache and remote entries are equal
-    from dsg.scanner import scan_directory
     
     remote_manifest = Manifest.from_json(remote_path / ".dsg" / "last-sync.json")
     remote_entry = remote_manifest.entries[target_file]
@@ -346,7 +338,7 @@ def test_create_sync_state_local_eq_remote(bb_local_remote_setup):
     assert target_file not in cache_manifest.entries, "Cache entry should not exist"
     
     # Verify local and remote entries are equal
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -377,7 +369,7 @@ def test_create_sync_state_local_eq_cache(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify local and cache entries are equal
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -408,7 +400,7 @@ def test_create_sync_state_remote_changed(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify local and cache are equal, but remote is different
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -444,7 +436,7 @@ def test_create_sync_state_cache_outdated(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify local and remote are equal, but cache is different
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -502,7 +494,7 @@ def test_create_sync_state_local_changed(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify cache and remote are equal, but local is different
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -565,7 +557,7 @@ def test_create_sync_state_local_ne_remote(bb_local_remote_setup):
     assert target_file not in cache_manifest.entries, "Cache entry should not exist"
     
     # Verify local and remote are different
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]
@@ -596,7 +588,7 @@ def test_create_sync_state_local_ne_cache(bb_local_remote_setup):
     assert target_file in cache_manifest.entries, "Cache entry should exist"
     
     # Verify local and cache are different
-    from dsg.scanner import scan_directory
+    from dsg.core.scanner import scan_directory
     
     local_scan = scan_directory(setup["local_config"], compute_hashes=True)
     local_entry = local_scan.manifest.entries[target_file]

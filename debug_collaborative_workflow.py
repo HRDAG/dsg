@@ -11,23 +11,12 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from rich.console import Console
-from dsg.core.lifecycle import sync_repository
-from dsg.core.operations import get_sync_status
-from tests.fixtures.bb_repo_factory import (
-    bb_local_remote_setup, 
-    modify_local_file, 
-    regenerate_cache_from_current_local,
-    local_file_exists,
-    local_file_content_matches
-)
-import pytest
 
 def debug_collaborative_workflow():
     """Debug version of collaborative workflow test with detailed logging."""
     
     # Create setup using the fixture manually
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory() as _tmpdir:
         # We need to manually invoke the fixture - this is tricky
         # Let me create a simpler version
         print("=== Debug Collaborative Workflow ===")

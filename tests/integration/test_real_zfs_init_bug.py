@@ -25,7 +25,7 @@ import shutil
 from pathlib import Path
 
 from dsg.core.lifecycle import init_repository
-from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.system.execution import CommandExecutor as ce
 
 
@@ -84,15 +84,12 @@ class TestRealZFSInitBug:
             name="real-zfs-test",
             type="zfs"
         )
-        project_settings = ProjectSettings(
-            data_dirs={"input", "output"},
-            ignore={"names": [], "paths": [], "suffixes": []}
-        )
         project_config = ProjectConfig(
             name="real-zfs-test",
             transport="ssh", 
             ssh=ssh_config,
-            project=project_settings
+            data_dirs={"input", "output"},
+            ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
         )
         user_config = UserConfig(
             user_name="Test User",
@@ -193,10 +190,8 @@ class TestRealZFSInitBug:
             name="real-zfs-test",
             transport="ssh",
             ssh=ssh_config,
-            project=ProjectSettings(
-                data_dirs={"input"},
-                ignore={"names": [], "paths": [], "suffixes": []}
-            )
+            data_dirs={"input"},
+            ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
         )
         config = Config(
             user=UserConfig(user_name="Test User", user_id="test@example.com"),

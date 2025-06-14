@@ -10,12 +10,10 @@ import os
 import pytest
 import unicodedata
 from pathlib import Path
-from collections import OrderedDict
 
-from dsg.manifest import (
+from dsg.data.manifest import (
     FileRef,
     LinkRef,
-    ManifestMetadata,
     Manifest,
     PKG_VERSION
 )
@@ -65,15 +63,15 @@ class TestFileRefExtended:
         file_ref2 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="")
         
         # Should fallback to metadata comparison since file_ref2 has no hash
-        assert (file_ref1 == file_ref2) == True
+        assert (file_ref1 == file_ref2)
         
         # Test with different metadata - should be False
         file_ref3 = FileRef(type="file", path="test.txt", filesize=200, mtime="2025-05-10T12:00:00-07:00", hash="")
-        assert (file_ref1 == file_ref3) == False
+        assert not (file_ref1 == file_ref3)
         
         # Test with both having hashes - should use strict hash comparison
         file_ref4 = FileRef(type="file", path="test.txt", filesize=100, mtime="2025-05-10T12:00:00-07:00", hash="def456")
-        assert (file_ref1 == file_ref4) == False  # Different hashes
+        assert not (file_ref1 == file_ref4)  # Different hashes
 
 # Tests for LinkRef class
 class TestLinkRefExtended:

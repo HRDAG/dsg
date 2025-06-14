@@ -38,22 +38,16 @@ GROUP 3: Conflict States (4 states)
 """
 
 import pytest
-from pathlib import Path
 from rich.console import Console
 
 from dsg.core.lifecycle import sync_repository
 from dsg.core.operations import get_sync_status
 from dsg.data.manifest_merger import SyncState
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     modify_local_file,
     create_local_file,
     delete_local_file,
-    modify_cache_entry,
     add_cache_entry,
-    remove_cache_entry,
     regenerate_cache_from_current_local,
     modify_remote_file,
     create_remote_file,
@@ -63,7 +57,6 @@ from tests.fixtures.bb_repo_factory import (
     remote_file_exists,
     local_file_content_matches,
     remote_file_content_matches,
-    cache_manifest_updated,
 )
 
 
@@ -80,7 +73,7 @@ class TestSystematicSyncStates:
         # Create identical file in all three locations (L=C=R)
         create_local_file(setup["local_path"], test_file, test_content)
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Verify sync state
         status = get_sync_status(setup["local_config"], include_remote=True)
@@ -88,7 +81,7 @@ class TestSystematicSyncStates:
         
         # Subsequent sync should be no-op
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify no changes occurred
         assert local_file_exists(setup, test_file)
@@ -117,7 +110,7 @@ class TestSystematicSyncStates:
         
         # Sync should download from remote
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify local was updated with remote content
         assert local_file_content_matches(setup, test_file, "remote_modified")
@@ -147,7 +140,7 @@ class TestSystematicSyncStates:
         
         # Sync should update cache to match L=R
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all are now identical
         assert local_file_content_matches(setup, test_file, "both_have_this")
@@ -174,7 +167,7 @@ class TestSystematicSyncStates:
         
         # Sync should upload to remote
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify remote was updated with local content
         assert local_file_content_matches(setup, test_file, "local_modified")
@@ -200,7 +193,7 @@ class TestSystematicSyncStates:
         
         # Sync should delete from remote (propagate local deletion)
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Both local and remote should be deleted
         assert not local_file_exists(setup, test_file)
@@ -229,7 +222,7 @@ class TestSystematicSyncStates:
         # Sync should detect conflict and raise SyncError
         from dsg.system.exceptions import SyncError
         with pytest.raises(SyncError, match="conflicts"):
-            result = sync_repository(setup["local_config"], console, dry_run=False)
+            sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify conflict state is preserved (local missing, remote has newer content)
         assert not local_file_exists(setup, test_file)
@@ -253,7 +246,7 @@ class TestSystematicSyncStates:
         
         # Sync should update cache to match L=R
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all are now identical
         assert local_file_content_matches(setup, test_file, "matching")
@@ -280,7 +273,7 @@ class TestSystematicSyncStates:
         
         # Sync should delete local file (propagate remote deletion)
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify local file was deleted
         assert not local_file_exists(setup, test_file)
@@ -308,7 +301,7 @@ class TestSystematicSyncStates:
         # Sync should detect conflict and raise SyncError
         from dsg.system.exceptions import SyncError
         with pytest.raises(SyncError, match="conflicts"):
-            result = sync_repository(setup["local_config"], console, dry_run=False)
+            sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify conflict state is preserved (local has changes, remote missing)
         assert local_file_content_matches(setup, test_file, "modified_local")
@@ -330,7 +323,7 @@ class TestSystematicSyncStates:
         
         # Sync should download from remote
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify file was downloaded locally
         assert local_file_exists(setup, test_file)
@@ -353,7 +346,7 @@ class TestSystematicSyncStates:
         
         # Sync should upload to remote
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify file was uploaded to remote
         assert local_file_content_matches(setup, test_file, "only_local")
@@ -382,7 +375,7 @@ class TestSystematicSyncStates:
         
         # Sync should handle cache cleanup gracefully  
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # File should remain absent from local and remote
         assert not local_file_exists(setup, test_file)
@@ -432,7 +425,7 @@ class TestSystematicSyncStates:
         
         # Step 4: Sync should handle all states correctly
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Step 5: Verify all files are now synchronized
         assert local_file_content_matches(setup, "task1/import/input/all_equal.csv", "Same content everywhere")

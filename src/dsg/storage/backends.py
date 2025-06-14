@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional
 
 import paramiko
-from loguru import logger
 
 from dsg.data.manifest import Manifest
 from dsg.core.protocols import FileOperations
@@ -546,13 +545,13 @@ class SSHBackend(Backend):
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("DSG Repository", False, "Missing .dsg/ directory"))
                 client.close()
-                return False, f"Path exists but is not a DSG repository (missing .dsg/ directory)"
+                return False, "Path exists but is not a DSG repository (missing .dsg/ directory)"
             self._detailed_results.append(("DSG Repository", True, "Valid DSG repository (.dsg/ directory found)"))
             stdin, stdout, stderr = client.exec_command(f"test -r '{self.full_repo_path}/.dsg'")
             if stdout.channel.recv_exit_status() != 0:
                 self._detailed_results.append(("Read Permissions", False, "Cannot read .dsg directory"))
                 client.close()
-                return False, f"Permission denied accessing .dsg directory"
+                return False, "Permission denied accessing .dsg directory"
             self._detailed_results.append(("Read Permissions", True, "Read access to .dsg directory confirmed"))
 
             # Test 5: Check for manifest files

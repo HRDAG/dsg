@@ -16,7 +16,6 @@ streams to temporary files for staging by filesystem implementations.
 import uuid
 import tempfile
 from pathlib import Path
-from typing import Iterator
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
 

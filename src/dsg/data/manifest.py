@@ -14,7 +14,6 @@ import importlib.metadata
 import os
 from pathlib import Path
 from typing import Annotated, Union, Literal, Optional
-import unicodedata
 from zoneinfo import ZoneInfo
 
 # Third-party imports
@@ -181,7 +180,7 @@ class ManifestMetadata(BaseModel):
     snapshot_notes: Optional[str] = None  # Additional notes (e.g., "btrsnap-migration")
     
     # Configuration snapshot that created this manifest (answers "why these files?")
-    project_config: Optional[dict] = None  # ProjectSettings from .dsgconfig.yml
+    project_config: Optional[dict] = None  # Project settings from .dsgconfig.yml
 
     @classmethod
     def _create(
@@ -317,7 +316,7 @@ class Manifest(BaseModel):
             user_id: User ID to set for entries that need new attribution
             project_root: Path to project root for computing file hashes
         """
-        from dsg.scanner import hash_file
+        from dsg.core.scanner import hash_file
 
         for path, entry in self.entries.items():
             other_entry = other_manifest.entries.get(path)

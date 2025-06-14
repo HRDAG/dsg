@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from dsg.config_manager import validate_config
+from dsg.config.manager import validate_config
 
 
 class TestConfigValidationIntegration:
@@ -60,21 +60,20 @@ user_id: test@example.com
 local_log: {log_dir}
 """)
         
-        # Setup project config (legacy format)
+        # Setup project config (new format)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
         project_config = project_dir / ".dsgconfig.yml"
         project_config.write_text("""
+name: test-repo
 transport: ssh
 ssh:
   host: localhost
   path: /tmp/test
-  name: test-repo
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """)
         
         # Set environment and change directory
@@ -113,10 +112,9 @@ ssh:
   host: localhost
   path: /tmp/test
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """)
         
         # Set environment and change directory
@@ -151,10 +149,9 @@ ssh:
   host: localhost
   path: /tmp/test
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """)
         
         # Set environment and change directory
@@ -185,22 +182,21 @@ user_id: test@example.com
         project_dir.mkdir()
         project_config = project_dir / ".dsgconfig.yml"
         project_config.write_text("""
+name: migrated-repo-name
 transport: ssh
 ssh:
   host: localhost
   path: /tmp/test
-  name: migrated-repo-name
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """)
         
         # Set environment and change directory
         os.environ["DSG_CONFIG_HOME"] = str(user_dir)
         os.chdir(project_dir)
         
-        # Validation should pass despite legacy format due to auto-migration
+        # Validation should pass with new format
         errors = validate_config(check_backend=False)
-        assert errors == [], f"Expected migration to handle legacy format, got: {errors}"
+        assert errors == [], f"Expected new format to pass validation, got: {errors}"

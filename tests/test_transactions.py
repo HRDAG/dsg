@@ -6,19 +6,18 @@
 # ------
 # tests/test_transactions.py
 
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
+from datetime import datetime, UTC
+
 import pytest
+
+from dsg.transactions import ClientTransaction, TransactionManager, BackendTransaction, recover_from_crash
+from dsg.data.manifest import Manifest
 
 # Skip all tests in this file - legacy transaction tests need update for new transaction system  
 pytestmark = pytest.mark.skip(reason="Legacy transaction tests - replaced by new transaction system")
-import tempfile
-import shutil
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime, UTC
-
-from dsg.transactions import ClientTransaction, TransactionManager, BackendTransaction, recover_from_crash
-from dsg.manifest import Manifest
-from dsg.locking import SyncLock
 
 
 class TestClientTransaction:
@@ -178,7 +177,7 @@ class TestClientTransaction:
         tx = ClientTransaction(temp_project, target_snapshot_hash="commit123")
         tx.begin()
         
-        original_manifest = (temp_project / ".dsg" / "last-sync.json").read_text()
+        (temp_project / ".dsg" / "last-sync.json").read_text()
         
         tx.commit_manifest(mock_manifest)
         
@@ -331,7 +330,7 @@ class TestTransactionManager:
                 mock_backend_tx_class.return_value = mock_backend_tx
                 
                 try:
-                    with TransactionManager(temp_project, mock_backend, "alice", "sync") as tx_mgr:
+                    with TransactionManager(temp_project, mock_backend, "alice", "sync"):
                         raise ValueError("Test exception")
                 except ValueError:
                     pass

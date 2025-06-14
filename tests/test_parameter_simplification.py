@@ -15,12 +15,11 @@ Tests that the new standardized parameter model works correctly:
 - Configuration parameters are handled cleanly
 """
 
-import pytest
 from unittest.mock import Mock, patch
 from rich.console import Console
 
-from dsg.config_manager import Config
-import dsg.commands.actions as action_commands
+from dsg.config.manager import Config
+import dsg.cli.commands.actions as action_commands
 
 
 class TestParameterSimplification:
@@ -32,7 +31,7 @@ class TestParameterSimplification:
         config = Mock(spec=Config)
         
         with patch('dsg.cli.commands.actions.init_repository') as mock_init:
-            from dsg.lifecycle import InitResult
+            from dsg.core.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash='test_snapshot_hash', normalization_result=None)
             mock_init.return_value = mock_init_result
             

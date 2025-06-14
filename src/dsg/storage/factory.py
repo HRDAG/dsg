@@ -45,7 +45,7 @@ def create_backend(config: 'Config') -> Backend:
     # For now, use existing backend classes for compatibility
 
     if config.project.transport == "ssh":
-        if _is_effectively_localhost(config.project.ssh):
+        if _is_effectively_localhost(config.project.ssh, config.project.name):
             # Use filesystem operations for localhost optimization
             repo_path = Path(config.project.ssh.path)
             return LocalhostBackend(repo_path, config.project.name)
@@ -65,7 +65,7 @@ def create_backend(config: 'Config') -> Backend:
         raise ValueError(f"Transport type '{config.project.transport}' not supported")
 
 
-def _is_effectively_localhost(ssh_config) -> bool:
+def _is_effectively_localhost(ssh_config, project_name: str = None) -> bool:
     """Determine if SSH config points to effectively localhost.
 
     Uses two tests in order of reliability:
@@ -79,16 +79,19 @@ def _is_effectively_localhost(ssh_config) -> bool:
         True if target is effectively localhost, False for remote
     """
     # Primary test: Can we access the exact repo described by ssh_config?
-    # Handle case where name might be None
-    if not ssh_config.name:
+    # Get the effective name from ssh_config.name (legacy) or project_name (new format)
+    effective_name = ssh_config.name or project_name
+    if not effective_name:
         # No name means we can't do path-based detection
         is_local = is_local_host(ssh_config.host)
         if is_local:
             logger.debug(f"SSH target {ssh_config.host} is localhost (hostname-based, no name provided)")
         return is_local
 
-    repo_path = Path(ssh_config.path) / ssh_config.name
+    repo_path = Path(ssh_config.path) / effective_name
     config_file = repo_path / ".dsgconfig.yml"
+    
+    logger.debug(f"Checking if {config_file} exists: {config_file.exists()}")
 
     if config_file.exists():
         try:
@@ -97,10 +100,12 @@ def _is_effectively_localhost(ssh_config) -> bool:
 
             # Read the config at that path
             local_config = ProjectConfig.load(config_file)
+            logger.debug(f"Loaded local config: name={getattr(local_config, 'name', None)}, ssh_name={getattr(local_config.ssh, 'name', None) if local_config.ssh else None}")
+            logger.debug(f"Comparing with ssh_config: name={ssh_config.name}, path={ssh_config.path}")
 
             # Verify it's actually the same repo
             if (local_config.ssh and
-                local_config.ssh.name == ssh_config.name and
+                local_config.name == effective_name and
                 str(local_config.ssh.path) == str(ssh_config.path)):
                 logger.debug(f"SSH target {ssh_config.host}:{repo_path} is effectively localhost (path accessible)")
                 return True

@@ -13,13 +13,13 @@ Consolidates duplicated setup patterns across test files.
 
 import socket
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict
 
 import pytest
 
 from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
-    SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
+    SSHRepositoryConfig, IgnoreSettings,
     SSHUserConfig
 )
 
@@ -28,21 +28,20 @@ from dsg.config.manager import (
 def dsg_project_config_text():
     """Standard project config YAML text template."""
     return """
+name: {repo_name}
 transport: ssh
 ssh:
   host: scott
   path: /var/repos/dsg
-  name: {repo_name}
   type: zfs
-project:
-  data_dirs:
-    - input
-    - output
-    - frozen
-  ignore:
-    paths:
-      - graphs/plot1.png
-      - temp.log
+data_dirs:
+  - input
+  - output
+  - frozen
+ignore:
+  paths:
+    - graphs/plot1.png
+    - temp.log
 """
 
 
@@ -127,14 +126,12 @@ def standard_config_objects(tmp_path):
         names=set(),
         suffixes=set()
     )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
     project = ProjectConfig(
+        name=repo_name,
         transport="ssh",
         ssh=ssh_config,
-        project=project_settings
+        data_dirs={"input", "output", "frozen"},
+        ignore=ignore_settings
     )
     
     user_ssh = SSHUserConfig()
@@ -153,7 +150,6 @@ def standard_config_objects(tmp_path):
     return {
         "config": cfg,
         "ssh_config": ssh_config,
-        "project_settings": project_settings,
         "user": user,
         "repo_name": repo_name
     }
@@ -175,15 +171,12 @@ def legacy_format_config_objects(tmp_path):
         names=set(),
         suffixes=set()
     )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
     project = ProjectConfig(
         name=repo_name,  # Also add top-level name for new format
         transport="ssh",
         ssh=ssh_config,
-        project=project_settings
+        data_dirs={"input", "output", "frozen"},
+        ignore=ignore_settings
     )
     
     user_ssh = SSHUserConfig()
@@ -217,15 +210,12 @@ def new_format_config_objects(tmp_path):
         names=set(),
         suffixes=set()
     )
-    project_settings = ProjectSettings(
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
     project = ProjectConfig(
         name=repo_name,  # New format: top-level name
         transport="ssh",
         ssh=ssh_config,
-        project=project_settings
+        data_dirs={"input", "output", "frozen"},
+        ignore=ignore_settings
     )
     
     user_ssh = SSHUserConfig()
@@ -244,19 +234,18 @@ def new_format_config_objects(tmp_path):
 
 
 def create_legacy_config_file(config_path: Path, repo_name: str, base_path: Path) -> None:
-    """Helper to create legacy format config file."""
+    """Helper to create modern format config file."""
     config_path.write_text(f"""
+name: {repo_name}
 transport: ssh
 ssh:
   host: localhost
   path: {base_path}
-  name: {repo_name}
   type: local
-project:
-  data_dirs:
-    - input
-  ignore:
-    paths: []
+data_dirs:
+  - input
+ignore:
+  paths: []
 """)
 
 
@@ -328,3 +317,14 @@ def with_config_paths(project_root: Path, user_config_dir: Path):
             os.chdir(old_cwd)
     
     return _context()
+
+
+# Import BB repository fixtures to make them discoverable by pytest
+from tests.fixtures.bb_repo_factory import (
+    bb_repo_structure,
+    bb_repo_with_validation_issues,
+    bb_repo_with_validation_issues_and_config,
+    bb_repo_with_config,
+    bb_clone_integration_setup,
+    bb_local_remote_setup
+)

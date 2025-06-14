@@ -16,7 +16,6 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, EmailStr, Field, model_validator, PrivateAttr
 
-from dsg.system.host_utils import is_local_host
 from dsg.system.exceptions import ConfigError
 
 
@@ -87,7 +86,7 @@ def _load_merged_config_data(
                 logger.warning(f"Failed to load config from {candidate}: {e}")
 
     if not found_configs:
-        logger.error(f"No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
+        logger.error("No config found in /etc/dsg/, ~/.config/dsg/, XDG_CONFIG_HOME, or DSG_CONFIG_HOME")
         raise FileNotFoundError(f"No {USER_CFG} found in any standard location")
 
     logger.debug(f"Merged config from: {', '.join(found_configs)}")
@@ -157,17 +156,55 @@ class IgnoreSettings(BaseModel):
         return self
 
 
-class ProjectSettings(BaseModel):
-    """Project-level settings that are stable across transports."""
-    data_dirs: set[str] = Field(default_factory=lambda: {"input", "output", "frozen"})
-    ignore: IgnoreSettings = Field(default_factory=IgnoreSettings)
+# ---- Legacy Config Migration ----
+
+def migrate_legacy_config_data(data: dict) -> dict:
+    """Migrate legacy config format to new format.
+    
+    This function handles silent migration of legacy config formats:
+    - Moves 'name' from transport section to top level
+    - Flattens 'project' wrapper around data_dirs and ignore
+    - Preserves all other fields and structure
+    
+    Args:
+        data: Raw config dictionary from YAML
+        
+    Returns:
+        Migrated config dictionary compatible with new format
+    """
+    if not isinstance(data, dict):
+        return data
+    
+    # Create a copy to avoid modifying the original
+    migrated = data.copy()
+    
+    # 1. Migrate name from transport section to top level
+    for transport in ["ssh", "rclone", "ipfs"]:
+        if transport in migrated and isinstance(migrated[transport], dict):
+            transport_config = migrated[transport]
+            if "name" in transport_config and "name" not in migrated:
+                # Copy name to top level (but preserve in transport section for compatibility)
+                migrated["name"] = transport_config["name"]
+    
+    # 2. Flatten project wrapper
+    if "project" in migrated and isinstance(migrated["project"], dict):
+        project_data = migrated["project"]
+        # Move data_dirs and ignore to top level
+        if "data_dirs" in project_data:
+            migrated["data_dirs"] = project_data["data_dirs"]
+        if "ignore" in project_data:
+            migrated["ignore"] = project_data["ignore"]
+        # Remove project wrapper
+        del migrated["project"]
+    
+    return migrated
 
 
 # ---- Main Project Config ----
 
 class ProjectConfig(BaseModel):
     """Project configuration including transport and settings."""
-    name: Optional[str] = None  # Repository name (auto-migrated from transport sections if missing)
+    name: str  # Repository name (required, no more migration)
     transport: Literal["ssh", "rclone", "ipfs"]
 
     # Transport-specific configs (only one will be set)
@@ -175,20 +212,22 @@ class ProjectConfig(BaseModel):
     rclone: Optional[RcloneRepositoryConfig] = None
     ipfs: Optional[IPFSRepositoryConfig] = None
 
-    # Project settings (stable across transports)
-    project: ProjectSettings
+    # Project settings (flattened, no more project: wrapper)
+    data_dirs: set[str] = Field(default_factory=lambda: {"input", "output", "frozen"})
+    ignore: IgnoreSettings = Field(default_factory=IgnoreSettings)
+
 
     @model_validator(mode="after")
-    def migrate_legacy_format_and_validate(self) -> "ProjectConfig":
-        """Auto-migrate from legacy format and validate transport config."""
-        # First validate transport config consistency (to preserve existing test behavior)
+    def validate_transport_config(self) -> "ProjectConfig":
+        """Validate transport configuration consistency."""
+        # Validate exactly one transport config is set
         configs = [self.ssh, self.rclone, self.ipfs]
         set_configs = [c for c in configs if c is not None]
 
         if len(set_configs) != 1:
             raise ConfigError("Exactly one transport config must be set")
 
-        # Delegate transport-specific validation to config classes
+        # Validate the selected transport config exists and is valid
         transport_config_map = {
             "ssh": self.ssh,
             "rclone": self.rclone,
@@ -202,23 +241,6 @@ class ProjectConfig(BaseModel):
         # Let the transport config validate its own requirements
         transport_config.validate_required_for_transport()
 
-        # Then auto-migrate: extract name from transport section if missing at top level
-        if not self.name:
-            transport_config = None
-            if self.transport == "ssh" and self.ssh:
-                transport_config = self.ssh
-            elif self.transport == "rclone" and self.rclone:
-                transport_config = self.rclone
-            elif self.transport == "ipfs" and self.ipfs:
-                transport_config = self.ipfs
-            
-            if transport_config and hasattr(transport_config, 'name') and transport_config.name:
-                self.name = transport_config.name
-
-        # Finally validate that we have a name after migration
-        if not self.name:
-            raise ConfigError("Repository name is required (either at top level or in transport section)")
-
         return self
 
     @classmethod
@@ -227,8 +249,14 @@ class ProjectConfig(BaseModel):
         with config_path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
-        # Model validator handles migration automatically
-        return cls.model_validate(data)
+        # Apply legacy config migration before validation
+        migrated_data = migrate_legacy_config_data(data)
+        
+        try:
+            return cls.model_validate(migrated_data)
+        except Exception as e:
+            from dsg.system.exceptions import ConfigError
+            raise ConfigError(str(e)) from e
 
 
 # ---- User Config Models ----
@@ -389,7 +417,7 @@ def validate_config(check_backend: bool = False) -> list[str]:
 
     # Load and validate project config
     try:
-        project_config = ProjectConfig.load(project_config_path)
+        ProjectConfig.load(project_config_path)
     except Exception as e:
         errors.append(f"Error reading project config: {e}")
         return errors
@@ -451,7 +479,7 @@ def validate_config(check_backend: bool = False) -> list[str]:
 
     # Optional backend check
     if check_backend:
-        from dsg.backends import can_access_backend
+        from dsg.storage.factory import can_access_backend
         ok, msg = can_access_backend(cfg)
         if not ok:
             errors.append(msg)

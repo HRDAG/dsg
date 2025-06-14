@@ -15,7 +15,7 @@ import pytest
 
 from dsg.config.manager import (
     Config, ProjectConfig, load_merged_user_config, UserConfig,
-    SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
+    SSHRepositoryConfig, IgnoreSettings,
     find_project_config_path
 )
 
@@ -42,7 +42,7 @@ def test_config_load_success(complete_config_setup):
     # Default fields are now optional in user config
     assert cfg.project is not None
     assert cfg.project.transport == "ssh"
-    assert cfg.project.ssh.name == complete_config_setup["repo_name"]
+    assert cfg.project.name == complete_config_setup["repo_name"]
     assert cfg.project.ssh.type == "zfs"
     assert isinstance(cfg.project_root, Path)
     assert cfg.project_root == complete_config_setup["project_root"]
@@ -63,7 +63,6 @@ def test_missing_project_config_exits(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("section, field", [
-    ("ssh", "name"),
     ("ssh", "type"),
     ("ssh", "host"),
     ("ssh", "path"),
@@ -105,33 +104,29 @@ def test_project_config_minimal():
     # Create ignore settings with defaults
     ignore_settings = IgnoreSettings()
     
-    # Create project settings
-    project_settings = ProjectSettings(
-        data_dirs={'input', 'output', 'frozen'},
-        ignore=ignore_settings
-    )
-    
-    # Create the project config
+    # Create the project config with flattened structure
     minimal_config = ProjectConfig(
+        name="temp",
         transport="ssh",
         ssh=ssh_config,
-        project=project_settings
+        data_dirs={'input', 'output', 'frozen'},
+        ignore=ignore_settings
     )
 
     # Verify required fields are set
     assert minimal_config.transport == "ssh"
     assert minimal_config.ssh.name == "temp"
-    assert minimal_config.project.data_dirs == {'input', 'output', 'frozen'}
+    assert minimal_config.data_dirs == {'input', 'output', 'frozen'}
     assert minimal_config.ssh.host == "localhost"
     assert minimal_config.ssh.path == test_path
     assert minimal_config.ssh.type == "xfs"
 
     # Verify default ignore rules are set
-    assert "__pycache__" in minimal_config.project.ignore.names
-    assert ".pyc" in minimal_config.project.ignore.suffixes
+    assert "__pycache__" in minimal_config.ignore.names
+    assert ".pyc" in minimal_config.ignore.suffixes
 
     # Verify private attributes are initialized
-    assert isinstance(minimal_config.project.ignore._ignored_exact, set)
+    assert isinstance(minimal_config.ignore._ignored_exact, set)
 
 
 def test_project_config_path_handling():
@@ -152,30 +147,28 @@ def test_project_config_path_handling():
         names=set(),
         suffixes=set()
     )
-    project_settings = ProjectSettings(
+    cfg = ProjectConfig(
+        name="test",
+        transport="ssh",
+        ssh=ssh_config,
         data_dirs={"input", "output"},
         ignore=ignore_settings
     )
-    cfg = ProjectConfig(
-        transport="ssh",
-        ssh=ssh_config,
-        project=project_settings
-    )
     
     # Public interface shows paths as given
-    assert "data/file1.txt" in cfg.project.ignore.paths
-    assert "temp/file2.log" in cfg.project.ignore.paths
-    assert "./relative.txt" in cfg.project.ignore.paths
-    assert "../parent.txt" in cfg.project.ignore.paths
-    assert "input" in cfg.project.data_dirs
-    assert "output" in cfg.project.data_dirs
+    assert "data/file1.txt" in cfg.ignore.paths
+    assert "temp/file2.log" in cfg.ignore.paths
+    assert "./relative.txt" in cfg.ignore.paths
+    assert "../parent.txt" in cfg.ignore.paths
+    assert "input" in cfg.data_dirs
+    assert "output" in cfg.data_dirs
     
     # All paths are treated as exact matches in _ignored_exact
     # _ignored_exact contains PurePosixPath objects
-    assert PurePosixPath("data/file1.txt") in cfg.project.ignore._ignored_exact
-    assert PurePosixPath("temp/file2.log") in cfg.project.ignore._ignored_exact
-    assert PurePosixPath("relative.txt") in cfg.project.ignore._ignored_exact  # ./relative.txt becomes relative.txt
-    assert PurePosixPath("../parent.txt") in cfg.project.ignore._ignored_exact
+    assert PurePosixPath("data/file1.txt") in cfg.ignore._ignored_exact
+    assert PurePosixPath("temp/file2.log") in cfg.ignore._ignored_exact
+    assert PurePosixPath("relative.txt") in cfg.ignore._ignored_exact  # ./relative.txt becomes relative.txt
+    assert PurePosixPath("../parent.txt") in cfg.ignore._ignored_exact
 
 
 def test_config_load_project_only(basic_repo_structure, monkeypatch):
@@ -294,7 +287,7 @@ def test_config_with_user_config(complete_config_setup):
     assert cfg.user.user_name == "Joe"
     assert cfg.user.user_id == "joe@example.org"
     assert cfg.project is not None
-    assert cfg.project.ssh.name == complete_config_setup["repo_name"]
+    assert cfg.project.name == complete_config_setup["repo_name"]
     assert cfg.project_root == complete_config_setup["project_root"]
 
 
@@ -348,23 +341,21 @@ def test_project_config_handles_directory_paths():
         names=set(),
         suffixes=set()
     )
-    project_settings = ProjectSettings(
+    cfg = ProjectConfig(
+        name="test",
+        transport="ssh",
+        ssh=ssh_config,
         data_dirs={"input"},
         ignore=ignore_settings
     )
-    cfg = ProjectConfig(
-        transport="ssh",
-        ssh=ssh_config,
-        project=project_settings
-    )
     
     # Check that trailing slashes are removed in the normalized paths
-    assert "logs" in cfg.project.ignore.paths  # Trailing slash should be stripped
-    assert "temp/files" in cfg.project.ignore.paths  # Trailing slash should be stripped
+    assert "logs" in cfg.ignore.paths  # Trailing slash should be stripped
+    assert "temp/files" in cfg.ignore.paths  # Trailing slash should be stripped
     
     # Check that internal representation uses normalized paths
-    assert PurePosixPath("logs") in cfg.project.ignore._ignored_exact
-    assert PurePosixPath("temp/files") in cfg.project.ignore._ignored_exact
+    assert PurePosixPath("logs") in cfg.ignore._ignored_exact
+    assert PurePosixPath("temp/files") in cfg.ignore._ignored_exact
 
 
 def test_validate_config_valid_configuration(complete_config_setup):
@@ -873,35 +864,33 @@ user_id: test@example.com
 
 
 class TestConfigMigrationIntegration:
-    """Integration test for config migration."""
+    """Integration test for new config format validation."""
     
-    def test_basic_migration_works(self, tmp_path):
-        """Test that basic migration from legacy format works."""
+    def test_new_format_works(self, tmp_path):
+        """Test that new flattened config format works correctly."""
         from dsg.config.manager import ProjectConfig
         
         config_file = tmp_path / ".dsgconfig.yml"
         config_content = {
+            "name": "migration-test-repo",
             "transport": "ssh",
             "ssh": {
                 "host": "localhost",
                 "path": "/tmp/test",
-                "name": "migration-test-repo",
                 "type": "xfs"
             },
-            "project": {
-                "data_dirs": ["input", "output"]
-            }
+            "data_dirs": ["input", "output"]
         }
         
         import yaml
         with config_file.open("w") as f:
             yaml.safe_dump(config_content, f)
         
-        # Should migrate successfully
+        # Should load successfully with new format
         config = ProjectConfig.load(config_file)
         assert config.name == "migration-test-repo"
         assert config.transport == "ssh"
-        assert config.ssh.name == "migration-test-repo"  # Legacy field preserved
+        assert config.ssh.host == "localhost"
 
 
 # done.

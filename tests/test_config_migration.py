@@ -6,7 +6,6 @@
 # ------
 # tests/test_config_migration.py
 
-import tempfile
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -14,11 +13,11 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from dsg.config_manager import ProjectConfig, validate_config
+from dsg.config.manager import ProjectConfig, validate_config
 
 
-class TestProjectConfigMigration:
-    """Test .dsgconfig.yml migration from legacy format to new format."""
+class TestProjectConfigValidation:
+    """Test .dsgconfig.yml validation of legacy vs new format."""
     
     def test_load_new_format_with_top_level_name(self, tmp_path):
         """Test loading new format config with top-level name."""
@@ -31,15 +30,13 @@ class TestProjectConfigMigration:
                 "path": "/tmp/test",
                 "type": "xfs"
             },
-            "project": {
-                "data_dirs": ["input", "output"]
-            }
+            "data_dirs": ["input", "output"]
         }
         
         with config_file.open("w") as f:
             yaml.safe_dump(config_content, f)
         
-        # Should load without migration
+        # Should load successfully with new format
         config = ProjectConfig.load(config_file)
         assert config.name == "test-repo"
         assert config.transport == "ssh"
@@ -147,7 +144,7 @@ class TestProjectConfigMigration:
             yaml.safe_dump(config_content, f)
         
         # Should fail validation because no name can be found
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError) as excinfo:
             ProjectConfig.load(config_file)
         
@@ -311,7 +308,7 @@ class TestLoggingSetupMigration:
     
     def test_detect_repo_name_prefers_top_level_name(self, tmp_path):
         """Test that detect_repo_name prefers top-level name over transport name."""
-        from dsg.logging_setup import detect_repo_name
+        from dsg.system.logging_setup import detect_repo_name
         
         # Create config with both top-level and transport name
         config_file = tmp_path / ".dsgconfig.yml"
@@ -343,7 +340,7 @@ class TestLoggingSetupMigration:
 
     def test_detect_repo_name_falls_back_to_transport_name(self, tmp_path):
         """Test that detect_repo_name falls back to transport name for legacy configs."""
-        from dsg.logging_setup import detect_repo_name
+        from dsg.system.logging_setup import detect_repo_name
         
         # Create legacy config with only transport name
         config_file = tmp_path / ".dsgconfig.yml"

@@ -3,7 +3,6 @@
 
 import subprocess
 import re
-import sys
 
 # Get the CLI help output
 result = subprocess.run(['uv', 'run', 'dsg', '--help'], 

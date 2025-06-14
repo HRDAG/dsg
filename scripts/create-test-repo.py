@@ -14,9 +14,7 @@ This script creates a BB repository with problematic filenames for testing
 sync validation blocking and normalization in a real terminal.
 """
 
-import os
 import sys
-import tempfile
 import shutil
 from pathlib import Path
 
@@ -25,7 +23,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(project_root))
 
-from tests.fixtures.bb_repo_factory import (
+# Import after path setup
+from tests.fixtures.bb_repo_factory import (  # noqa: E402
     create_bb_file_content,
     create_dsg_structure
 )
@@ -130,12 +129,12 @@ project:
     print("Creating .dsg directory structure...")
     create_dsg_structure(bb_path)
     
-    print(f"\n✅ Test repository created successfully!")
+    print("\n✅ Test repository created successfully!")
     print(f"📁 Repository location: {bb_path}")
-    print(f"\n🔍 Problematic files created:")
-    print(f"   • task2/import/project<illegal>/input/test-data.csv")
-    print(f"   • task2/analysis/CON/output/results.txt")
-    print(f"   • task3/import/backup_dir~/input/archived.csv")
+    print("\n🔍 Problematic files created:")
+    print("   • task2/import/project<illegal>/input/test-data.csv")
+    print("   • task2/analysis/CON/output/results.txt")
+    print("   • task3/import/backup_dir~/input/archived.csv")
     
     return bb_path
 
@@ -164,11 +163,11 @@ def main():
     # Create the test repository
     repo_path = create_test_repo(target_path)
     
-    print(f"\n🚀 Ready for testing! Try these commands:")
+    print("\n🚀 Ready for testing! Try these commands:")
     print(f"   cd {repo_path}")
-    print(f"   uv run python -m dsg.cli status --verbose")
-    print(f"   uv run python -m dsg.cli sync --no-normalize --verbose")
-    print(f"   uv run python -m dsg.cli sync --verbose")
+    print("   uv run python -m dsg.cli status --verbose")
+    print("   uv run python -m dsg.cli sync --no-normalize --verbose")
+    print("   uv run python -m dsg.cli sync --verbose")
 
 
 if __name__ == "__main__":

@@ -6,9 +6,6 @@
 # ------
 # dsg/tests/test_cli_coverage.py
 
-import os
-import pytest
-from pathlib import Path
 from typer.testing import CliRunner
 
 from dsg.cli import app

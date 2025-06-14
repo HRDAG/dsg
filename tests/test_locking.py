@@ -13,16 +13,13 @@ Tests cover lock acquisition, release, timeouts, stale lock detection,
 race conditions, and error handling scenarios.
 """
 
-import json
 import time
-import uuid
 from datetime import datetime, timedelta, UTC
-from unittest.mock import Mock, patch
 
 import pytest
 import orjson
 
-from dsg.locking import (
+from dsg.system.locking import (
     SyncLock, LockInfo, LockError, LockTimeoutError, LockConflictError,
     create_sync_lock
 )
@@ -288,7 +285,6 @@ class TestSyncLock:
         # Mock the verification step to simulate race condition
         lock = SyncLock(mock_backend, "user1", "sync", timeout_minutes=UNIT_TEST_TIMEOUT_MINUTES)
         
-        original_get_current_lock_info = lock._get_current_lock_info
         
         def mock_get_current_lock_info():
             # First call (initial check) returns None
@@ -343,7 +339,7 @@ class TestSyncLock:
         
         start_time = time.time()
         # Should fail with either LockError or LockTimeoutError
-        with pytest.raises((LockError, LockTimeoutError)) as exc_info:
+        with pytest.raises((LockError, LockTimeoutError)):
             lock.acquire()
         
         elapsed = time.time() - start_time

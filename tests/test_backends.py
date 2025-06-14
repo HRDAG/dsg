@@ -6,22 +6,19 @@
 # ------
 # tests/test_backends.py
 
-import pytest
-
-# Skip all tests in this file - legacy backend tests need update for new transaction system
-pytestmark = pytest.mark.skip(reason="Legacy backend tests - need update for new transaction system")
 import socket
-import subprocess
 import os
 from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+
 from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
-    SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
-    SSHUserConfig
+    SSHRepositoryConfig, IgnoreSettings
 )
 from dsg.storage import (
     SSHBackend, 
-    Backend, 
     LocalhostBackend,
     ZFSOperations,
     LocalhostTransport,
@@ -30,7 +27,9 @@ from dsg.storage import (
     can_access_backend
 )
 from dsg.system.host_utils import is_local_host
-from unittest.mock import patch, MagicMock
+
+# Skip all tests in this file - legacy backend tests need update for new transaction system
+pytestmark = pytest.mark.skip(reason="Legacy backend tests - need update for new transaction system")
 
 
 # legacy_format_config_objects fixture replaced with legacy_format_config_objects from conftest.py
@@ -390,8 +389,8 @@ def test_localhost_backend_clone_symlinks(tmp_path):
     assert dest_link.exists()
     
     # This is the bug - currently this will fail because clone dereferences symlinks
-    assert dest_link.is_symlink(), f"Expected symlink but got regular file. os.readlink would fail."
-    assert os.readlink(dest_link) == relative_target, f"Symlink target incorrect"
+    assert dest_link.is_symlink(), "Expected symlink but got regular file. os.readlink would fail."
+    assert os.readlink(dest_link) == relative_target, "Symlink target incorrect"
     
     # Verify symlink still works (can read through it)
     assert dest_link.read_text() == "Target file content"
@@ -452,7 +451,7 @@ def test_localhost_backend_zfs_pool_name_extraction():
         # Mock the dependencies to focus on pool name extraction  
         with patch('dsg.system.execution.CommandExecutor.run_sudo') as mock_run_sudo, \
              patch('dsg.storage.backends.ZFSOperations') as mock_zfs, \
-             patch('dsg.storage.backends.LocalhostTransport') as mock_transport, \
+             patch('dsg.storage.backends.LocalhostTransport'), \
              patch('os.getcwd', return_value="/fake/current/dir"), \
              patch('os.listdir', return_value=["file1.txt"]):
             
@@ -519,7 +518,6 @@ def test_ssh_backend_path_construction_with_trailing_slash():
 def test_ssh_backend_accessibility_uses_full_path():
     """Test that is_accessible() checks the full repository path, not just base path"""
     from unittest.mock import Mock, patch
-    import paramiko
     
     ssh_config = Mock()
     ssh_config.host = "testhost"
@@ -546,17 +544,17 @@ def test_ssh_backend_accessibility_uses_full_path():
         
         # Verify it checked the full path, not just base path
         expected_calls = [
-            f"test -d '/var/repos/zsd/test-repo'",  # Full repo path
-            f"test -d '/var/repos/zsd/test-repo/.dsg'",  # .dsg directory
-            f"test -r '/var/repos/zsd/test-repo/.dsg'",  # Read permissions
-            f"ls '/var/repos/zsd/test-repo/.dsg/'*.json 2>/dev/null"  # Manifest files
+            "test -d '/var/repos/zsd/test-repo'",  # Full repo path
+            "test -d '/var/repos/zsd/test-repo/.dsg'",  # .dsg directory
+            "test -r '/var/repos/zsd/test-repo/.dsg'",  # Read permissions
+            "ls '/var/repos/zsd/test-repo/.dsg/'*.json 2>/dev/null"  # Manifest files
         ]
         
         # Check that exec_command was called with the right paths
         actual_calls = [call[0][0] for call in mock_client.exec_command.call_args_list]
         assert actual_calls == expected_calls
         
-        assert ok == True
+        assert ok
         assert "accessible with manifest files" in msg
 
 
@@ -565,7 +563,7 @@ def test_ssh_backend_accessibility_uses_full_path():
 @pytest.mark.parametrize("use_progress", [False, True])
 def test_ssh_backend_clone_basic(tmp_path, monkeypatch, use_progress):
     """Test SSH backend clone with rsync mocking"""
-    from unittest.mock import Mock, patch, call
+    from unittest.mock import Mock, patch
     
     # Create destination directory
     dest_repo = tmp_path / "dest"
@@ -723,7 +721,6 @@ def test_ssh_backend_clone_with_resume(tmp_path):
 def test_ssh_backend_clone_rsync_errors(tmp_path):
     """Test SSH clone error handling for rsync failures"""
     from unittest.mock import Mock, patch
-    import subprocess
     
     dest_repo = tmp_path / "dest"
     dest_repo.mkdir()
@@ -897,12 +894,10 @@ class TestNewFormatBackends:
             name="legacy-name",  # Legacy name (should be ignored)
             type="zfs"
         )
-        project_settings = ProjectSettings()
         project = ProjectConfig(
             name="top-level-name",  # New format name (should be used)
             transport="ssh",
-            ssh=ssh_config,
-            project=project_settings
+            ssh=ssh_config
         )
         
         user = UserConfig(
@@ -936,7 +931,7 @@ class TestMigratedConfigBackends:
     
     def test_backend_works_with_migrated_config(self, tmp_path):
         """Test that backends work correctly with configs migrated from legacy format."""
-        from dsg.config.manager import ProjectConfig, Config, UserConfig, ProjectSettings
+        from dsg.config.manager import ProjectConfig, Config, UserConfig
         
         # Create legacy format config file
         config_file = tmp_path / ".dsgconfig.yml"

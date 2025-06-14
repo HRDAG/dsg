@@ -13,7 +13,6 @@ The smallest possible test: verify sync blocks when validation warnings exist.
 """
 
 import pytest
-from pathlib import Path
 
 # Import fixtures - pytest will automatically discover them
 pytest_plugins = ["tests.fixtures.bb_repo_factory"]
@@ -34,9 +33,9 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
     # This test will fail until we implement sync_repository() function
     # that checks for validation warnings and blocks
     
-    from dsg.config_manager import Config, ProjectConfig, UserConfig, ProjectSettings, IgnoreSettings, SSHRepositoryConfig
-    from dsg.lifecycle import sync_repository
-    from dsg.exceptions import ValidationError
+    from dsg.config.manager import Config, ProjectConfig, UserConfig, IgnoreSettings, SSHRepositoryConfig
+    from dsg.core.lifecycle import sync_repository
+    from dsg.system.exceptions import ValidationError
     from rich.console import Console
     
     # Create minimal config object manually (easier than loading from files)
@@ -47,13 +46,10 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
         ssh=SSHRepositoryConfig(
             host="localhost",
             path="/tmp/fake",  # Fake path since we won't actually sync
-            name="test-project",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output"},
-            ignore=IgnoreSettings(names=set(), suffixes=set(), paths=set())
-        )
+        data_dirs={"input", "output"},
+        ignore=IgnoreSettings(names=set(), suffixes=set(), paths=set())
     )
     config = Config(user=user_config, project=project_config, project_root=bb_path)
     
@@ -71,8 +67,8 @@ def test_sync_proceeds_with_normalize_option(bb_repo_with_validation_issues_and_
     """
     bb_path = bb_repo_with_validation_issues_and_config
     
-    from dsg.config_manager import Config, ProjectConfig, UserConfig, ProjectSettings, IgnoreSettings, SSHRepositoryConfig
-    from dsg.lifecycle import sync_repository
+    from dsg.config.manager import Config, ProjectConfig, UserConfig, IgnoreSettings, SSHRepositoryConfig
+    from dsg.core.lifecycle import sync_repository
     from rich.console import Console
     
     # Create minimal config object manually
@@ -83,13 +79,10 @@ def test_sync_proceeds_with_normalize_option(bb_repo_with_validation_issues_and_
         ssh=SSHRepositoryConfig(
             host="localhost",
             path="/tmp/fake",
-            name="test-project",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output"},
-            ignore=IgnoreSettings(names=set(), suffixes=set(), paths=set())
-        )
+        data_dirs={"input", "output"},
+        ignore=IgnoreSettings(names=set(), suffixes=set(), paths=set())
     )
     config = Config(user=user_config, project=project_config, project_root=bb_path)
     

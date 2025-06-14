@@ -16,7 +16,7 @@ import socket
 import tempfile
 import yaml
 from pathlib import Path
-from dsg.config_manager import _is_effectively_localhost, SSHRepositoryConfig, ProjectConfig
+from dsg.config.manager import _is_effectively_localhost, SSHRepositoryConfig
 
 def test_hostname_detection():
     """Test hostname-based localhost detection."""

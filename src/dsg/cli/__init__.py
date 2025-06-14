@@ -8,6 +8,6 @@
 
 """Command Line Interface package for DSG."""
 
-from .main import main, app
+from .main import cli_main as main, app
 
 __all__ = ['main', 'app']

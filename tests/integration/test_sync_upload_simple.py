@@ -13,21 +13,15 @@ These tests create simple scenarios without using create_mixed_state
 to avoid the complex setup issues.
 """
 
-import pytest
-from pathlib import Path
 from rich.console import Console
 
 from dsg.core.lifecycle import sync_repository
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     local_file_exists,
     remote_file_exists,
     create_local_file,
     create_remote_file,
     regenerate_remote_manifest,
-    regenerate_cache_from_current_local,
 )
 
 
@@ -52,7 +46,7 @@ class TestSimpleSyncUpload:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify upload worked
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, test_file)
         
         # Verify content matches
@@ -78,7 +72,7 @@ class TestSimpleSyncUpload:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify download worked
-        assert result["success"] == True
+        assert result["success"]
         assert local_file_exists(setup, test_file)
         
         # Verify content matches
@@ -111,7 +105,7 @@ class TestSimpleSyncUpload:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify both operations worked
-        assert result["success"] == True
+        assert result["success"]
         
         # Check upload
         assert remote_file_exists(setup, local_file)

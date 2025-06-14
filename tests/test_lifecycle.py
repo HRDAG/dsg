@@ -309,7 +309,7 @@ class TestInitRepository:
     
     def test_init_repository_with_real_config_structure(self):
         """Test init_repository with realistic config structure - reproduces repo_name bug"""
-        from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+        from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
         from pathlib import Path
         
         # Create realistic config structure that matches actual YAML
@@ -320,20 +320,16 @@ class TestInitRepository:
             type="zfs"
         )
         
-        project_settings = ProjectSettings(
-            data_dirs={"input", "output", "hand", "src"},
-            ignore={
-                "names": [".DS_Store", "__pycache__"],
-                "paths": [],
-                "suffixes": [".tmp", ".pyc"]
-            }
-        )
-        
         project_config = ProjectConfig(
             name="BB",  # This is the correct field
             transport="ssh",
             ssh=ssh_config,
-            project=project_settings
+            data_dirs={"input", "output", "hand", "src"},
+            ignore=IgnoreSettings(
+                names=[".DS_Store", "__pycache__"],
+                paths=[],
+                suffixes=[".tmp", ".pyc"]
+            )
         )
         
         user_config = UserConfig(

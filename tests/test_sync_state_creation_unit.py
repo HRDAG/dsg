@@ -13,16 +13,11 @@ These tests verify that our state manipulation functions actually
 create the expected states before we test the integration level.
 """
 
-import pytest
-from pathlib import Path
 
-from dsg.manifest import Manifest
-from dsg.manifest_merger import ManifestMerger, SyncState
-from dsg.scanner import scan_directory
+from dsg.data.manifest import Manifest
+from dsg.data.manifest_merger import ManifestMerger, SyncState
+from dsg.core.scanner import scan_directory
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     create_local_file,
     create_remote_file,
     modify_local_file,

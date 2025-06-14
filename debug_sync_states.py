@@ -3,23 +3,19 @@
 Debug script to understand sync state detection in collaborative workflow.
 """
 
-import tempfile
 import sys
 from pathlib import Path
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-import pytest
 from rich.console import Console
 from dsg.core.lifecycle import sync_repository
 from dsg.core.operations import get_sync_status
 from tests.fixtures.bb_repo_factory import (
     bb_local_remote_setup, 
     modify_local_file, 
-    regenerate_cache_from_current_local,
-    local_file_exists,
-    local_file_content_matches
+    regenerate_cache_from_current_local
 )
 
 def debug_sync_states():
@@ -68,7 +64,7 @@ process_analysis <- function() {
 """
     
     modify_local_file(setup["local_path"], shared_file, user_a_changes)
-    print(f"Modified local file with User A changes")
+    print("Modified local file with User A changes")
     
     # Check sync status before User A sync
     print("Sync status before User A sync:")

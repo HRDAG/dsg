@@ -15,12 +15,6 @@ import os
 from pathlib import Path
 import pytest
 
-from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
-    bb_clone_integration_setup
-)
 
 
 def test_bb_repo_structure(bb_repo_structure):
@@ -106,18 +100,16 @@ def test_bb_binary_files(bb_repo_structure):
 
 def test_bb_repo_with_config(bb_repo_with_config):
     """Test BB repository with .dsgconfig.yml using DSG's config loader."""
-    from dsg.config_manager import Config
-    import os
     
     bb_info = bb_repo_with_config
-    bb_path = bb_info["bb_path"]
+    bb_info["bb_path"]
     config_path = bb_info["config_path"]
     
     # Check that config file exists
     assert config_path.exists()
     
     # Test loading with DSG's ProjectConfig class
-    from dsg.config_manager import ProjectConfig
+    from dsg.config.manager import ProjectConfig
     
     config = ProjectConfig.load(config_path)
     
@@ -129,7 +121,7 @@ def test_bb_repo_with_config(bb_repo_with_config):
     # Verify data_dirs includes all configured directories
     # (scanner will decide which files to actually include)
     expected_data_dirs = {"input", "output", "hand", "src"}
-    assert config.project.data_dirs == expected_data_dirs
+    assert config.data_dirs == expected_data_dirs
     
     # Verify remote path is correctly set
     remote_base = bb_info["base_path"] / "remote"
@@ -146,7 +138,6 @@ def test_bb_clone_integration(bb_clone_integration_setup):
     """
     import subprocess
     import tempfile
-    import os
     
     setup = bb_clone_integration_setup
     local_path = setup["local_path"]
@@ -254,8 +245,6 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
         modify_remote_file,
         create_remote_file,
         delete_remote_file,
-        regenerate_remote_manifest,
-        # Illegal filename helpers
         create_illegal_filename_examples,
         create_local_file_with_illegal_name
     )
@@ -316,7 +305,7 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
     assert not (remote_path / "task1/import/input/new-remote.csv").exists()
     
     # Test cache manifest manipulation (C)
-    from dsg.manifest import Manifest
+    from dsg.data.manifest import Manifest
     
     # First ensure we have a cache manifest with current local files
     regenerate_cache_from_current_local(local_config, last_sync_path)
@@ -365,7 +354,7 @@ def test_bb_fixture_helpers(bb_local_remote_setup):
     assert "windows_illegal" in illegal_examples
     
     # Test creating illegal filename (may not work on all filesystems)
-    illegal_file = create_local_file_with_illegal_name(local_path, "test_file.csv", "illegal content")
+    create_local_file_with_illegal_name(local_path, "test_file.csv", "illegal content")
     # Note: This may return UNCREATABLE_ILLEGAL_FILE if filesystem doesn't allow the name
     
     # Cleanup: restore original content and remove test files
@@ -389,7 +378,7 @@ def test_bb_local_remote_manifests_exist(bb_local_remote_setup):
     assert remote_manifest_path.exists(), "Remote .dsg/last-sync.json must exist"
     
     # Verify both manifests can be loaded
-    from dsg.manifest import Manifest
+    from dsg.data.manifest import Manifest
     
     local_manifest = Manifest.from_json(local_manifest_path)
     assert len(local_manifest.entries) > 0, "Local manifest should contain entries"

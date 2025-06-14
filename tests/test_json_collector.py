@@ -7,12 +7,9 @@
 # tests/test_json_collector.py
 
 import json
-import pytest
-from datetime import datetime
 from unittest.mock import Mock, patch
-from io import StringIO
 
-from dsg.json_collector import JSONCollector
+from dsg.data.json_collector import JSONCollector
 
 
 class TestJSONCollector:

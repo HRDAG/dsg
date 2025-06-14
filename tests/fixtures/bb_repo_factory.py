@@ -24,16 +24,16 @@ import shutil
 import tempfile
 import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict
 
 import pytest
 
 from dsg.backends import LocalhostBackend
-from dsg.config_manager import (
+from dsg.config.manager import (
     Config, ProjectConfig, SSHRepositoryConfig,
-    ProjectSettings, IgnoreSettings, UserConfig)
-from dsg.manifest import Manifest, FileRef
-from dsg.scanner import scan_directory
+    IgnoreSettings, UserConfig)
+from dsg.data.manifest import Manifest, FileRef
+from dsg.core.scanner import scan_directory
 
 
 # Use KEEP_TEST_DIR to preserve test directories for inspection
@@ -352,13 +352,11 @@ def bb_repo_with_validation_issues_and_config(bb_repo_with_validation_issues):
             "name": "BB",
             "type": "xfs"
         },
-        "project": {
-            "data_dirs": ["input", "output", "hand", "src"],
-            "ignore": {
-                "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-                "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-                "paths": []
-            }
+        "data_dirs": ["input", "output", "hand", "src"],
+        "ignore": {
+            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
+            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
+            "paths": []
         }
     }
     
@@ -387,13 +385,11 @@ def bb_repo_with_config(bb_repo_structure):
             "name": "BB",
             "type": "xfs"
         },
-        "project": {
-            "data_dirs": ["input", "output", "hand", "src"],
-            "ignore": {
-                "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-                "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-                "paths": []
-            }
+        "data_dirs": ["input", "output", "hand", "src"],
+        "ignore": {
+            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
+            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
+            "paths": []
         }
     }
 
@@ -457,13 +453,11 @@ def bb_clone_integration_setup(bb_repo_with_config):
             "name": "BB",
             "type": "xfs"
         },
-        "project": {
-            "data_dirs": ["input", "output", "hand", "src"],
-            "ignore": {
-                "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-                "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-                "paths": []
-            }
+        "data_dirs": ["input", "output", "hand", "src"],
+        "ignore": {
+            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
+            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
+            "paths": []
         }
     }
 
@@ -514,13 +508,11 @@ Use `dsg clone` to get the data files from the remote repository.
             name="BB",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output", "hand", "src"},
-            ignore=IgnoreSettings(
-                names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
-                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
-                paths=set()
-            )
+        data_dirs={"input", "output", "hand", "src"},
+        ignore=IgnoreSettings(
+            names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
+            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
+            paths=set()
         )
     )
 
@@ -548,7 +540,7 @@ Use `dsg clone` to get the data files from the remote repository.
     if KEEP_TEST_DIR:
         test_info_path = base_path / "BB_CLONE_INTEGRATION_INFO.txt"
         with open(test_info_path, "w") as f:
-            f.write(f"BB Clone Integration Setup\n")
+            f.write("BB Clone Integration Setup\n")
             f.write(f"Local Stub: {local_bb}\n")
             f.write(f"Remote Full: {remote_bb}\n")
             f.write(f"Remote Manifest: {remote_manifest_path}\n")
@@ -593,13 +585,11 @@ def bb_local_remote_setup(bb_repo_with_config):
             name="BB",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output", "hand", "src"},
-            ignore=IgnoreSettings(
-                names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
-                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
-                paths=set()
-            )
+        data_dirs={"input", "output", "hand", "src"},
+        ignore=IgnoreSettings(
+            names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
+            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
+            paths=set()
         )
     )
 
@@ -637,7 +627,7 @@ def bb_local_remote_setup(bb_repo_with_config):
     if KEEP_TEST_DIR:
         test_info_path = base_path / "BB_LOCAL_REMOTE_INFO.txt"
         with open(test_info_path, "w") as f:
-            f.write(f"BB Local/Remote Setup\n")
+            f.write("BB Local/Remote Setup\n")
             f.write(f"Local: {local_path}\n")
             f.write(f"Remote: {remote_base}\n")
             f.write(f"Last-sync: {last_sync_path}\n")

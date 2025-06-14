@@ -16,7 +16,7 @@ ZFS backends, providing true atomicity and rollback capability.
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from dsg.storage.snapshots import ZFSOperations
 from dsg.storage.backends import LocalhostBackend

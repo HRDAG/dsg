@@ -10,7 +10,7 @@ import pytest
 import subprocess
 from unittest.mock import patch, MagicMock
 
-from dsg.utils.execution import CommandExecutor, CommandResult
+from dsg.system.execution import CommandExecutor, CommandResult
 
 
 class TestCommandResult:
@@ -233,7 +233,7 @@ class TestCommandExecutorSudo:
 class TestCommandExecutorSSHWithSudo:
     """Test SSH with sudo command execution."""
     
-    @patch('dsg.utils.execution.CommandExecutor.run_ssh')
+    @patch('dsg.system.execution.CommandExecutor.run_ssh')
     def test_run_ssh_with_sudo_success(self, mock_run_ssh):
         """Test successful SSH with sudo command."""
         mock_run_ssh.return_value = CommandResult(
@@ -250,7 +250,7 @@ class TestCommandExecutorSSHWithSudo:
         
         mock_run_ssh.assert_called_once_with("testhost", ["sudo", "zfs", "list"], check=True)
     
-    @patch('dsg.utils.execution.CommandExecutor.run_ssh')
+    @patch('dsg.system.execution.CommandExecutor.run_ssh')
     def test_run_ssh_with_sudo_failure(self, mock_run_ssh):
         """Test SSH with sudo command failure."""
         mock_run_ssh.side_effect = ValueError("SSH command failed on testhost: sudo: zfs: command not found")

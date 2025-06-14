@@ -12,7 +12,6 @@ from collections import OrderedDict
 import orjson
 import unicodedata
 from unittest.mock import patch
-from pathlib import Path
 
 from dsg.data.manifest import (
     FileRef,
@@ -445,7 +444,6 @@ class TestManifest:
     def test_generate_metadata(self, sample_manifest):
         """Test generating new metadata"""
         # Store original metadata values
-        original_snapshot = sample_manifest.metadata.snapshot_id
         original_hash = sample_manifest.metadata.entries_hash
 
         # Generate new metadata
@@ -490,8 +488,6 @@ class TestManifest:
     def test_manifest_round_trip(self, sample_manifest, test_project_dir):
         """Test round-trip serialization (to_json followed by from_json)"""
         # Store the original entries and metadata for later comparison
-        original_entries = sample_manifest.entries
-        original_metadata = sample_manifest.metadata
 
         # Create path for test JSON file
         manifest_file = test_project_dir["manifest_dir"] / "round_trip.json"

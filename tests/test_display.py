@@ -10,8 +10,8 @@ import pytest
 from pathlib import Path
 from collections import OrderedDict
 from rich.console import Console
-from dsg.display import manifest_to_table, format_file_count
-from dsg.manifest import Manifest, FileRef, LinkRef
+from dsg.system.display import manifest_to_table, format_file_count
+from dsg.data.manifest import Manifest, FileRef, LinkRef
 
 @pytest.fixture
 def sample_display_manifest():

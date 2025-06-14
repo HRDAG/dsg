@@ -12,8 +12,7 @@ Action command handlers - state-changing commands.
 Handles: init, clone, sync, snapmount, snapfetch
 """
 
-from typing import Any, Optional
-from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 

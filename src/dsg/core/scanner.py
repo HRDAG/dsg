@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Optional, Callable
+from typing import Optional
 
 # Third-party imports
 import loguru
@@ -82,10 +82,10 @@ def scan_directory(cfg: Config, compute_hashes: bool = False,
         
     return _scan_directory_internal(
         root_path=cfg.project_root,
-        data_dirs=cfg.project.project.data_dirs,
-        ignored_exact=cfg.project.project.ignore._ignored_exact,
-        ignored_names=cfg.project.project.ignore.names,
-        ignored_suffixes=cfg.project.project.ignore.suffixes,
+        data_dirs=cfg.project.data_dirs,
+        ignored_exact=cfg.project.ignore._ignored_exact,
+        ignored_names=cfg.project.ignore.names,
+        ignored_suffixes=cfg.project.ignore.suffixes,
         compute_hashes=compute_hashes,
         user_id=user_id,
         normalize_paths=normalize_paths,

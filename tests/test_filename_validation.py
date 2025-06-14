@@ -8,8 +8,7 @@
 
 import pytest
 from pathlib import Path
-import unicodedata
-from dsg.filename_validation import validate_path, normalize_path
+from dsg.data.filename_validation import validate_path, normalize_path
 
 test_cases = [
     ("normal_file.txt", True),
@@ -129,7 +128,7 @@ def test_normalize_path():
     
     # Verify the path was normalized
     assert was_modified is True
-    assert str(normalized_path) == f"folder/über.txt"
+    assert str(normalized_path) == "folder/über.txt"
     
     # Test case 2: Path with composed characters (NFC)
     path_with_nfc = Path("folder/über.txt")  # Already NFC

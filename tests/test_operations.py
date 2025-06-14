@@ -6,12 +6,8 @@
 # ------
 # dsg/tests/test_operations.py
 
-import os
 import pytest
-from pathlib import Path, PurePosixPath
 from dsg.core.operations import list_directory, parse_cli_overrides
-from dsg.config.manager import Config
-from dsg.data.manifest import Manifest
 
 @pytest.fixture
 def test_data_directory(tmp_path):
@@ -179,7 +175,7 @@ def test_list_directory_with_debug(test_data_directory, capsys):
     
     # The function should fall back to scan_directory_no_cfg
     # Debug message is now sent to logger instead of print, so no captured output expected
-    captured = capsys.readouterr()
+    capsys.readouterr()
     # Remove assertion on debug output since it now goes to logger
     
     # Verify we still got results using the minimal config

@@ -13,17 +13,12 @@ This test uses the same approach as the working unit test but gradually
 adds integration components to isolate the failure point.
 """
 
-import pytest
-from pathlib import Path
 
-from dsg.manifest import Manifest
-from dsg.manifest_merger import ManifestMerger, SyncState
-from dsg.scanner import scan_directory
-from dsg.operations import get_sync_status
+from dsg.data.manifest import Manifest
+from dsg.data.manifest_merger import ManifestMerger, SyncState
+from dsg.core.scanner import scan_directory
+from dsg.core.operations import get_sync_status
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config, 
-    bb_local_remote_setup,
     create_local_file,
     create_remote_file,
     modify_local_file,
@@ -54,7 +49,7 @@ def test_debug_integration_step_by_step(bb_local_remote_setup):
     create_remote_file(remote_path, target_file, original_content, remote_config)
     regenerate_cache_from_current_local(local_config, last_sync_path)
     
-    print(f"DEBUG: Created files, checking all_eq state...")
+    print("DEBUG: Created files, checking all_eq state...")
     
     # Check using our unit approach
     local_scan = scan_directory(local_config, compute_hashes=True)
@@ -92,13 +87,13 @@ def test_debug_integration_step_by_step(bb_local_remote_setup):
     assert sync_states_unit[target_file] == SyncState.sLCR__all_eq
     assert sync_states_integration[target_file] == SyncState.sLCR__all_eq
     
-    print(f"DEBUG: ✓ Both approaches agree on all_eq state")
+    print("DEBUG: ✓ Both approaches agree on all_eq state")
     
     # Step 2: Modify local file (should become local_changed)
     changed_content = "id,name,value\n1,Alice,150\n2,Bob,250\n3,Charlie,300\n"
     modify_local_file(local_path, target_file, changed_content)
     
-    print(f"DEBUG: Modified local file, checking local_changed state...")
+    print("DEBUG: Modified local file, checking local_changed state...")
     
     # Check using unit approach after modification
     local_scan_after = scan_directory(local_config, compute_hashes=True)
@@ -117,7 +112,7 @@ def test_debug_integration_step_by_step(bb_local_remote_setup):
     unit_state = sync_states_unit_after[target_file]
     integration_state = sync_states_integration_after[target_file]
     
-    print(f"DEBUG: COMPARISON:")
+    print("DEBUG: COMPARISON:")
     print(f"  Unit result: {unit_state}")
     print(f"  Integration result: {integration_state}")
     print(f"  Match: {unit_state == integration_state}")

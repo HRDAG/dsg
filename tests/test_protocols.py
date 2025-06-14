@@ -14,9 +14,9 @@ and used for type checking in DSG components.
 """
 
 import pytest
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
-from dsg.protocols import FileOperations
+from dsg.core.protocols import FileOperations
 
 
 class TestFileOperationsProtocol:
@@ -165,7 +165,7 @@ class TestProtocolIntegration:
     
     def test_protocols_can_be_imported(self):
         """Test that protocols can be imported from the module."""
-        from dsg.protocols import FileOperations
+        from dsg.core.protocols import FileOperations
         assert FileOperations is not None
         
     def test_protocol_is_properly_typed(self):

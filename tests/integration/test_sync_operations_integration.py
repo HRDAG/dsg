@@ -42,14 +42,14 @@ def get_valid_data_dir_path(config, relative_subpath: str = "") -> str:
     Generate a valid file path within one of the configured data_dirs.
     
     Args:
-        config: DSG config object with project.project.data_dirs
+        config: DSG config object with project.data_dirs
         relative_subpath: Additional path within the data dir (e.g., "test.csv")
     
     Returns:
         A path like "task1/import/input/test.csv" where "input" is from data_dirs
     """
     # Get first data_dir from config
-    data_dirs = list(config.project.project.data_dirs)
+    data_dirs = list(config.project.data_dirs)
     first_data_dir = data_dirs[0] if data_dirs else "input"  # Fallback to 'input' 
     
     # Build path: task1/import/{data_dir}/{relative_subpath}
@@ -67,7 +67,7 @@ def get_all_data_dir_paths(config, filename: str) -> dict[str, str]:
         Dict mapping data_dir names to full paths
         e.g., {"input": "task1/import/input/test.csv", "output": "task1/analysis/output/test.csv"}
     """
-    data_dirs = list(config.project.project.data_dirs)
+    data_dirs = list(config.project.data_dirs)
     paths = {}
     
     for i, data_dir in enumerate(data_dirs):
@@ -502,7 +502,7 @@ class TestSyncEdgeCases:
         shutil.copy2(setup["local_path"] / ".dsgconfig.yml", machine_b_path / ".dsgconfig.yml")
         
         # Create machine B config (same user ID as machine A)
-        from dsg.config.manager import Config, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings, UserConfig
+        from dsg.config.manager import Config, ProjectConfig, SSHRepositoryConfig, IgnoreSettings, UserConfig
         
         machine_b_project_config = ProjectConfig(
             name="BB",
@@ -513,13 +513,11 @@ class TestSyncEdgeCases:
                 name="BB",
                 type="xfs"
             ),
-            project=ProjectSettings(
-                data_dirs={"input", "output", "hand", "src"},
-                ignore=IgnoreSettings(
-                    names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
-                    suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
-                    paths=set()
-                )
+            data_dirs={"input", "output", "hand", "src"},
+            ignore=IgnoreSettings(
+                names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
+                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
+                paths=set()
             )
         )
         

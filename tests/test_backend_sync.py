@@ -20,8 +20,7 @@ from unittest.mock import patch, MagicMock, call
 from dsg.core.lifecycle import (
     _execute_bulk_upload,
     _execute_bulk_download, 
-    _execute_file_by_file_sync,
-    SyncOperationType
+    _execute_file_by_file_sync
 )
 from dsg.data.manifest_merger import SyncState
 from rich.console import Console
@@ -89,7 +88,7 @@ class TestBackendSyncIntegration:
         
         # Mock the file writing
         with patch('pathlib.Path.write_bytes') as mock_write, \
-             patch('pathlib.Path.mkdir') as mock_mkdir:
+             patch('pathlib.Path.mkdir'):
             
             # Execute
             _execute_bulk_download(mock_config, changed_files, console)
@@ -136,7 +135,7 @@ class TestBackendSyncIntegration:
         
         # Mock file writing for downloads
         with patch('pathlib.Path.write_bytes') as mock_write, \
-             patch('pathlib.Path.mkdir') as mock_mkdir:
+             patch('pathlib.Path.mkdir'):
             
             # Execute
             _execute_file_by_file_sync(mock_config, sync_states, console)

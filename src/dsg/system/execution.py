@@ -76,7 +76,7 @@ class CommandExecutor:
             
             return cmd_result
             
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             logger.error(f"Command timed out after {timeout}s: {' '.join(cmd)}")
             raise
         except Exception as e:
@@ -123,7 +123,7 @@ class CommandExecutor:
             
             return cmd_result
             
-        except subprocess.TimeoutExpired as e:
+        except subprocess.TimeoutExpired:
             logger.error(f"SSH command timed out after {timeout}s on {host}: {' '.join(cmd)}")
             raise
         except Exception as e:

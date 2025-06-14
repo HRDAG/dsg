@@ -7,15 +7,13 @@
 # tests/test_logging_setup.py
 
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 import yaml
 from loguru import logger
 
-from dsg.logging_setup import detect_repo_name, setup_logging
+from dsg.system.logging_setup import detect_repo_name, setup_logging
 
 
 class TestDetectRepoName:

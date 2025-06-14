@@ -26,25 +26,21 @@ since sync performs similar operations (manifest generation, ZFS snapshots,
 data copying, metadata creation).
 """
 
-import os
-import tempfile
 import unicodedata
 import subprocess
 from pathlib import Path
-from collections import OrderedDict
 from unittest.mock import patch, MagicMock, call
 import pytest
 
-from dsg.manifest import FileRef, LinkRef, Manifest
-from dsg.scanner import scan_directory_no_cfg
+from dsg.data.manifest import FileRef, LinkRef, Manifest
+from dsg.core.scanner import scan_directory_no_cfg
 
 # Use existing BB fixture for realistic test data
-from tests.fixtures.bb_repo_factory import bb_repo_structure
 
 
 def init_create_manifest(base_path: Path, user_id: str, normalize: bool = True) -> Manifest:
     """Create manifest for init with normalization (exactly like sync)."""
-    from dsg.lifecycle import normalize_problematic_paths
+    from dsg.core.lifecycle import normalize_problematic_paths
     import logging
     
     logger = logging.getLogger(__name__)
@@ -154,7 +150,7 @@ class TestInitAdminValidation:
             return result.returncode == 0
         
         # This should pass admin validation
-        assert check_admin_rights() == True
+        assert check_admin_rights()
         assert mock_run.called
         mock_run.assert_called_with(['sudo', 'zfs', 'list'], capture_output=True, text=True, check=True)
     
@@ -172,7 +168,7 @@ class TestInitAdminValidation:
                 return False
         
         # Should fail admin validation
-        assert check_admin_rights() == False
+        assert not check_admin_rights()
     
     @patch('subprocess.run')
     def test_init_warns_about_few_existing_repos(self, mock_run):
@@ -471,8 +467,8 @@ class TestInitDataSync:
             return ".dsg" in str(path)
         
         # Test exclusion logic
-        assert should_exclude_dsg(dsg_dir) == True
-        assert should_exclude_dsg(tmp_path / "regular-file.txt") == False
+        assert should_exclude_dsg(dsg_dir)
+        assert not should_exclude_dsg(tmp_path / "regular-file.txt")
 
 
 class TestInitConfigValidation:
@@ -484,11 +480,11 @@ class TestInitConfigValidation:
             return (Path(project_root) / ".dsgconfig.yml").exists()
         
         # Should fail when no .dsgconfig.yml
-        assert check_dsgconfig_exists(tmp_path) == False
+        assert not check_dsgconfig_exists(tmp_path)
         
         # Should pass when .dsgconfig.yml exists
         (tmp_path / ".dsgconfig.yml").write_text("repo_name: test")
-        assert check_dsgconfig_exists(tmp_path) == True
+        assert check_dsgconfig_exists(tmp_path)
     
     def test_init_validates_dsgconfig_yml_contents(self, tmp_path):
         """Test that init validates .dsgconfig.yml contents."""
@@ -506,12 +502,12 @@ class TestInitConfigValidation:
                 return False
         
         # Should fail with invalid YAML
-        assert validate_dsgconfig(invalid_config) == False
+        assert not validate_dsgconfig(invalid_config)
         
         # Should pass with valid YAML
         valid_config = tmp_path / ".dsgconfig_valid.yml"
         valid_config.write_text("repo_name: test-repo\nhost: testhost\n")
-        assert validate_dsgconfig(valid_config) == True
+        assert validate_dsgconfig(valid_config)
     
     def test_init_checks_user_config_exists(self, tmp_path):
         """Test that init checks for user configuration."""
@@ -527,11 +523,11 @@ class TestInitConfigValidation:
         custom_config_dir.mkdir()
         
         # Should fail when user config doesn't exist
-        assert check_user_config(custom_config_dir) == False
+        assert not check_user_config(custom_config_dir)
         
         # Should pass when user config exists
         (custom_config_dir / "dsg.yml").write_text("user_id: test@example.com\n")
-        assert check_user_config(custom_config_dir) == True
+        assert check_user_config(custom_config_dir)
 
 
 # NOTE: Many of these test patterns will be useful for sync command testing

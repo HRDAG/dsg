@@ -185,7 +185,7 @@ def _rename_directories_for_structural_fixes(original_path: Path, fixed_path: Pa
                     dir_path.rename(fixed_dir_path)
                     break  # Stop after first rename - the rest will be handled recursively
                     
-                except Exception as e:
+                except Exception:
                     # If rename fails, that's ok - the caller will handle it
                     pass
 

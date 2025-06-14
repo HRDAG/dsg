@@ -19,13 +19,12 @@ Requirements:
 
 import argparse
 import json
-import os
 from pathlib import Path
 import re
 import lz4.frame
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeAlias, Dict, List, Optional, Self
+from typing import TypeAlias, Dict, List, Optional
 
 # Rich library for improved console output
 try:
@@ -281,7 +280,6 @@ def track_file_history(archive_dir: Path, current_snapshot_path: Optional[Path] 
     
     # Track files present in the previous snapshot to detect deletions
     previous_snapshot_paths: set[PathStr] = set()
-    previous_snapshot_id: Optional[SnapshotId] = None
     
     if RICH_AVAILABLE and console:
         console.print(f"Processing [bold green]{len(archive_files)}[/] archive files...")
@@ -311,7 +309,7 @@ def track_file_history(archive_dir: Path, current_snapshot_path: Optional[Path] 
         # Update for next iteration
         files_by_snapshot[snapshot_id] = current_snapshot_paths
         previous_snapshot_paths = current_snapshot_paths
-        previous_snapshot_id = snapshot_id
+        # previous_snapshot_id = snapshot_id  # Not used currently
     
     # Process the current snapshot's last-sync.json if provided
     if current_snapshot_path and current_snapshot_path.exists():

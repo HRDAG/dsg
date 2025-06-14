@@ -13,26 +13,15 @@ Tests the get_sync_status() function directly against all 15 sync states
 without going through the CLI layer.
 """
 
-import pytest
-from collections import OrderedDict
 
-from dsg.config_manager import Config
-from dsg.operations import get_sync_status, SyncStatusResult
-from dsg.manifest_merger import SyncState
+from dsg.core.operations import get_sync_status, SyncStatusResult
+from dsg.data.manifest_merger import SyncState
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     modify_local_file,
     create_local_file,
-    delete_local_file,
-    modify_cache_entry,
-    add_cache_entry,
-    remove_cache_entry,
     regenerate_cache_from_current_local,
     modify_remote_file,
     create_remote_file,
-    delete_remote_file,
     regenerate_remote_manifest,
 )
 

@@ -9,18 +9,14 @@
 """Tests for CLI utility functions."""
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import typer
-from rich.console import Console
 
-from dsg.cli_utils import (
+from dsg.cli.utils import (
     ensure_dsgconfig_exists,
     ensure_dsg_exists,
     ensure_dsg_not_exists,
-    load_config_with_console,
-    validate_backend_connectivity,
     validate_project_prerequisites,
     validate_repository_setup_prerequisites,
     validate_repository_command_prerequisites

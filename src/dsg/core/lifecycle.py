@@ -22,7 +22,6 @@ import datetime
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -30,9 +29,11 @@ import loguru
 import orjson
 import lz4.frame
 
+from rich.console import Console
+
 from dsg.config.manager import Config
-from dsg.backends import create_backend
-from dsg.data.manifest import Manifest, ManifestMetadata
+from dsg.storage.factory import create_backend
+from dsg.data.manifest import Manifest
 from dsg.core.operations import get_sync_status
 from dsg.core.scanner import scan_directory, scan_directory_no_cfg
 from dsg.system.display import display_sync_dry_run_preview, display_normalization_preview

@@ -17,16 +17,15 @@ These tests validate that the three decorator patterns work correctly:
 
 import pytest
 from unittest.mock import Mock, patch
-from rich.console import Console
 import typer
 
-from dsg.cli_patterns import (
+from dsg.cli.patterns import (
     info_command_pattern, 
     discovery_command_pattern, 
     operation_command_pattern,
     _validate_mutually_exclusive_flags
 )
-from dsg.config_manager import Config
+from dsg.config.manager import Config
 
 
 class TestMutualExclusivityValidation:
@@ -66,7 +65,7 @@ class TestInfoCommandPattern:
         
         # Mock the dependencies
         with patch('dsg.cli.patterns.load_config_with_console') as mock_load_config, \
-             patch('dsg.cli.patterns.setup_logging') as mock_setup_logging, \
+             patch('dsg.cli.patterns.setup_logging'), \
              patch('dsg.cli.patterns.JSONCollector') as mock_json_collector:
             
             # Setup mocks
@@ -334,4 +333,4 @@ class TestPatternIntegration:
             assert mock_json_collector.call_count == 3
             json_calls = mock_json_collector.call_args_list
             for call in json_calls:
-                assert call[1]['enabled'] == True  # All should be enabled=True
+                assert call[1]['enabled']  # All should be enabled=True

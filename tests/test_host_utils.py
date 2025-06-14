@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 
 import pytest
 
-from dsg.host_utils import is_local_host, _is_local_interface_address
+from dsg.system.host_utils import is_local_host, _is_local_interface_address
 
 
 class TestIsLocalHost:

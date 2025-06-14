@@ -13,16 +13,11 @@ These tests add detailed logging to understand exactly what's happening
 in the file-by-file sync operations.
 """
 
-import pytest
 from pathlib import Path
 from rich.console import Console
-from unittest.mock import patch
 
 from dsg.core.lifecycle import sync_repository
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     local_file_exists,
     remote_file_exists,
     create_mixed_state,
@@ -58,7 +53,7 @@ class TestDetailedSyncDebug:
             if Path(local_path).exists():
                 print(f"  Local file size: {Path(local_path).stat().st_size} bytes")
             result = original_copy_file(self, local_path, remote_path)
-            print(f"  Copy operation completed")
+            print("  Copy operation completed")
             return result
             
         def debug_read_file(self, remote_path):
@@ -70,7 +65,7 @@ class TestDetailedSyncDebug:
         def debug_delete_file(self, file_path):
             print(f"\\nDEBUG: backend.delete_file called: {file_path}")
             result = original_delete_file(self, file_path)
-            print(f"  Delete operation completed")
+            print("  Delete operation completed")
             return result
         
         # Execute sync with patched backend methods
@@ -99,12 +94,12 @@ class TestDetailedSyncDebug:
             LocalhostBackend.delete_file = original_delete_file
         
         # Check final state
-        print(f"\\nDEBUG: Final file state:")
+        print("\\nDEBUG: Final file state:")
         print(f"  local_only.txt exists remotely: {remote_file_exists(setup, 'task1/import/input/local_only.txt')}")
         print(f"  remote_only.txt exists locally: {local_file_exists(setup, 'task1/analysis/output/remote_only.txt')}")
         print(f"  shared_file.txt exists locally: {local_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
         print(f"  shared_file.txt exists remotely: {remote_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
         
         # These are the expected behaviors
-        assert result["success"] == True
+        assert result["success"]
         # Don't assert file existence yet - just observe what happens

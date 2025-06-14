@@ -187,21 +187,20 @@ def create_manifest_from_dir():
 @pytest.fixture
 def test_config(test_project_structure):
     """Create a test Config object for ManifestMerger"""
-    from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+    from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
     
     project_root = test_project_structure["local_dir"]
     
     project_config = ProjectConfig(
+        name="test_project",
         transport="ssh",
         ssh=SSHRepositoryConfig(
             host="localhost",
             path=project_root,
-            name="test_project",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output", "frozen"}
-        )
+        data_dirs={"input", "output", "frozen"},
+        ignore=IgnoreSettings()
     )
     
     user_config = UserConfig(

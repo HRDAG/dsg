@@ -10,15 +10,12 @@ import traceback
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Optional, Any
+from typing import Optional
 
 import loguru
 
-from dsg.backends import create_backend
+from dsg.storage.factory import create_backend
 from dsg.config.manager import Config
-from dsg.system.display import display_sync_dry_run_preview, display_normalization_preview
-from dsg.system.exceptions import ConfigError
-from dsg.data.filename_validation import fix_problematic_path
 from dsg.data.manifest import Manifest
 from dsg.data.manifest_merger import ManifestMerger, SyncState
 from dsg.core.scanner import scan_directory, scan_directory_no_cfg, ScanResult
@@ -68,13 +65,13 @@ def list_directory(
 
             for key, value in overrides.items():
                 if key == "ignored_paths":
-                    cfg.project.project.ignore.paths.update(value)
+                    cfg.project.ignore.paths.update(value)
                     # Sync internal cache used for fast path lookups
-                    cfg.project.project.ignore._ignored_exact.update(PurePosixPath(p) for p in value)
+                    cfg.project.ignore._ignored_exact.update(PurePosixPath(p) for p in value)
                 elif key == "ignored_names":
-                    cfg.project.project.ignore.names.update(value)
+                    cfg.project.ignore.names.update(value)
                 elif key == "ignored_suffixes":
-                    cfg.project.project.ignore.suffixes.update(value)
+                    cfg.project.ignore.suffixes.update(value)
                 # Branch 64->57: loop continuation  # pragma: no cover
 
             return scan_directory(cfg, include_dsg_files=include_dsg_files)

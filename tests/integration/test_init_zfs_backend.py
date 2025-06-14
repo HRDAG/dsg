@@ -15,14 +15,87 @@ The bug: ZFS init creates local .dsg structure but fails to create remote .dsg d
 
 import pytest
 import tempfile
+import subprocess
+import uuid
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from dsg.core.lifecycle import init_repository, InitResult
-from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.storage.backends import LocalhostBackend
 
 
+def check_zfs_available() -> tuple[bool, str]:
+    """Check if ZFS testing infrastructure is available.
+    
+    Returns:
+        Tuple of (is_available, reason)
+    """
+    try:
+        # Check if zfs command exists
+        result = subprocess.run(['which', 'zfs'], capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, "ZFS command not found"
+        
+        # Check if test pool exists
+        result = subprocess.run(['sudo', 'zfs', 'list', 'zsd/test'], 
+                              capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, "ZFS test pool 'zsd/test' not available"
+        
+        # Check if we can create datasets (test permissions)
+        test_dataset = f"zsd/test/pytest-{uuid.uuid4().hex[:8]}"
+        try:
+            result = subprocess.run(['sudo', 'zfs', 'create', test_dataset], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                # Clean up test dataset
+                subprocess.run(['sudo', 'zfs', 'destroy', test_dataset], 
+                             capture_output=True, text=True)
+                return True, "ZFS available"
+            else:
+                return False, f"Cannot create ZFS datasets: {result.stderr.strip()}"
+        except Exception as e:
+            return False, f"ZFS permission test failed: {e}"
+            
+    except Exception as e:
+        return False, f"ZFS check failed: {e}"
+
+
+# Global ZFS availability check
+ZFS_AVAILABLE, ZFS_SKIP_REASON = check_zfs_available()
+zfs_required = pytest.mark.skipif(not ZFS_AVAILABLE, reason=ZFS_SKIP_REASON)
+
+
+def create_test_zfs_dataset() -> tuple[str, str]:
+    """Create a unique ZFS dataset for testing.
+    
+    Returns:
+        Tuple of (dataset_name, mount_path)
+    """
+    test_id = uuid.uuid4().hex[:8]
+    dataset_name = f"zsd/test/pytest-{test_id}"
+    mount_path = f"/var/repos/zsd/test/pytest-{test_id}"
+    
+    # Create the dataset
+    result = subprocess.run(['sudo', 'zfs', 'create', dataset_name], 
+                          capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to create ZFS dataset {dataset_name}: {result.stderr}")
+    
+    return dataset_name, mount_path
+
+
+def cleanup_test_zfs_dataset(dataset_name: str):
+    """Clean up a test ZFS dataset."""
+    try:
+        subprocess.run(['sudo', 'zfs', 'destroy', '-r', dataset_name], 
+                      capture_output=True, text=True)
+    except Exception:
+        pass  # Best effort cleanup
+
+
+@zfs_required
 class TestZFSInitBugDemonstration:
     """Tests that demonstrate the ZFS backend .dsg creation bug."""
     
@@ -35,90 +108,87 @@ class TestZFSInitBugDemonstration:
         
         Expected failure: Remote .dsg directory and files are missing after init.
         """
-        # Create test directories
-        project_root = tmp_path / "local_project" 
-        remote_base = tmp_path / "remote_zfs_mount"
-        project_root.mkdir()
-        remote_base.mkdir()
+        # Create test ZFS dataset
+        dataset_name, remote_repo_path = create_test_zfs_dataset()
         
-        # Create test data files in local project
-        input_dir = project_root / "input"
-        input_dir.mkdir()
-        (input_dir / "data1.txt").write_text("test data 1")
-        (input_dir / "data2.csv").write_text("id,value\n1,test")
-        
-        # Create DSG config for ZFS backend
-        ssh_config = SSHRepositoryConfig(
-            host="localhost",
-            path=remote_base,
-            name="test-zfs-repo", 
-            type="zfs"
-        )
-        project_settings = ProjectSettings(
-            data_dirs={"input", "output"},
-            ignore={"names": [], "paths": [], "suffixes": []}
-        )
-        project_config = ProjectConfig(
-            name="test-zfs-repo",
-            transport="ssh",
-            ssh=ssh_config,
-            project=project_settings
-        )
-        user_config = UserConfig(
-            user_name="Test User",
-            user_id="test@example.com"
-        )
-        config = Config(
-            user=user_config,
-            project=project_config,
-            project_root=project_root
-        )
-        
-        # Mock ZFS operations to avoid needing real ZFS
-        with patch('dsg.storage.backends.ZFSOperations') as mock_zfs_class:
-            mock_zfs_ops = MagicMock()
-            mock_zfs_class.return_value = mock_zfs_ops
-            mock_zfs_ops.mount_path = str(remote_base / "test-zfs-repo")
-            mock_zfs_ops._validate_zfs_access.return_value = True
+        try:
+            # Create local project directory
+            project_root = tmp_path / "local_project" 
+            project_root.mkdir()
             
-            # Mock LocalhostTransport to simulate file copying
-            with patch('dsg.storage.backends.LocalhostTransport') as mock_transport_class:
-                mock_transport = MagicMock()
-                mock_transport_class.return_value = mock_transport
+            # Create test data files in local project
+            input_dir = project_root / "input"
+            input_dir.mkdir()
+            (input_dir / "data1.txt").write_text("test data 1")
+            (input_dir / "data2.csv").write_text("id,value\n1,test")
+            
+            # Create DSG config for ZFS backend pointing to real ZFS
+            # For ZFS dataset zsd/test/pytest-xxx, we need:
+            # ssh.path = /var/repos/zsd (points to pool) 
+            # ssh.name = test/pytest-xxx (dataset path within pool)
+            remote_base = Path("/var/repos/zsd")
+            repo_name = f"test/{Path(remote_repo_path).name}"  # e.g., "test/pytest-abc123"
+            
+            ssh_config = SSHRepositoryConfig(
+                host="localhost",
+                path=remote_base,
+                name=repo_name, 
+                type="zfs"
+            )
+            
+            project_config = ProjectConfig(
+                name=repo_name,  # Use the same name as the repo
+                transport="ssh",
+                ssh=ssh_config,
+                data_dirs={"input", "output"},
+                ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
+            )
+            user_config = UserConfig(
+                user_name="Test User",
+                user_id="test@example.com"
+            )
+            config = Config(
+                user=user_config,
+                project=project_config,
+                project_root=project_root
+            )
+            
+            # Change to project directory (required for init)
+            import os
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(project_root)
                 
-                # Change to project directory (required for init)
-                import os
-                original_cwd = os.getcwd()
-                try:
-                    os.chdir(project_root)
-                    
-                    # Run init_repository - this should create both local and remote .dsg
-                    init_result = init_repository(config, force=True)
-                    
-                    # Verify local .dsg structure was created correctly
-                    local_dsg = project_root / ".dsg"
-                    assert local_dsg.exists(), "Local .dsg directory should exist"
-                    assert (local_dsg / "last-sync.json").exists(), "Local last-sync.json should exist"
-                    assert (local_dsg / "sync-messages.json").exists(), "Local sync-messages.json should exist"
-                    assert (local_dsg / "archive").exists(), "Local archive directory should exist"
-                    
-                    # BUG DEMONSTRATION: These assertions will FAIL because remote .dsg is not created
-                    remote_repo_path = Path(mock_zfs_ops.mount_path)
-                    remote_dsg = remote_repo_path / ".dsg"
-                    
-                    # This is where the bug manifests - remote .dsg structure is missing
-                    assert remote_dsg.exists(), "BUG: Remote .dsg directory should exist but doesn't"
-                    assert (remote_dsg / "last-sync.json").exists(), "BUG: Remote last-sync.json should exist"
-                    assert (remote_dsg / "sync-messages.json").exists(), "BUG: Remote sync-messages.json should exist" 
-                    assert (remote_dsg / "archive").exists(), "BUG: Remote archive directory should exist"
-                    
-                    # Verify metadata files have correct content
-                    local_last_sync = local_dsg / "last-sync.json"
-                    remote_last_sync = remote_dsg / "last-sync.json"
-                    assert local_last_sync.read_text() == remote_last_sync.read_text(), "Metadata should match"
-                    
-                finally:
-                    os.chdir(original_cwd)
+                # Run init_repository - this should create both local and remote .dsg
+                init_result = init_repository(config, force=True)
+                
+                # Verify local .dsg structure was created correctly
+                local_dsg = project_root / ".dsg"
+                assert local_dsg.exists(), "Local .dsg directory should exist"
+                assert (local_dsg / "last-sync.json").exists(), "Local last-sync.json should exist"
+                assert (local_dsg / "sync-messages.json").exists(), "Local sync-messages.json should exist"
+                assert (local_dsg / "archive").exists(), "Local archive directory should exist"
+                
+                # Check remote .dsg structure in the ZFS dataset
+                remote_dsg = Path(remote_repo_path) / ".dsg"
+                
+                # This is where the bug manifests - remote .dsg structure is missing
+                assert remote_dsg.exists(), "BUG: Remote .dsg directory should exist but doesn't"
+                assert (remote_dsg / "last-sync.json").exists(), "BUG: Remote last-sync.json should exist"
+                assert (remote_dsg / "sync-messages.json").exists(), "BUG: Remote sync-messages.json should exist" 
+                assert (remote_dsg / "archive").exists(), "BUG: Remote archive directory should exist"
+                
+                # Verify metadata files have correct content
+                local_last_sync = local_dsg / "last-sync.json"
+                remote_last_sync = remote_dsg / "last-sync.json"
+                assert local_last_sync.read_text() == remote_last_sync.read_text(), "Metadata should match"
+                
+            finally:
+                os.chdir(original_cwd)
+                
+        finally:
+            # Clean up the test ZFS dataset
+            cleanup_test_zfs_dataset(dataset_name)
     
     def test_zfs_init_enables_subsequent_sync_operations(self, tmp_path):
         """
@@ -143,7 +213,7 @@ class TestZFSInitBugDemonstration:
         )
         project_config = ProjectConfig(
             name="sync-test-repo", transport="ssh", ssh=ssh_config,
-            project=ProjectSettings(data_dirs={"input"}, ignore={"names": [], "paths": [], "suffixes": []})
+            data_dirs={"input"}, ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
         )
         config = Config(
             user=UserConfig(user_name="Test User", user_id="test@example.com"),
@@ -185,6 +255,7 @@ class TestZFSInitBugDemonstration:
                     os.chdir(original_cwd)
 
 
+@zfs_required
 class TestZFSBackendDirectly:
     """Direct tests of ZFS backend initialization showing the missing functionality."""
     
@@ -194,29 +265,30 @@ class TestZFSBackendDirectly:
         
         This test isolates the exact location of the bug in the backend implementation.
         """
-        project_root = tmp_path / "project"
-        remote_path = tmp_path / "remote"
-        project_root.mkdir()
-        remote_path.mkdir()
+        # Create test ZFS dataset
+        dataset_name, remote_repo_path = create_test_zfs_dataset()
         
-        # Create test files
-        (project_root / "test.txt").write_text("test content")
-        
-        # Create local .dsg structure (simulating what create_local_metadata does)
-        local_dsg = project_root / ".dsg"
-        local_dsg.mkdir()
-        (local_dsg / "last-sync.json").write_text('{"test": "metadata"}')
-        (local_dsg / "sync-messages.json").write_text('{"snapshots": {}}')
-        (local_dsg / "archive").mkdir()
-        
-        # Create LocalhostBackend
-        backend = LocalhostBackend(remote_path, "test-repo")
-        
-        # Mock ZFS operations
-        with patch.object(backend, '_get_zfs_operations') as mock_get_zfs:
-            mock_zfs_ops = MagicMock()
-            mock_zfs_ops.mount_path = str(remote_path / "test-repo")
-            mock_get_zfs.return_value = mock_zfs_ops
+        try:
+            project_root = tmp_path / "project"
+            project_root.mkdir()
+            
+            # Create test files
+            (project_root / "test.txt").write_text("test content")
+            
+            # Create local .dsg structure (simulating what create_local_metadata does)
+            local_dsg = project_root / ".dsg"
+            local_dsg.mkdir()
+            (local_dsg / "last-sync.json").write_text('{"test": "metadata"}')
+            (local_dsg / "sync-messages.json").write_text('{"snapshots": {}}')
+            (local_dsg / "archive").mkdir()
+            
+            # Create LocalhostBackend pointing to real ZFS location
+            # For ZFS dataset zsd/test/pytest-xxx, we need:
+            # repo_path = /var/repos/zsd (points to pool)
+            # repo_name = test/pytest-xxx (dataset path within pool)
+            remote_base = Path("/var/repos/zsd")
+            repo_name = f"test/{Path(remote_repo_path).name}"
+            backend = LocalhostBackend(remote_base, repo_name)
             
             # Change to project directory
             import os
@@ -227,12 +299,8 @@ class TestZFSBackendDirectly:
                 # Run backend init_repository
                 backend.init_repository("test_snapshot_hash", force=True)
                 
-                # Verify ZFS operations were called
-                mock_zfs_ops.init_repository.assert_called_once()
-                
                 # BUG DEMONSTRATION: Remote .dsg structure should exist but doesn't
-                remote_repo = Path(mock_zfs_ops.mount_path)
-                remote_dsg = remote_repo / ".dsg"
+                remote_dsg = Path(remote_repo_path) / ".dsg"
                 
                 # These assertions will FAIL showing the bug
                 assert remote_dsg.exists(), "BUG: LocalhostBackend should create remote .dsg directory"
@@ -241,3 +309,7 @@ class TestZFSBackendDirectly:
                 
             finally:
                 os.chdir(original_cwd)
+                
+        finally:
+            # Clean up the test ZFS dataset
+            cleanup_test_zfs_dataset(dataset_name)

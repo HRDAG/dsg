@@ -544,7 +544,7 @@ def display_sync_dry_run_preview(console: Console) -> None:
     console.print("• Generate sync operations")
     console.print("• Apply file operations")
     
-    console.print(f"\n[dim]Note: No actual changes made in dry-run mode[/dim]")
+    console.print("\n[dim]Note: No actual changes made in dry-run mode[/dim]")
 
 
 def display_normalization_preview(console: Console, normalization_results: list[dict[str, str]]) -> None:

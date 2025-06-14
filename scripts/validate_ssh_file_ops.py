@@ -34,9 +34,8 @@ from pathlib import Path
 # Add tests directory to path to import fixtures
 sys.path.insert(0, str(Path(__file__).parent.parent / "tests"))
 
-from fixtures.bb_repo_factory import create_bb_file_content
-from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
-from dsg.config_manager import create_backend
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.storage.factory import create_backend
 
 def test_ssh_to_localhost():
     """Test SSH operations to localhost (should be optimized)."""

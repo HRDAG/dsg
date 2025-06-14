@@ -17,7 +17,6 @@ import shutil
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Iterator
-import io
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
 

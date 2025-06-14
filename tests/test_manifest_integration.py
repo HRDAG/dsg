@@ -13,10 +13,10 @@ import yaml
 from pathlib import Path
 
 from dsg.backends import LocalhostBackend
-from dsg.config_manager import Config, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings, UserConfig
-from dsg.manifest import Manifest
-from dsg.manifest_merger import ManifestMerger, SyncState
-from dsg.scanner import scan_directory, scan_directory_no_cfg, compute_hashes_for_manifest
+from dsg.config.manager import Config, ProjectConfig, SSHRepositoryConfig, IgnoreSettings, UserConfig
+from dsg.data.manifest import Manifest
+from dsg.data.manifest_merger import ManifestMerger, SyncState
+from dsg.core.scanner import scan_directory
 
 
 # Use the KEEP_TEST_DIR environment variable to keep temporary test directories
@@ -102,20 +102,18 @@ def temp_repo_setup(tmp_path, example_repo_path) -> dict:
     
     # Create config objects for local and remote
     local_project_config = ProjectConfig(
+        name="tmpx",
         transport="ssh",
         ssh=SSHRepositoryConfig(
             host="localhost",
             path=remote_repo_path,
-            name="tmpx",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output", "frozen"},
-            ignore=IgnoreSettings(
-                names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
-                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
-                paths={"tmpx/task1/input/some_credential_file.txt"}
-            )
+        data_dirs={"input", "output", "frozen"},
+        ignore=IgnoreSettings(
+            names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
+            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
+            paths={"tmpx/task1/input/some_credential_file.txt"}
         )
     )
     
@@ -131,20 +129,18 @@ def temp_repo_setup(tmp_path, example_repo_path) -> dict:
     )
     
     remote_project_config = ProjectConfig(
+        name="tmpx",
         transport="ssh",
         ssh=SSHRepositoryConfig(
             host="localhost",
             path=remote_repo_path,
-            name="tmpx",
             type="xfs"
         ),
-        project=ProjectSettings(
-            data_dirs={"input", "output", "frozen"},
-            ignore=IgnoreSettings(
-                names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
-                suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
-                paths={"tmpx/task1/input/some_credential_file.txt"}
-            )
+        data_dirs={"input", "output", "frozen"},
+        ignore=IgnoreSettings(
+            names={".DS_Store", ".Rhistory", ".RData", "__pycache__", ".ipynb_checkpoints"},
+            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", ".swo", ".bak", ".cache", ".pkl", ".ipynb", "~"},
+            paths={"tmpx/task1/input/some_credential_file.txt"}
         )
     )
     
@@ -186,7 +182,7 @@ def manifest_setup(temp_repo_setup):
         dict: Dictionary containing the local, cache, and remote manifests
     """
     local_path = temp_repo_setup["local_path"]
-    remote_path = temp_repo_setup["remote_path"]
+    temp_repo_setup["remote_path"]
     local_config = temp_repo_setup["local_config"]
     remote_config = temp_repo_setup["remote_config"]
     
@@ -263,7 +259,7 @@ def test_manifest_merger_identical_repos(manifest_setup, temp_repo_setup):
     remote_manifest = manifest_setup["remote_manifest"]
     
     # Create a proper UserConfig for the test
-    from dsg.config_manager import Config, UserConfig
+    from dsg.config.manager import Config, UserConfig
     
     # Get local config from temp_repo_setup
     base_config = temp_repo_setup["local_config"]
@@ -311,7 +307,7 @@ def test_manifest_merger_with_local_changes(temp_repo_setup, manifest_setup):
     local_scan_result = scan_directory(local_config, compute_hashes=True)
     
     # Create a proper UserConfig for the test
-    from dsg.config_manager import Config, UserConfig
+    from dsg.config.manager import Config, UserConfig
     
     # Create a Config with user and project_root
     test_config = Config(
@@ -372,7 +368,7 @@ def test_multiple_sync_states(temp_repo_setup, manifest_setup):
     remote_scan_result = scan_directory(remote_config, compute_hashes=True)
     
     # Create a proper UserConfig for the test
-    from dsg.config_manager import Config, UserConfig
+    from dsg.config.manager import Config, UserConfig
     
     # Create a Config with user and project_root
     test_config = Config(
@@ -427,7 +423,7 @@ def test_user_attribution_preservation(temp_repo_setup, manifest_setup):
     """Test user attribution preservation when merging manifests."""
     import yaml
     from pathlib import Path
-    from dsg.config_manager import Config, UserConfig
+    from dsg.config.manager import Config, UserConfig
     
     local_path = temp_repo_setup["local_path"]
     local_config = temp_repo_setup["local_config"]
@@ -444,7 +440,7 @@ def test_user_attribution_preservation(temp_repo_setup, manifest_setup):
     )
     
     # Create a Config with user1 and project_root
-    user1_config = Config(
+    Config(
         user=user1,
         project=local_config.project,
         project_root=local_path
@@ -492,7 +488,7 @@ def test_user_attribution_preservation(temp_repo_setup, manifest_setup):
     )
     
     # Get sync states for verification
-    sync_states = merger.get_sync_states()
+    merger.get_sync_states()
     
     # Write merged result to local-merged-last.json for inspection
     merged_path = local_path / ".dsg" / "local-merged-last.json"

@@ -33,9 +33,6 @@ from dsg.core.operations import get_sync_status
 
 # Import fixtures to make them available to pytest
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config, 
-    bb_local_remote_setup,
     create_local_file,
     modify_local_file,
     local_file_exists,
@@ -44,9 +41,7 @@ from tests.fixtures.bb_repo_factory import (
     remote_file_content_matches,
     create_edge_case_content_files,
     create_problematic_symlinks,
-    create_hash_collision_test_files,
-    verify_file_content_exactly,
-    verify_text_file_content
+    create_hash_collision_test_files
 )
 
 
@@ -171,7 +166,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle all encodings without issues
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all files were synced to remote
         for filename in encoding_examples.keys():
@@ -199,7 +194,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should preserve line endings exactly
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify line endings are preserved using binary comparison
         for filename, original_content in line_ending_examples.items():
@@ -226,7 +221,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle Unicode edge cases
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify Unicode content is preserved
         for filename, original_content in unicode_examples.items():
@@ -258,7 +253,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle all size variations
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all files synced correctly
         for filename in size_examples.keys():
@@ -284,7 +279,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle symlinks appropriately
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify symlinks were handled (either synced or skipped gracefully)
         for symlink_name in symlinks_created.keys():
@@ -319,7 +314,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle the mixed content successfully
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all files synced correctly
         for file_path in test_files.keys():
@@ -347,7 +342,7 @@ class TestComprehensiveFileTypes:
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Modify with different unicode normalization
         modified_content = "Modified: cafe\u0301 with NFD"  # NFD normalization
@@ -355,7 +350,7 @@ class TestComprehensiveFileTypes:
         
         # Sync modification
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify modification synced correctly
         assert local_file_content_matches(setup, test_file, "Modified:")
@@ -389,11 +384,11 @@ class TestComprehensiveFileTypes:
         
         # Sync once
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Sync again - should be no-op (all files should be sLCR__all_eq)
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Check sync status - should show all equal
         status = get_sync_status(setup["local_config"], include_remote=True)
@@ -421,7 +416,7 @@ class TestComprehensiveFileTypes:
         
         # Sync should handle all edge cases without errors
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify all files were handled correctly
         all_files = {**edge_case_files, **hash_test_files}
@@ -452,11 +447,11 @@ class TestComprehensiveFileTypes:
         console = Console()
         
         # Create initial edge case files
-        edge_case_files = create_edge_case_content_files(setup["local_path"])
+        create_edge_case_content_files(setup["local_path"])
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Modify some edge case files
         modifications = [
@@ -471,7 +466,7 @@ class TestComprehensiveFileTypes:
         
         # Sync modifications
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify modifications synced correctly
         for file_path, expected_content in modifications:
@@ -498,7 +493,7 @@ class TestComprehensiveFileTypes:
                 f"unicode_{i}.txt": f"Test {i}: café\u0301 vs café" for i in range(10)
             }
             round_files.update({
-                f"encoding_{i}.txt": f"Line 1\r\nLine 2\nLine 3\r" for i in range(5)
+                f"encoding_{i}.txt": "Line 1\r\nLine 2\nLine 3\r" for i in range(5)
             })
             round_files.update({
                 f"size_{i}.txt": ("x" * (i * 100)) + "\n" for i in range(1, 6)
@@ -513,7 +508,7 @@ class TestComprehensiveFileTypes:
         
         # Sync all files - should handle large numbers of edge cases
         result = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result["success"] == True
+        assert result["success"]
         
         # Verify a sampling of files synced correctly
         for round_num in range(3):
@@ -543,7 +538,7 @@ class TestComprehensiveFileTypes:
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Verify exact Unicode preservation
         for filename, original_content in unicode_test_files.items():
@@ -562,7 +557,7 @@ class TestComprehensiveFileTypes:
         
         # Second sync should be no-op
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Check that everything is still in sync
         status = get_sync_status(setup["local_config"], include_remote=True)

@@ -18,7 +18,6 @@ using the three decorator patterns:
 
 # Standard library imports
 from importlib.metadata import version
-from pathlib import Path
 from typing import Optional, Any
 
 # Third-party imports
@@ -356,10 +355,10 @@ def snapfetch(
 # ENTRY POINT
 # =============================================================================
 
-def main() -> None:  # pragma: no cover - entry point
+def cli_main() -> None:  # pragma: no cover - entry point
     """Entry point for the dsg CLI application."""
     app()
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main()
+    cli_main()

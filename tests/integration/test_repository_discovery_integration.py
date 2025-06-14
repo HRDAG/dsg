@@ -10,16 +10,13 @@
 
 import tempfile
 from pathlib import Path
-from datetime import datetime
 
 import orjson
 import yaml
-import pytest
 
-from dsg.repository_discovery import (
+from dsg.config.discovery import (
     RepositoryDiscovery,
     LocalRepositoryDiscovery,
-    RepositoryInfo,
 )
 
 
@@ -228,9 +225,9 @@ class TestRepositoryDiscoveryFactoryIntegration:
         discovery = RepositoryDiscovery()
         
         local_discovery = discovery.get_local_discovery()
-        ssh_discovery = discovery.get_ssh_discovery()
-        rclone_discovery = discovery.get_rclone_discovery()
-        ipfs_discovery = discovery.get_ipfs_discovery()
+        discovery.get_ssh_discovery()
+        discovery.get_rclone_discovery()
+        discovery.get_ipfs_discovery()
         
         assert isinstance(local_discovery, LocalRepositoryDiscovery)
         assert local_discovery is discovery._local_discovery  # Same instance
@@ -249,8 +246,6 @@ def create_test_repository_structure():
     This function is not a test but can be called manually to create
     test repositories in /tmp for manual inspection.
     """
-    import tempfile
-    import os
     
     base_dir = Path("/tmp/dsg-test-repos")
     if base_dir.exists():
@@ -327,7 +322,7 @@ def create_test_repository_structure():
     print("Run the following to test:")
     print(f"  cd {base_dir}")
     print("  python3 -c \"")
-    print("from dsg.repository_discovery import RepositoryDiscovery")
+    print("from dsg.config.discovery import RepositoryDiscovery")
     print("from pathlib import Path")
     print("discovery = RepositoryDiscovery()")
     print(f"repos = discovery.list_repositories('localhost', Path('{base_dir}'))")

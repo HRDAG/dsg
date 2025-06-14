@@ -18,20 +18,19 @@ def create_test_files(directory):
     # Create .dsgconfig.yml with minimal config that doesn't ignore .tmp files
     config_content = """
 transport: ssh
+name: test-repo
 ssh:
   host: localhost
   path: /tmp/test
-  name: test-repo
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
-    - frozen
-  ignore:
-    paths: []
-    names: []  # Don't ignore any names by default
-    suffixes: []  # Don't ignore .tmp files
+data_dirs:
+  - input
+  - output
+  - frozen
+ignore:
+  paths: []
+  names: []  # Don't ignore any names by default
+  suffixes: []  # Don't ignore .tmp files
 """
     (directory / ".dsgconfig.yml").write_text(config_content)
     
@@ -102,23 +101,22 @@ user_id: test@example.com
         with runner.isolated_filesystem() as td:
             # Create a config with ignore patterns
             config_content = """
+name: test-repo
 transport: ssh
 ssh:
   host: localhost
   path: /tmp/test
-  name: test-repo
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
-    - frozen
-  ignore:
-    names: 
-      - ignored.tmp
-      - file2.txt
-    suffixes: []
-    paths: []
+data_dirs:
+  - input
+  - output
+  - frozen
+ignore:
+  names: 
+    - ignored.tmp
+    - file2.txt
+  suffixes: []
+  paths: []
 """
             Path(td).joinpath(".dsgconfig.yml").write_text(config_content)
             
@@ -238,16 +236,15 @@ user_id: test@example.com
             # Create minimal config but no data files
             config_content = """
 transport: ssh
+name: test-repo
 ssh:
   host: localhost
   path: /tmp/test
-  name: test-repo
   type: xfs
-project:
-  data_dirs:
-    - input
-  ignore:
-    paths: []
+data_dirs:
+  - input
+ignore:
+  paths: []
 """
             (Path(td) / ".dsgconfig.yml").write_text(config_content)
             (Path(td) / ".dsg").mkdir(exist_ok=True)
@@ -443,19 +440,18 @@ user_id: test@example.com
             # Create .dsgconfig.yml pointing to source repository
             config_content = f"""
 transport: ssh
+name: {source_repo.name}
 ssh:
   host: localhost
   path: {source_repo.parent}
-  name: {source_repo.name}
   type: xfs
-project:
-  data_dirs:
-    - input
-    - output
-  ignore:
-    paths: []
-    names: []
-    suffixes: []
+data_dirs:
+  - input
+  - output
+ignore:
+  paths: []
+  names: []
+  suffixes: []
 """
             (dest_project / ".dsgconfig.yml").write_text(config_content)
             
@@ -513,18 +509,17 @@ user_id: test@example.com
             # Test 2: .dsgconfig.yml pointing to non-existent repository
             config_content = """
 transport: ssh
+name: missing-repo
 ssh:
   host: localhost
   path: /nonexistent/path
-  name: missing-repo
   type: xfs
-project:
-  data_dirs:
-    - input
-  ignore:
-    paths: []
-    names: []
-    suffixes: []
+data_dirs:
+  - input
+ignore:
+  paths: []
+  names: []
+  suffixes: []
 """
             (dest_project / ".dsgconfig.yml").write_text(config_content)
             

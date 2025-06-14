@@ -18,9 +18,8 @@ import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 
-import pytest
 
-from dsg.scanner import scan_directory_no_cfg, ScanResult
+from dsg.core.scanner import scan_directory_no_cfg
 
 
 @contextmanager
@@ -43,12 +42,6 @@ def safe_chdir(path):
             os.chdir(Path.home())
 
 
-from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure, 
-    bb_repo_with_validation_issues,
-    bb_repo_with_config,
-    bb_repo_with_validation_issues_and_config
-)
 
 
 def test_scan_result_has_validation_warnings_field(bb_repo_structure):

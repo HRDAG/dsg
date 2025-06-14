@@ -15,7 +15,6 @@ sync operations as defined in TRANSACTION_IMPLEMENTATION.md.
 """
 
 import uuid
-from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Iterator, Protocol
 

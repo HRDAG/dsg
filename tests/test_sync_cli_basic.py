@@ -12,15 +12,13 @@ Tests for sync CLI command integration.
 Tests that the CLI sync command properly calls sync_repository() function.
 """
 
-import pytest
 import os
 from typer.testing import CliRunner
-from pathlib import Path
+
+from dsg.cli import app
 
 # Import fixtures
 pytest_plugins = ["tests.fixtures.bb_repo_factory"]
-
-from dsg.cli import app
 
 
 def test_sync_cli_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_config):

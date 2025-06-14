@@ -14,7 +14,7 @@ Manual SSH backend test - run this with real scott hostname to test scenarios A,
 import socket
 import tempfile
 from pathlib import Path
-from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
 from dsg.backends import create_backend
 from dsg.backends import LocalhostBackend, SSHBackend
 

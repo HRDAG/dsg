@@ -6,8 +6,7 @@
 # ------
 # dsg/tests/test_filename_validation_coverage.py
 
-import pytest
-from dsg.filename_validation import validate_path
+from dsg.data.filename_validation import validate_path
 
 def test_validate_path_invalid_syntax():
     """Test validate_path with invalid path syntax."""

@@ -6,15 +6,13 @@
 # ------
 # src/dsg/cli_patterns.py
 
-import logging
 from functools import wraps
-from typing import Any, Callable, Optional
+from typing import Callable
 
 import typer
 from rich.console import Console
 
 from dsg.cli.utils import (
-    validate_project_prerequisites,
     validate_repository_command_prerequisites,
     validate_repository_setup_prerequisites,
     handle_operation_error,

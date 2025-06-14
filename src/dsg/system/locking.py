@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, UTC
 import loguru
 import orjson
 
-from dsg.protocols import FileOperations
+from dsg.core.protocols import FileOperations
 
 logger = loguru.logger
 

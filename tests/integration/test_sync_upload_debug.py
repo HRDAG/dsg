@@ -12,16 +12,11 @@ Debug tests for sync upload functionality.
 These tests help debug why local files aren't being uploaded to remote.
 """
 
-import pytest
-from pathlib import Path
 from rich.console import Console
 
-from dsg.core.lifecycle import sync_repository, _determine_sync_operation_type, SyncOperationType
+from dsg.core.lifecycle import sync_repository, _determine_sync_operation_type
 from dsg.core.operations import get_sync_status
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     local_file_exists,
     remote_file_exists,
     create_local_file,
@@ -47,7 +42,7 @@ class TestSyncUploadDebug:
         
         # Debug: Check sync status before sync
         sync_status = get_sync_status(setup["local_config"], include_remote=True, verbose=True)
-        print(f"\\nDEBUG: Sync states before sync:")
+        print("\\nDEBUG: Sync states before sync:")
         for path, state in sync_status.sync_states.items():
             if "test_upload" in path:
                 print(f"  {path}: {state}")
@@ -65,7 +60,7 @@ class TestSyncUploadDebug:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify the file was uploaded
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, test_file), f"File {test_file} should exist remotely after sync"
 
     def test_mixed_files_upload_download(self, bb_local_remote_setup):
@@ -91,7 +86,7 @@ class TestSyncUploadDebug:
         
         # Debug: Check sync status
         sync_status = get_sync_status(setup["local_config"], include_remote=True, verbose=True)
-        print(f"\\nDEBUG: Sync states before mixed sync:")
+        print("\\nDEBUG: Sync states before mixed sync:")
         for path, state in sync_status.sync_states.items():
             if any(f in path for f in ["local_file", "remote_file"]):
                 print(f"  {path}: {state}")
@@ -100,7 +95,7 @@ class TestSyncUploadDebug:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify both operations worked
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, local_file), "Local file should be uploaded to remote"
         assert local_file_exists(setup, remote_file), "Remote file should be downloaded to local"
 
@@ -125,7 +120,7 @@ class TestSyncUploadDebug:
         # Get detailed sync status
         sync_status = get_sync_status(setup["local_config"], include_remote=True, verbose=True)
         
-        print(f"\\nDEBUG: All detected sync states:")
+        print("\\nDEBUG: All detected sync states:")
         for path, state in sync_status.sync_states.items():
             print(f"  {path}: {state}")
         
@@ -160,7 +155,7 @@ class TestSyncUploadDebug:
         
         # Debug sync states
         sync_status = get_sync_status(setup["local_config"], include_remote=True, verbose=True)
-        print(f"\\nDEBUG: Sync states in exact replication:")
+        print("\\nDEBUG: Sync states in exact replication:")
         for path, state in sync_status.sync_states.items():
             if any(f in path for f in ["local_only", "remote_only", "shared_file"]):
                 print(f"  {path}: {state}")
@@ -171,12 +166,12 @@ class TestSyncUploadDebug:
         print(f"\\nDEBUG: Sync result: {result}")
         
         # Check if files exist after sync  
-        print(f"\\nDEBUG: File existence after sync:")
+        print("\\nDEBUG: File existence after sync:")
         print(f"  local_only.txt exists remotely: {remote_file_exists(setup, 'task1/import/input/local_only.txt')}")
         print(f"  remote_only.txt exists locally: {local_file_exists(setup, 'task1/analysis/output/remote_only.txt')}")
         
         # This is the assertion that's failing in the original test
         # Let's see if it fails here too
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, "task1/import/input/local_only.txt"), "Local-only file should be uploaded to remote"
         assert local_file_exists(setup, "task1/analysis/output/remote_only.txt"), "Remote-only file should be downloaded to local"

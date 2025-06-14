@@ -8,15 +8,10 @@
 
 """Tests for backend factory and localhost detection logic."""
 
-import os
-import socket
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import yaml
 
-from dsg.config_manager import Config
 from dsg.backends import create_backend, _is_effectively_localhost
 from dsg.backends import LocalhostBackend, SSHBackend
 
@@ -37,15 +32,14 @@ def localhost_repo_setup(tmp_path, dsg_user_config_text):
     # Create .dsgconfig.yml in target repo that matches our SSH config
     target_config_content = f"""
 transport: ssh
+name: test-repo
 ssh:
   host: localhost
   path: {repos_dir}
-  name: test-repo
   type: zfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """
     target_config_file = test_repo_dir / ".dsgconfig.yml"
     target_config_file.write_text(target_config_content)
@@ -56,15 +50,14 @@ project:
     
     project_config_content = f"""
 transport: ssh
+name: test-repo
 ssh:
   host: localhost
   path: {repos_dir}
-  name: test-repo
   type: zfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """
     project_config_file = work_dir / ".dsgconfig.yml"
     project_config_file.write_text(project_config_content)
@@ -94,15 +87,14 @@ def remote_repo_setup(tmp_path, dsg_user_config_text):
     # Project config pointing to remote host
     project_config_content = """
 transport: ssh
+name: remote-repo
 ssh:
   host: remote-server.example.com
   path: /var/repos
-  name: remote-repo
   type: zfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """
     project_config_file = work_dir / ".dsgconfig.yml"
     project_config_file.write_text(project_config_content)
@@ -129,15 +121,14 @@ def nonexistent_path_setup(tmp_path, dsg_user_config_text):
     # Project config pointing to nonexistent path
     project_config_content = """
 transport: ssh
+name: missing-repo
 ssh:
   host: localhost
   path: /nonexistent/path
-  name: missing-repo
   type: zfs
-project:
-  data_dirs:
-    - input
-    - output
+data_dirs:
+  - input
+  - output
 """
     project_config_file = work_dir / ".dsgconfig.yml"
     project_config_file.write_text(project_config_content)
@@ -256,14 +247,13 @@ class TestNFSScenarios:
         # Create target config with "remote" host but local path
         target_config_content = f"""
 transport: ssh
+name: test-repo
 ssh:
   host: nfs-server.example.com
   path: {nfs_repos_dir}
-  name: test-repo
   type: zfs
-project:
-  data_dirs:
-    - input
+data_dirs:
+  - input
 """
         target_config_file = test_repo_dir / ".dsgconfig.yml"
         target_config_file.write_text(target_config_content)
@@ -283,5 +273,5 @@ project:
         config = load_real_config(work_dir, user_config_dir)
         
         # Should return True because path is accessible (even though host appears "remote")
-        result = _is_effectively_localhost(config.project.ssh)
+        result = _is_effectively_localhost(config.project.ssh, config.project.name)
         assert result is True

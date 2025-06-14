@@ -102,7 +102,7 @@ class TestSSHFileOperations:
         test_content = b"Hello, World!"
         
         with patch.object(ssh_backend, '_create_ssh_client') as mock_create_client, \
-             patch.object(ssh_backend, '_execute_ssh_command') as mock_exec:
+             patch.object(ssh_backend, '_execute_ssh_command'):
             
             # Mock the SSH client and SFTP
             mock_client = MagicMock()

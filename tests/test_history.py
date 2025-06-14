@@ -7,17 +7,16 @@
 
 import json
 import gzip
-from pathlib import Path
 
 import pytest
 
-from dsg.history import HistoryWalker, LogEntry, BlameEntry, get_repository_log, get_file_blame
+from dsg.core.history import HistoryWalker, LogEntry, BlameEntry, get_repository_log, get_file_blame
 
 
 @pytest.fixture
 def repo_with_history(repo_with_dsg_dir):
     """Repository with .dsg/archive/ containing historical manifests."""
-    repo_dir = repo_with_dsg_dir["repo_dir"]
+    repo_with_dsg_dir["repo_dir"]
     dsg_dir = repo_with_dsg_dir["dsg_dir"]
     archive_dir = dsg_dir / "archive"
     archive_dir.mkdir()

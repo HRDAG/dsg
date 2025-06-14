@@ -7,13 +7,11 @@
 # tests/test_transaction_coordinator.py
 
 import pytest
-import io
-from unittest.mock import Mock, MagicMock, call
+from unittest.mock import Mock
 from pathlib import Path
 
 # Import the Transaction class and protocols
-from dsg.core.transaction_coordinator import Transaction, ClientFilesystem, RemoteFilesystem, Transport
-from dsg.storage import ClientFilesystem as RealClientFilesystem, ZFSFilesystem, LocalhostTransport
+from dsg.core.transaction_coordinator import Transaction
 
 class MockContentStream:
     """Mock content stream for testing"""
@@ -101,7 +99,7 @@ class TestTransactionContextManager:
     
     def test_context_manager_enter_success(self, transaction):
         """Test successful context manager entry"""
-        with transaction as tx:
+        with transaction:
             # Verify all components were initialized
             transaction.client_fs.begin_transaction.assert_called_once_with(transaction.transaction_id)
             transaction.remote_fs.begin_transaction.assert_called_once_with(transaction.transaction_id)
@@ -109,7 +107,7 @@ class TestTransactionContextManager:
     
     def test_context_manager_exit_success_commit(self, transaction):
         """Test successful context manager exit commits all components"""
-        with transaction as tx:
+        with transaction:
             pass  # No exception
         
         # Verify commit was called on all components
@@ -120,7 +118,7 @@ class TestTransactionContextManager:
     def test_context_manager_exit_failure_rollback(self, transaction):
         """Test context manager exit rolls back on exception"""
         with pytest.raises(ValueError):
-            with transaction as tx:
+            with transaction:
                 raise ValueError("Test exception")
         
         # Verify rollback was called on all components
@@ -133,7 +131,7 @@ class TestTransactionContextManager:
         transaction.client_fs.rollback_transaction.side_effect = Exception("Rollback failed")
         
         with pytest.raises(ValueError):
-            with transaction as tx:
+            with transaction:
                 raise ValueError("Test exception")
         
         # Transport should still be cleaned up
@@ -273,7 +271,7 @@ class TestTransactionErrorHandling:
         """Test cleanup when operation fails partway through"""
         # First file succeeds, second fails
         temp_file_1 = MockTempFile("/tmp/temp1")
-        temp_file_2 = MockTempFile("/tmp/temp2")
+        MockTempFile("/tmp/temp2")
         
         transaction.transport.transfer_to_remote.side_effect = [temp_file_1, Exception("Transport error")]
         
