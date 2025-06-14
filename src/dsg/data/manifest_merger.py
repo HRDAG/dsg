@@ -20,12 +20,10 @@ See issue #13 for a full description of each SyncState.
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 
 # Local DSG imports
 from dsg.config.manager import Config
-from dsg.data.manifest import Manifest, FileRef, LinkRef
-from dsg.core.scanner import scan_directory, hash_file
+from dsg.data.manifest import Manifest
 
 
 class SyncState(Enum):
@@ -96,27 +94,42 @@ class ManifestMerger:
         For a full list of possible sync states and their meanings, see:
         README.md: SyncState Table
         """
-        l = self.local.entries.get(path)
-        c = self.cache.entries.get(path)
-        r = self.remote.entries.get(path)
+        local_entry = self.local.entries.get(path)
+        cache_entry = self.cache.entries.get(path)
+        remote_entry = self.remote.entries.get(path)
 
-        ex = f"{int(bool(l))}{int(bool(c))}{int(bool(r))}"
+        ex = f"{int(bool(local_entry))}{int(bool(cache_entry))}{int(bool(remote_entry))}"
 
-        if ex == "111" and l == c and l == r: return SyncState.sLCR__all_eq
-        if ex == "111" and l == c:            return SyncState.sLCR__L_eq_C_ne_R
-        if ex == "111" and l == r:            return SyncState.sLCR__L_eq_R_ne_C  # pragma: no cover - early return
-        if ex == "111" and c == r:            return SyncState.sLCR__C_eq_R_ne_L
-        if ex == "111":                       return SyncState.sLCR__all_ne
-        if ex == "011" and c == r:            return SyncState.sxLCR__C_eq_R
-        if ex == "011" and c != r:            return SyncState.sxLCR__C_ne_R  # pragma: no cover - early return
-        if ex == "101" and l == r:            return SyncState.sLxCR__L_eq_R  # pragma: no cover - early return
-        if ex == "101" and l != r:            return SyncState.sLxCR__L_ne_R
-        if ex == "110" and l == c:            return SyncState.sLCxR__L_eq_C
-        if ex == "110" and l != c:            return SyncState.sLCxR__L_ne_C  # pragma: no cover - early return
-        if ex == "001":                       return SyncState.sxLCxR__only_R
-        if ex == "010":                       return SyncState.sxLCRx__only_C
-        if ex == "100":                       return SyncState.sLxCxR__only_L
-        if ex == "000":                       return SyncState.sxLxCxR__none
+        if ex == "111" and local_entry == cache_entry and local_entry == remote_entry:
+            return SyncState.sLCR__all_eq
+        if ex == "111" and local_entry == cache_entry:
+            return SyncState.sLCR__L_eq_C_ne_R
+        if ex == "111" and local_entry == remote_entry:
+            return SyncState.sLCR__L_eq_R_ne_C  # pragma: no cover - early return
+        if ex == "111" and cache_entry == remote_entry:
+            return SyncState.sLCR__C_eq_R_ne_L
+        if ex == "111":
+            return SyncState.sLCR__all_ne
+        if ex == "011" and cache_entry == remote_entry:
+            return SyncState.sxLCR__C_eq_R
+        if ex == "011" and cache_entry != remote_entry:
+            return SyncState.sxLCR__C_ne_R  # pragma: no cover - early return
+        if ex == "101" and local_entry == remote_entry:
+            return SyncState.sLxCR__L_eq_R  # pragma: no cover - early return
+        if ex == "101" and local_entry != remote_entry:
+            return SyncState.sLxCR__L_ne_R
+        if ex == "110" and local_entry == cache_entry:
+            return SyncState.sLCxR__L_eq_C
+        if ex == "110" and local_entry != cache_entry:
+            return SyncState.sLCxR__L_ne_C  # pragma: no cover - early return
+        if ex == "001":
+            return SyncState.sxLCxR__only_R
+        if ex == "010":
+            return SyncState.sxLCRx__only_C
+        if ex == "100":
+            return SyncState.sLxCxR__only_L
+        if ex == "000":
+            return SyncState.sxLxCxR__none
 
         raise ValueError(f"Unexpected manifest state {ex}")  # pragma: no cover
 

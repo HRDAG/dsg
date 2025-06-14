@@ -3,7 +3,6 @@
 import os
 from pathlib import Path
 from typer.testing import CliRunner
-from rich.console import Console
 import tempfile
 
 from dsg.cli import app
@@ -552,7 +551,7 @@ def test_version_option():
     
     assert result.exit_code == 0
     assert "dsg version" in result.stdout
-    assert "0.1.0" in result.stdout or "unknown" in result.stdout
+    assert "0.1.0" in result.stdout or "0.0.2" in result.stdout or "unknown" in result.stdout
 
 
 def test_version_option_in_help():

@@ -19,21 +19,17 @@ This module tests:
 
 import pytest
 import datetime
-import orjson
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 from unittest import mock
 
 from dsg.core.lifecycle import (
     SnapshotInfo, 
     create_default_snapshot_info,
     init_create_manifest,
-    sync_repository,
     write_dsg_metadata,
     create_local_metadata,
-    init_repository,
-    normalize_problematic_paths,
-    build_sync_messages_file
+    init_repository
 )
 from dsg.config.manager import Config
 from dsg.data.manifest import Manifest
@@ -81,7 +77,7 @@ class TestSnapshotInfo:
         assert isinstance(snapshot.timestamp, datetime.datetime)
     
     @patch('builtins.__import__', side_effect=ImportError("Cannot import LA_TIMEZONE"))
-    @patch('dsg.lifecycle.datetime')
+    @patch('dsg.core.lifecycle.datetime')
     def test_create_default_snapshot_info_import_fallback(self, mock_datetime, mock_import):
         """Test timezone fallback when LA_TIMEZONE import fails"""
         mock_time = datetime.datetime(2025, 6, 6, 12, 0, 0)
@@ -157,7 +153,7 @@ class TestInitCreateManifest:
         
         base_path = Path("/test/path")
         
-        with patch('dsg.lifecycle.normalize_problematic_paths') as mock_normalize:
+        with patch('dsg.core.lifecycle.normalize_problematic_paths') as mock_normalize:
             mock_normalize.return_value = MagicMock()  # Mock NormalizationResult
             
             manifest, normalization_result = init_create_manifest(base_path, "test@example.com", normalize=True)
@@ -173,8 +169,8 @@ class TestInitCreateManifest:
 class TestMetadataOperations:
     """Tests for metadata creation and writing functions"""
     
-    @patch('dsg.lifecycle.build_sync_messages_file')
-    @patch('dsg.lifecycle.orjson.dumps')
+    @patch('dsg.core.lifecycle.build_sync_messages_file')
+    @patch('dsg.core.lifecycle.orjson.dumps')
     @patch('builtins.open')
     @patch('pathlib.Path.mkdir')
     @patch('os.makedirs')
@@ -250,7 +246,7 @@ class TestInitRepository:
     def test_init_repository_success(self, mock_logger, mock_local_meta, mock_backend):
         """Test successful repository initialization"""
         # Setup mocks
-        from dsg.lifecycle import InitResult, NormalizationResult
+        from dsg.core.lifecycle import InitResult, NormalizationResult
         mock_norm_result = MagicMock(spec=NormalizationResult)
         mock_init_result = InitResult(
             snapshot_hash="test_snapshot_hash",
@@ -288,7 +284,7 @@ class TestInitRepository:
     @patch('dsg.core.lifecycle.loguru.logger')
     def test_init_repository_without_normalization(self, mock_logger, mock_local_meta, mock_backend):
         """Test repository initialization with normalization disabled"""
-        from dsg.lifecycle import InitResult
+        from dsg.core.lifecycle import InitResult
         mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
         mock_local_meta.return_value = mock_init_result
         mock_backend_instance = MagicMock()
@@ -313,7 +309,7 @@ class TestInitRepository:
     
     def test_init_repository_with_real_config_structure(self):
         """Test init_repository with realistic config structure - reproduces repo_name bug"""
-        from dsg.config_manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+        from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
         from pathlib import Path
         
         # Create realistic config structure that matches actual YAML
@@ -345,7 +341,6 @@ class TestInitRepository:
             user_id="test@example.com"
         )
         
-        from dsg.config.manager import Config
         config = Config(
             user=user_config,
             project=project_config,
@@ -355,7 +350,7 @@ class TestInitRepository:
         # This should now work after the fix (config.project.name instead of config.project.repo_name)
         with patch('dsg.core.lifecycle.create_backend') as mock_backend, \
              patch('dsg.core.lifecycle.create_local_metadata') as mock_local_meta:
-            from dsg.lifecycle import InitResult
+            from dsg.core.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
             mock_local_meta.return_value = mock_init_result
             mock_backend_instance = MagicMock()
@@ -373,7 +368,7 @@ class TestInitRepository:
     @patch('dsg.core.lifecycle.create_local_metadata')
     def test_init_repository_backend_failure(self, mock_local_meta, mock_backend):
         """Test init_repository when backend initialization fails"""
-        from dsg.lifecycle import InitResult
+        from dsg.core.lifecycle import InitResult
         mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
         mock_local_meta.return_value = mock_init_result
         mock_backend_instance = MagicMock()
@@ -494,7 +489,6 @@ class TestSyncOperations:
     def test_determine_sync_operation_type_init_like(self):
         """Test manifest-level sync type detection for init-like scenario"""
         from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
-        from dsg.data.manifest import Manifest
         
         # Create manifests for init-like: L != C but C == R
         local_manifest = MagicMock(spec=Manifest)
@@ -515,7 +509,6 @@ class TestSyncOperations:
     def test_determine_sync_operation_type_clone_like(self):
         """Test manifest-level sync type detection for clone-like scenario"""
         from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
-        from dsg.data.manifest import Manifest
         
         # Create manifests for clone-like: L == C but C != R
         local_manifest = MagicMock(spec=Manifest)
@@ -536,7 +529,6 @@ class TestSyncOperations:
     def test_determine_sync_operation_type_mixed(self):
         """Test manifest-level sync type detection for mixed scenario"""
         from dsg.core.lifecycle import _determine_sync_operation_type, SyncOperationType
-        from dsg.data.manifest import Manifest
         
         # Create manifests for mixed: All different hashes
         local_manifest = MagicMock(spec=Manifest)

@@ -10,15 +10,13 @@ import os
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 import yaml
-import socket
 
 import pytest
-import typer
 
 from dsg.config.manager import (
     Config, ProjectConfig, load_merged_user_config, UserConfig,
     SSHRepositoryConfig, ProjectSettings, IgnoreSettings,
-    SSHUserConfig, find_project_config_path
+    find_project_config_path
 )
 
 
@@ -443,7 +441,7 @@ user_id: invalid-email  # Not a valid email
     assert any("email" in error.lower() for error in errors)
 
 
-@patch("dsg.backends.can_access_backend")
+@patch("dsg.storage.factory.can_access_backend")
 def test_validate_config_check_backend(mock_can_access, basic_repo_structure, tmp_path):
     """Test validate_config with check_backend=True."""
     from dsg.config.manager import validate_config
@@ -595,7 +593,7 @@ class TestSystemConfigValidation:
         }
         
         # Should raise ConfigError
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="System config contains personal fields: user_id, user_name"):
             _validate_system_config(config_data, system_config_path)
     
@@ -664,7 +662,7 @@ class TestSystemConfigValidation:
         }
         
         # Should raise ConfigError mentioning only the found field
-        from dsg.exceptions import ConfigError
+        from dsg.system.exceptions import ConfigError
         with pytest.raises(ConfigError, match="System config contains personal fields: user_name"):
             _validate_system_config(config_data, system_config_path)
 
@@ -784,7 +782,6 @@ local_log: {log_file}
     def test_validate_config_with_unwritable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with unwritable local_log directory."""
         from dsg.config.manager import validate_config
-        import os
         
         # Create log directory and make it read-only
         log_dir = tmp_path / "readonly_logs"
@@ -822,7 +819,6 @@ local_log: {log_dir}
     def test_validate_config_with_uncreatable_local_log(self, basic_repo_structure, tmp_path, monkeypatch):
         """Test validate_config with local_log that cannot be created."""
         from dsg.config.manager import validate_config
-        import os
         
         # Create a file where we want to create the parent directory
         parent_file = tmp_path / "blocking_file"

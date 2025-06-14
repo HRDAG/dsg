@@ -14,10 +14,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
 from rich.console import Console
 
-from dsg.progress import RepositoryProgressReporter
+from dsg.system.progress import RepositoryProgressReporter
 
 
 class TestRepositoryProgressReporter:
@@ -190,7 +189,7 @@ class TestRepositoryProgressReporter:
     def test_progress_callback_integration(self):
         """Test progress callback integration with backends."""
         from dsg.backends import LocalhostBackend
-        from dsg.manifest import Manifest
+        from dsg.data.manifest import Manifest
         from collections import OrderedDict
         
         # Track progress callback calls
@@ -342,7 +341,7 @@ project:
     def test_ssh_backend_verbose_parameter_flow(self):
         """Test that verbose parameter flows through to SSH backend correctly."""
         from dsg.backends import SSHBackend
-        from unittest.mock import Mock, patch
+        from unittest.mock import patch
         
         # Create mock SSH config
         ssh_config = Mock()
@@ -367,7 +366,7 @@ project:
                     manifest_file = Path("/tmp/test_dest/.dsg/last-sync.json")
                     manifest_file.parent.mkdir(parents=True, exist_ok=True)
                     manifest_file.write_text('{"test": "manifest"}')
-                from dsg.utils.execution import CommandResult
+                from dsg.system.execution import CommandResult
                 return CommandResult(returncode=0, stdout="", stderr="")
             
             mock_run.side_effect = rsync_side_effect
@@ -399,8 +398,7 @@ class TestRsyncProgressParsing:
     def test_rsync_progress_parsing_basic(self):
         """Test basic rsync output parsing for file counting."""
         from dsg.backends import SSHBackend
-        from unittest.mock import Mock, patch
-        import subprocess
+        from unittest.mock import patch
         
         ssh_config = Mock()
         ssh_config.host = "testhost"
@@ -449,7 +447,7 @@ class TestRsyncProgressParsing:
     def test_rsync_progress_parsing_edge_cases(self):
         """Test rsync progress parsing with edge cases."""
         from dsg.backends import SSHBackend
-        from unittest.mock import Mock, patch
+        from unittest.mock import patch
         
         ssh_config = Mock()
         backend = SSHBackend(ssh_config, Mock(), "repo")
@@ -466,7 +464,7 @@ class TestRsyncProgressParsing:
         with patch('subprocess.Popen', return_value=mock_process), \
              patch('dsg.backends.ce.run_with_progress') as mock_run:
             
-            from dsg.utils.execution import CommandResult
+            from dsg.system.execution import CommandResult
             mock_run.return_value = CommandResult(returncode=0, stdout="", stderr="")
             
             backend._run_rsync_with_progress(
@@ -484,7 +482,7 @@ class TestRsyncProgressParsing:
     def test_rsync_progress_completion_handling(self):
         """Test that progress completion is handled correctly."""
         from dsg.backends import SSHBackend
-        from unittest.mock import Mock, patch
+        from unittest.mock import patch
         
         ssh_config = Mock()
         backend = SSHBackend(ssh_config, Mock(), "repo")

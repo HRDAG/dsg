@@ -10,23 +10,20 @@ import pytest
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
-from unittest.mock import patch
 
 # Import to ensure Config and ManifestMerger types are available for type checking
-from dsg.config_manager import Config
-from dsg.manifest_merger import ManifestMerger
+from dsg.config.manager import Config
+from dsg.data.manifest_merger import ManifestMerger
 
-from dsg.manifest import (
+from dsg.data.manifest import (
     FileRef,
     LinkRef,
     Manifest,
     LA_TIMEZONE,
     _dt,
 )
-from dsg.manifest_merger import (
-    SyncState,
-    ManifestMerger
+from dsg.data.manifest_merger import (
+    SyncState
     # ComparisonState and ComparisonResult are no longer used
 )
 
@@ -190,7 +187,7 @@ def create_manifest_from_dir():
 @pytest.fixture
 def test_config(test_project_structure):
     """Create a test Config object for ManifestMerger"""
-    from dsg.config_manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
+    from dsg.config.manager import ProjectConfig, UserConfig, SSHRepositoryConfig, ProjectSettings
     
     project_root = test_project_structure["local_dir"]
     
@@ -252,7 +249,6 @@ class TestManifestMerger:
     def test_presence_patterns(self, test_manifests, test_config):
         """Test correct classification based on file presence patterns"""
         # Set up logger for debug
-        import logging
         from loguru import logger
         import sys
         
@@ -274,7 +270,7 @@ class TestManifestMerger:
         logger.debug(f"Remote entry for data/local_remote_only.txt: {remote_entry}")
         logger.debug(f"Entries equal? {local_entry == remote_entry}")
         if local_entry and remote_entry:
-            logger.debug(f"Type equality: {type(local_entry) == type(remote_entry)}")
+            logger.debug(f"Type equality: {type(local_entry) is type(remote_entry)}")
             logger.debug(f"Path equality: {local_entry.path == remote_entry.path}")
             logger.debug(f"Size equality: {local_entry.filesize == remote_entry.filesize}")
             logger.debug(f"Hash equality: {local_entry.hash == remote_entry.hash}")
@@ -392,7 +388,7 @@ class TestManifestMergerEdgeCases:
     
     def test_config_requirement(self, test_manifests, test_config):
         """Test that ManifestMerger raises ValueError if config lacks user or project_root"""
-        from dsg.config_manager import UserConfig
+        from dsg.config.manager import UserConfig
         import unittest.mock as mock
         
         # Create a mock Config with no user
@@ -402,7 +398,7 @@ class TestManifestMergerEdgeCases:
         
         # Test that ManifestMerger raises ValueError if config doesn't have user
         with pytest.raises(ValueError, match="ManifestMerger requires config with user and project_root"):
-            merger = ManifestMerger(
+            ManifestMerger(
                 local=test_manifests["local"],
                 cache=test_manifests["cache"],
                 remote=test_manifests["remote"],
@@ -419,7 +415,7 @@ class TestManifestMergerEdgeCases:
         
         # Test that ManifestMerger raises ValueError if config doesn't have project_root
         with pytest.raises(ValueError, match="ManifestMerger requires config with user and project_root"):
-            merger = ManifestMerger(
+            ManifestMerger(
                 local=test_manifests["local"],
                 cache=test_manifests["cache"],
                 remote=test_manifests["remote"],
@@ -453,7 +449,7 @@ class TestManifestMergerEdgeCases:
         by using the new fallback behavior in FileRef.__eq__.
         """
         from datetime import datetime
-        from dsg.manifest import _dt
+        from dsg.data.manifest import _dt
         
         # Create a FileRef with a hash (like from cache)
         cache_file = FileRef(

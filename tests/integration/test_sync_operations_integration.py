@@ -20,9 +20,6 @@ from rich.console import Console
 from dsg.core.lifecycle import sync_repository
 from dsg.system.exceptions import SyncError
 from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_config,
-    bb_local_remote_setup,
     local_file_exists,
     remote_file_exists,
     local_file_content_matches,
@@ -104,7 +101,7 @@ class TestManifestLevelSyncIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify: Files uploaded to remote, operation succeeded
-        assert result["success"] == True
+        assert result["success"]
         assert result["operation"] == "sync"
         assert remote_file_exists(setup, test_file)
         assert remote_file_content_matches(setup, test_file, "init_like_test")
@@ -128,7 +125,7 @@ class TestManifestLevelSyncIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify: Files downloaded locally, operation succeeded
-        assert result["success"] == True
+        assert result["success"]
         assert result["operation"] == "sync"
         assert local_file_exists(setup, test_file)
         assert local_file_content_matches(setup, test_file, "clone_like_test")
@@ -140,7 +137,7 @@ class TestManifestLevelSyncIntegration:
         console = Console()
         
         # Setup: Multiple files in different sync states
-        files_created = create_mixed_state(setup)
+        create_mixed_state(setup)
         
         # Verify initial state
         assert local_file_exists(setup, "task1/import/input/local_only.txt")
@@ -152,7 +149,7 @@ class TestManifestLevelSyncIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify: Correct operations per file
-        assert result["success"] == True
+        assert result["success"]
         assert result["operation"] == "sync"
         
         # Local-only file should be uploaded
@@ -192,7 +189,7 @@ class TestRealFileTransferIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify CSV transferred correctly
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, csv_file)
         remote_content = read_remote_file(setup, csv_file)
         assert "Frank Wilson" in remote_content
@@ -214,7 +211,7 @@ class TestRealFileTransferIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify binary file transferred correctly
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, binary_file)
         remote_binary = read_remote_file(setup, binary_file, binary=True)
         assert remote_binary == binary_content
@@ -243,7 +240,7 @@ class TestRealFileTransferIntegration:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify all files transferred
-        assert result["success"] == True
+        assert result["success"]
         for file_path, expected_content in files.items():
             assert remote_file_exists(setup, file_path)
             assert remote_file_content_matches(setup, file_path, expected_content.split('\n')[0])
@@ -306,7 +303,7 @@ if (!interactive()) {
 """
         modify_local_file(setup["local_path"], shared_file, user_a_changes)
         result_a = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result_a["success"] == True
+        assert result_a["success"]
         
         # Simulate User B environment (reset local to previous state, then sync)
         # This simulates User B having the old version locally (original BB fixture content)
@@ -355,7 +352,7 @@ if (!interactive()) {
         
         # User B syncs (should download User A's changes)
         result_b = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result_b["success"] == True
+        assert result_b["success"]
         
         # Verify User B got User A's changes
         assert local_file_exists(setup, shared_file)
@@ -384,7 +381,7 @@ if (!interactive()) {
         
         # Execute sync - should detect conflict and raise SyncError
         with pytest.raises(SyncError, match="conflicts"):
-            result = sync_repository(setup["local_config"], console, dry_run=False)
+            sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify that files exist locally and remotely (conflict was detected, not resolved)
         assert local_file_exists(setup, conflict_file)
@@ -412,20 +409,20 @@ class TestSyncEdgeCases:
         
         # Sync to remote (file → file)
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         assert remote_file_exists(setup, shapeshifter_path)
         remote_content = read_remote_file(setup, shapeshifter_path)
         assert "regular file" in remote_content
         
         # Phase 2: Replace local file with symlink pointing to existing file
         local_file_path = setup["local_path"] / shapeshifter_path
-        target_file = setup["local_path"] / "task1/import/input/some-data.csv"  # Existing file from BB fixture
+        setup["local_path"] / "task1/import/input/some-data.csv"  # Existing file from BB fixture
         local_file_path.unlink()  # Remove regular file
         local_file_path.symlink_to("some-data.csv")  # Create symlink
         
         # Sync shapeshifter (file → symlink)
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify remote now has symlink
         remote_file_path = setup["remote_path"] / shapeshifter_path
@@ -439,7 +436,7 @@ class TestSyncEdgeCases:
         
         # Sync shapeshifter (symlink → file)
         result3 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result3["success"] == True
+        assert result3["success"]
         
         # Verify remote is back to regular file with new content
         assert not remote_file_path.is_symlink()
@@ -455,13 +452,13 @@ class TestSyncEdgeCases:
         symlink_path = "task1/import/input/target_shifter.link"
         
         # Phase 1: Create symlink pointing to file
-        target_file = setup["local_path"] / "task1/import/input/some-data.csv"
+        setup["local_path"] / "task1/import/input/some-data.csv"
         symlink_full_path = setup["local_path"] / symlink_path
         symlink_full_path.symlink_to("some-data.csv")
         
         # Sync to remote (symlink → file)
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         remote_symlink = setup["remote_path"] / symlink_path
         assert remote_symlink.is_symlink()
@@ -469,12 +466,12 @@ class TestSyncEdgeCases:
         
         # Phase 2: Change symlink to point to directory
         symlink_full_path.unlink()
-        target_dir = setup["local_path"] / "task1/import/input"
+        setup["local_path"] / "task1/import/input"
         symlink_full_path.symlink_to(".")  # Point to current directory
         
         # Sync shapeshifter (symlink to file → symlink to dir)
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify remote symlink now points to directory
         assert remote_symlink.is_symlink()
@@ -490,7 +487,7 @@ class TestSyncEdgeCases:
         machine_a_file = "task1/import/input/machine_a_work.txt"
         create_local_file(setup["local_path"], machine_a_file, "Work from Machine A\nTimestamp: Monday 9am\n")
         result_a1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result_a1["success"] == True
+        assert result_a1["success"]
         
         # Simulate Machine B (same user, different machine) - create second local environment
         machine_b_base = setup["base_path"] / "machine_b"
@@ -505,7 +502,7 @@ class TestSyncEdgeCases:
         shutil.copy2(setup["local_path"] / ".dsgconfig.yml", machine_b_path / ".dsgconfig.yml")
         
         # Create machine B config (same user ID as machine A)
-        from dsg.config_manager import Config, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings, UserConfig
+        from dsg.config.manager import Config, ProjectConfig, SSHRepositoryConfig, ProjectSettings, IgnoreSettings, UserConfig
         
         machine_b_project_config = ProjectConfig(
             name="BB",
@@ -561,7 +558,7 @@ class TestSyncEdgeCases:
         
         # Machine B syncs (should upload B's work)
         result_b1 = sync_repository(machine_b_config, console, dry_run=False)
-        assert result_b1["success"] == True
+        assert result_b1["success"]
         
         # Verify remote has both files
         assert remote_file_exists(setup, machine_a_file)
@@ -569,7 +566,7 @@ class TestSyncEdgeCases:
         
         # Machine A syncs again (should get Machine B's work)
         result_a2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result_a2["success"] == True
+        assert result_a2["success"]
         
         # Verify Machine A got Machine B's file
         assert local_file_exists(setup, machine_b_file)
@@ -582,11 +579,11 @@ class TestSyncEdgeCases:
         # Machine A creates file
         create_local_file(setup["local_path"], shared_file, "Machine A version: Started project\n")
         result_a3 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result_a3["success"] == True
+        assert result_a3["success"]
         
         # Machine B gets the file, then modifies it
         result_b2 = sync_repository(machine_b_config, console, dry_run=False)
-        assert result_b2["success"] == True
+        assert result_b2["success"]
         modify_local_file(machine_b_path, shared_file, "Machine B version: Made changes to project\n")
         
         # Machine A also modifies the same file (classic doppelganger scenario)
@@ -594,13 +591,13 @@ class TestSyncEdgeCases:
         
         # Machine B syncs first
         result_b3 = sync_repository(machine_b_config, console, dry_run=False)
-        assert result_b3["success"] == True
+        assert result_b3["success"]
         
         # Machine A tries to sync - should detect conflict even though same user
         # This should conflict because files differ, regardless of user ID
         from dsg.system.exceptions import SyncError
         with pytest.raises(SyncError, match="conflicts"):
-            result_a4 = sync_repository(setup["local_config"], console, dry_run=False)
+            sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify the conflict state exists
         remote_content = read_remote_file(setup, shared_file)
@@ -634,13 +631,13 @@ class TestSyncEdgeCases:
         
         # Initial sync works fine
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         
         # Storm begins: Multiple simultaneous issues
         
         # Issue 1: File becomes locked (simulate Windows file lock)
         locked_file = setup["local_path"] / critical_file
-        original_stat = locked_file.stat()
+        locked_file.stat()
         
         # Issue 2: Disk space becomes limited (we'll simulate by creating large temp files that get cleaned up)
         temp_files = []
@@ -667,7 +664,7 @@ class TestSyncEdgeCases:
             
             # First sync - should handle the chaos gracefully
             result2 = sync_repository(setup["local_config"], console, dry_run=False)
-            assert result2["success"] == True
+            assert result2["success"]
             
             # Verify critical files made it through
             assert remote_file_exists(setup, critical_file)
@@ -684,7 +681,7 @@ class TestSyncEdgeCases:
             
             # Crisis sync - system under maximum stress
             result3 = sync_repository(setup["local_config"], console, dry_run=False)
-            assert result3["success"] == True
+            assert result3["success"]
             
             # Verify system handled the perfect storm
             assert remote_file_exists(setup, critical_file)
@@ -717,7 +714,7 @@ class TestSyncEdgeCases:
             for temp_file in temp_files:
                 try:
                     os.unlink(temp_file)
-                except:
+                except OSError:
                     pass  # Best effort cleanup
 
     def test_sync_with_empty_repository(self, bb_local_remote_setup):
@@ -734,7 +731,7 @@ class TestSyncEdgeCases:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify sync works even with minimal content
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, test_file)
         assert cache_manifest_updated(setup)
 
@@ -756,7 +753,7 @@ class TestSyncEdgeCases:
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify large file synced correctly
-        assert result["success"] == True
+        assert result["success"]
         assert remote_file_exists(setup, large_file)
         remote_content = read_remote_file(setup, large_file)
         assert len(remote_content) > 10000  # Verify substantial size
@@ -781,7 +778,7 @@ class TestSyncEdgeCases:
         
         # Initial sync - both files should be uploaded
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         assert remote_file_exists(setup, vanishing_file)
         assert remote_file_exists(setup, permanent_file)
         
@@ -791,7 +788,7 @@ class TestSyncEdgeCases:
         
         # Sync after file vanishes - sync should handle missing file gracefully
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # DSG propagates local deletions to remote (sync state sxLCR__C_eq_R -> delete from remote)
         assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted from remote"
@@ -803,7 +800,7 @@ class TestSyncEdgeCases:
         
         # Sync after file reappears - should upload the new version
         result3 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result3["success"] == True
+        assert result3["success"]
         
         # Verify the reappeared file has new content on remote
         assert remote_file_exists(setup, vanishing_file)
@@ -823,7 +820,7 @@ class TestSyncEdgeCases:
         
         # Sync after mass vanishing - should propagate all deletions
         result4 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result4["success"] == True
+        assert result4["success"]
         
         # All vanished files should be deleted from remote, survivor should be uploaded
         assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted"
@@ -845,7 +842,7 @@ class TestSyncEdgeCases:
         
         # Final sync after restoration
         result5 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result5["success"] == True
+        assert result5["success"]
         
         # Verify all restored files synced with backup content
         assert remote_file_exists(setup, vanishing_file)
@@ -879,7 +876,7 @@ class TestSyncEdgeCases:
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result1["success"] == True
+        assert result1["success"]
         assert remote_file_exists(setup, time_sensitive_file)
         
         # Phase 2: Simulate clock going backwards (system clock adjustment)
@@ -898,7 +895,7 @@ class TestSyncEdgeCases:
         
         # Sync with "time traveled" file - should still work despite timestamp confusion
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result2["success"] == True
+        assert result2["success"]
         
         # Verify content updated despite confusing timestamps
         remote_content = read_remote_file(setup, time_sensitive_file)
@@ -917,7 +914,7 @@ class TestSyncEdgeCases:
         
         # Sync with future timestamp
         result3 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result3["success"] == True
+        assert result3["success"]
         
         # Verify future content synced
         remote_content = read_remote_file(setup, time_sensitive_file)
@@ -946,7 +943,7 @@ class TestSyncEdgeCases:
         
         # Sync despite clock differences
         result4 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result4["success"] == True
+        assert result4["success"]
         
         # Both machines' files should sync successfully
         assert remote_file_exists(setup, machine_a_file)
@@ -976,7 +973,7 @@ Note: All represent the same moment in time!
         
         # Final sync with timezone complexity
         result5 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result5["success"] == True
+        assert result5["success"]
         
         # Verify timezone file synced
         assert remote_file_exists(setup, timezone_file)
@@ -999,7 +996,7 @@ Note: All represent the same moment in time!
         
         # Sync after rapid changes
         result6 = sync_repository(setup["local_config"], console, dry_run=False)
-        assert result6["success"] == True
+        assert result6["success"]
         
         # Verify final rapid change made it through
         assert remote_file_exists(setup, rapid_fire_file)

@@ -11,15 +11,14 @@
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import Mock, patch
 
 import orjson
 import pytest
 import yaml
 
-from dsg.repository_discovery import (
+from dsg.config.discovery import (
     RepositoryInfo,
-    BaseRepositoryDiscovery,
     LocalRepositoryDiscovery,
     SSHRepositoryDiscovery,
     RepositoryDiscovery,
@@ -293,7 +292,6 @@ class TestLocalRepositoryDiscovery:
     def test_read_local_repository_metadata_exception(self):
         """Test error handling in metadata reading."""
         import tempfile
-        import os
         
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_dir = Path(temp_dir) / "repo1"
@@ -429,7 +427,7 @@ class TestRepositoryDiscovery:
         """Set up test fixtures."""
         self.discovery = RepositoryDiscovery()
 
-    @patch('dsg.host_utils.is_local_host')
+    @patch('dsg.system.host_utils.is_local_host')
     def test_list_repositories_local(self, mock_is_local):
         """Test discovery routes to local discovery for localhost."""
         mock_is_local.return_value = True
@@ -443,7 +441,7 @@ class TestRepositoryDiscovery:
         assert result[0].name == "local-repo"
         mock_local.assert_called_once_with(Path("/test"))
 
-    @patch('dsg.host_utils.is_local_host')
+    @patch('dsg.system.host_utils.is_local_host')
     def test_list_repositories_ssh(self, mock_is_local):
         """Test discovery routes to SSH discovery for remote hosts."""
         mock_is_local.return_value = False
