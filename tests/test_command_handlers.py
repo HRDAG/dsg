@@ -134,21 +134,27 @@ class TestInfoCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         config.project_root = Path("/test/project")
-        config.transport = Mock(transport="ssh")
+        config.project = Mock()
+        config.project.transport = "ssh"
+        config.project.migrated = False  # Modern config format
         
-        with patch('dsg.cli.commands.info.can_access_backend') as mock_can_access:
-            mock_can_access.return_value = True
-            
-            result = info_commands.validate_config(
-                console, config, check_backend=True, verbose=False, quiet=False
-            )
-            
-            # Verify structure
-            assert 'config' in result
-            assert 'validation_results' in result
-            assert 'all_passed' in result
-            assert len(result['validation_results']) == 2  # config + backend
-            assert result['all_passed'] is True
+        result = info_commands.validate_config(
+            console, config, check_backend=True, verbose=False, quiet=False
+        )
+        
+        # Verify structure
+        assert 'config' in result
+        assert 'validation_results' in result
+        assert 'all_passed' in result
+        
+        # Verify validation results include expected checks
+        validation_results = result['validation_results']
+        result_names = [r['name'] for r in validation_results]
+        assert 'config' in result_names
+        assert 'migration' in result_names
+        assert 'backend' in result_names  # Should be present with new message
+        assert len(result['validation_results']) == 3  # config + migration + backend
+        assert result['all_passed'] is True
     
     def test_validate_file_handles_missing_file(self):
         """Test that validate_file handles missing files gracefully."""
