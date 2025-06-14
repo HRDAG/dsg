@@ -55,7 +55,10 @@ class ZFSOperations(SnapshotOperations):
         if file_list:
             transport.copy_files(file_list, local_base, self.mount_path)
 
-        # Step 3: Create first snapshot
+        # Step 3: Create remote .dsg directory structure and copy metadata
+        self._create_remote_dsg_structure(local_base, transport)
+
+        # Step 4: Create first snapshot
         self._create_snapshot("s1")
 
     def _create_dataset(self, force: bool = False) -> None:
@@ -77,8 +80,8 @@ class ZFSOperations(SnapshotOperations):
         # Fix ownership and permissions on the mount point
         # Get current user for ownership
         current_user = pwd.getpwuid(os.getuid()).pw_name
-        current_group = pwd.getpwuid(os.getuid()).pw_gid
-        group_name = pwd.getpwuid(os.getuid()).pw_name  # Use same name for group fallback
+        pwd.getpwuid(os.getuid()).pw_gid
+        pwd.getpwuid(os.getuid()).pw_name  # Use same name for group fallback
 
         # Set ownership to current user
         # TODO: CRITICAL - Sudo usage needs context awareness
@@ -96,6 +99,64 @@ class ZFSOperations(SnapshotOperations):
         snapshot_name = f"{self.dataset_name}@{snapshot_id}"
         snapshot_cmd = ["zfs", "snapshot", snapshot_name]
         ce.run_sudo(snapshot_cmd)
+    
+    def _create_remote_dsg_structure(self, local_base: str, transport: 'Transport') -> None:
+        """Create remote .dsg directory structure and copy metadata files
+        
+        This method fixes the bug where ZFS init created local .dsg but not remote .dsg.
+        It creates the remote .dsg directory and copies essential metadata files.
+        
+        Args:
+            local_base: Path to local project directory  
+            transport: Transport instance for file operations
+        """
+        from pathlib import Path
+        
+        local_base_path = Path(local_base)
+        local_dsg = local_base_path / ".dsg"
+        remote_dsg_path = f"{self.mount_path}/.dsg"
+        
+        # Only proceed if local .dsg exists (it should after create_local_metadata)
+        if not local_dsg.exists():
+            return
+            
+        # Step 1: Create remote .dsg directory
+        ce.run_sudo(["mkdir", "-p", remote_dsg_path])
+        
+        # Step 2: Create remote .dsg/archive directory
+        remote_archive_path = f"{remote_dsg_path}/archive"
+        ce.run_sudo(["mkdir", "-p", remote_archive_path])
+        
+        # Step 3: Copy essential metadata files from local to remote
+        essential_files = ["last-sync.json", "sync-messages.json"]
+        
+        for filename in essential_files:
+            local_file = local_dsg / filename
+            if local_file.exists():
+                # Copy using sudo to ensure proper permissions
+                remote_file_path = f"{remote_dsg_path}/{filename}"
+                ce.run_sudo(["cp", str(local_file), remote_file_path])
+        
+        # Step 4: Set proper ownership and permissions on remote .dsg
+        try:
+            import pwd
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            
+            # Set ownership of .dsg directory and contents
+            ce.run_sudo(["chown", "-R", f"{current_user}:{current_user}", remote_dsg_path])
+            
+            # Set permissions: 755 for directories, 644 for files
+            ce.run_sudo(["chmod", "755", remote_dsg_path])
+            ce.run_sudo(["chmod", "755", remote_archive_path])
+            
+            for filename in essential_files:
+                remote_file_path = f"{remote_dsg_path}/{filename}"
+                if Path(remote_file_path).exists():
+                    ce.run_sudo(["chmod", "644", remote_file_path])
+                    
+        except Exception:
+            # If ownership/permission setting fails, continue - the files still exist
+            pass
 
     def _validate_zfs_access(self) -> bool:
         """Validate that we can access ZFS commands with sudo"""
