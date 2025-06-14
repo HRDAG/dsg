@@ -19,6 +19,7 @@ filesystem operations, and backend repository interactions.
 """
 
 import datetime
+import importlib.metadata
 import os
 import tempfile
 from pathlib import Path
@@ -30,6 +31,14 @@ import orjson
 import lz4.frame
 
 from rich.console import Console
+
+# Get the package version
+try:
+    PKG_VERSION = importlib.metadata.version("dsg")
+except importlib.metadata.PackageNotFoundError:
+    import typer
+    typer.echo("ERROR: DSG package not properly installed - cannot determine version", err=True)
+    raise typer.Exit(1)
 
 from dsg.config.manager import Config
 from dsg.storage.factory import create_backend
@@ -837,7 +846,7 @@ def _build_sync_messages_file(manifest: Manifest, dsg_dir: Path, snapshot_id: st
     
     # Load existing sync messages or create new structure
     sync_messages = {
-        "metadata_version": "0.1.0",
+        "metadata_version": PKG_VERSION,
         "snapshots": {}
     }
     
@@ -853,7 +862,7 @@ def _build_sync_messages_file(manifest: Manifest, dsg_dir: Path, snapshot_id: st
                 # Legacy format - convert to new format but preserve existing data
                 logger.debug("Converting legacy sync-messages.json format to new snapshot format")
                 sync_messages = {
-                    "metadata_version": "0.1.0",
+                    "metadata_version": PKG_VERSION,
                     "snapshots": {},
                     "legacy_messages": existing_data.get("messages", [])  # Preserve old messages
                 }
@@ -1418,7 +1427,7 @@ def build_sync_messages_file(
     
     # Initialize with new format structure
     sync_messages = {
-        "metadata_version": "0.1.0",
+        "metadata_version": PKG_VERSION,
         "snapshots": {
             snapshot_id: current_metadata
         }

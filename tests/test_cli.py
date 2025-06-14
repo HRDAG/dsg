@@ -546,7 +546,14 @@ def test_version_option():
     
     assert result.exit_code == 0
     assert "dsg version" in result.stdout
-    assert "0.1.0" in result.stdout or "0.0.2" in result.stdout or "unknown" in result.stdout
+    # Should show current package version
+    import importlib.metadata
+    try:
+        expected_version = importlib.metadata.version("dsg")
+        assert expected_version in result.stdout
+    except importlib.metadata.PackageNotFoundError:
+        # In development/test environment, allow fallback messages
+        assert "0.1.1" in result.stdout or "0.1.0" in result.stdout or "0.0.2" in result.stdout or "unknown" in result.stdout
 
 
 def test_version_option_in_help():

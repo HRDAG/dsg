@@ -25,9 +25,10 @@ import xxhash
 # Get the package version from pyproject.toml
 try:
     PKG_VERSION = importlib.metadata.version("dsg")
-except importlib.metadata.PackageNotFoundError:  # pragma: no cover - package will be installed in normal use
-    # Default for development environment when package is not installed
-    PKG_VERSION = "0.1.0"
+except importlib.metadata.PackageNotFoundError:
+    import typer
+    typer.echo("ERROR: DSG package not properly installed - cannot determine version", err=True)
+    raise typer.Exit(1)
 
 # Los Angeles timezone
 LA_TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -396,7 +397,7 @@ class Manifest(BaseModel):
 
             # Update the manifest version to reflect the new structure
             if hasattr(metadata, "manifest_version"):
-                metadata.manifest_version = "0.1.0"  # Bump version for new structure
+                metadata.manifest_version = PKG_VERSION  # Bump version for new structure
             # else: metadata doesn't have manifest_version attribute  # pragma: no cover
 
             # Add metadata as a nested object instead of flattening

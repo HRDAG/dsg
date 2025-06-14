@@ -400,8 +400,14 @@ class TestInitMetadataCreation:
     def test_init_creates_sync_messages_json(self, tmp_path):
         """Test that init creates initial sync-messages.json."""
         def create_sync_messages_file(dsg_dir, snapshot_id, metadata):
+            import importlib.metadata
+            try:
+                version = importlib.metadata.version("dsg")
+            except importlib.metadata.PackageNotFoundError:
+                version = "0.1.1"  # Test fallback
+                
             sync_messages = {
-                "metadata_version": "0.1.0",
+                "metadata_version": version,
                 "snapshots": {
                     snapshot_id: metadata
                 }
@@ -432,7 +438,12 @@ class TestInitMetadataCreation:
         with open(sync_file, "rb") as f:
             data = orjson.loads(f.read())
         
-        assert data["metadata_version"] == "0.1.0"
+        import importlib.metadata
+        try:
+            expected_version = importlib.metadata.version("dsg")
+        except importlib.metadata.PackageNotFoundError:
+            expected_version = "0.1.1"  # Test fallback
+        assert data["metadata_version"] == expected_version
         assert "s1" in data["snapshots"]
         assert data["snapshots"]["s1"]["snapshot_message"] == "Initial snapshot"
 
