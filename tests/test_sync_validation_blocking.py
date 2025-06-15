@@ -66,7 +66,7 @@ def test_sync_proceeds_with_normalize_option(dsg_repository_factory):
     
     This should attempt to normalize problematic paths before syncing.
     """
-    factory_result = dsg_repository_factory(style="realistic", with_config=True, with_validation_issues=True, repo_name="BB", backend_type="xfs")
+    factory_result = dsg_repository_factory(style="realistic", with_config=True, with_validation_issues=True, with_dsg_dir=True, repo_name="BB", backend_type="xfs")
     bb_path = factory_result["repo_path"]
     
     from dsg.config.manager import Config, ProjectConfig, UserConfig, IgnoreSettings, SSHRepositoryConfig
