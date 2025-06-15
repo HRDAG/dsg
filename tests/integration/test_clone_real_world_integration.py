@@ -23,7 +23,7 @@ from unittest.mock import patch
 
 import pytest
 
-from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
+from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig
 from dsg.backends import LocalhostBackend, SSHBackend
 from dsg.backends import create_backend
 from dsg.data.manifest import Manifest, FileRef, _dt

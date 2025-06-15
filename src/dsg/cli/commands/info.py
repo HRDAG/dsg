@@ -264,7 +264,6 @@ def validate_config(
     if fix_legacy and config.project.migrated:
         fix_result = ValidationResult("fix_legacy", "Legacy config conversion")
         try:
-            from pathlib import Path
             
             # Find config file (.dsgconfig.yml in project root)
             config_path = config.project_root / ".dsgconfig.yml"
@@ -284,10 +283,9 @@ def validate_config(
                 # Save updated config
                 config.project.save(config_path)
                 
-                # Read new content for comparison
-                new_content = config_path.read_text()
+                # Config saved successfully
                 
-                fix_result.set_passed(True, f"Legacy config converted to modern format")
+                fix_result.set_passed(True, "Legacy config converted to modern format")
                 fix_result.add_detail(f"Original config backed up to {backup_path}")
                 fix_result.add_detail(f"Updated config written to {config_path}")
                 
@@ -297,7 +295,7 @@ def validate_config(
                     fix_result.add_detail("- Removed 'project:' wrapper from data_dirs and ignore")
                 
                 if not quiet:
-                    console.print(f"✓ Config converted successfully")
+                    console.print("✓ Config converted successfully")
                     console.print(f"  Backup: {backup_path}")
                     console.print(f"  Updated: {config_path}")
             else:

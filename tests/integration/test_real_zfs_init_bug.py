@@ -19,7 +19,6 @@ REQUIREMENTS:
 """
 
 import pytest
-import tempfile
 import os
 import shutil
 from pathlib import Path
@@ -137,7 +136,7 @@ class TestRealZFSInitBug:
             # BUG DEMONSTRATION: Remote .dsg structure should exist but doesn't
             remote_dsg = zfs_mount_path / ".dsg"
             
-            print(f"\n=== BUG DEMONSTRATION ===")
+            print("\n=== BUG DEMONSTRATION ===")
             print(f"Checking for remote .dsg at: {remote_dsg}")
             print(f"Remote .dsg exists: {remote_dsg.exists()}")
             
@@ -204,22 +203,22 @@ class TestRealZFSInitBug:
             os.chdir(project_root)
             
             # Step 1: Run init 
-            print(f"\n=== Step 1: DSG Init ===")
+            print("\n=== Step 1: DSG Init ===")
             init_result = init_repository(config, force=True)
             print(f"Init completed with snapshot: {init_result.snapshot_hash}")
             
             # Step 2: Modify a file to create sync scenario
-            print(f"\n=== Step 2: Modify file for sync ===")
+            print("\n=== Step 2: Modify file for sync ===")
             (input_dir / "sync_test.txt").write_text("Modified data for sync test")
             
             # Step 3: Attempt sync - this should work but will fail due to missing remote .dsg
-            print(f"\n=== Step 3: Attempt sync (should fail due to bug) ===")
+            print("\n=== Step 3: Attempt sync (should fail due to bug) ===")
             from dsg.core.lifecycle import sync_repository
             from rich.console import Console
             
             try:
                 console = Console()
-                sync_result = sync_repository(config, console)
+                sync_result = sync_repository(config, console)  # noqa: F841
                 print("Sync succeeded - this means the bug is FIXED!")
                 
             except Exception as e:

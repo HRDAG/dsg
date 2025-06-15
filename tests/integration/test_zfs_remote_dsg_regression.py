@@ -26,7 +26,6 @@ import subprocess
 import uuid
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from dsg.core.lifecycle import init_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
@@ -152,7 +151,7 @@ class TestZFSRemoteDsgRegression:
             project_root.mkdir()
             
             # Create test files to be synced
-            test_files = create_test_files(project_root)
+            test_files = create_test_files(project_root)  # noqa: F841
             
             # Create ZFS backend configuration pointing to real ZFS
             # For ZFS dataset zsd/test/pytest-xxx:

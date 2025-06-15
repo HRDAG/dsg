@@ -14,14 +14,13 @@ the multiple individual fixtures with a single composable factory pattern.
 """
 
 import atexit
-import json
 import os
 import shutil
 import socket
 import tempfile
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Literal, Optional, Set
+from typing import Dict, Any, Literal, Optional
 from dataclasses import dataclass
 
 import pytest
@@ -30,7 +29,7 @@ from dsg.config.manager import (
     Config, ProjectConfig, UserConfig, SSHRepositoryConfig, 
     IgnoreSettings, SSHUserConfig
 )
-from dsg.data.manifest import Manifest, FileRef
+from dsg.data.manifest import Manifest
 from dsg.core.scanner import scan_directory
 from dsg.storage.backends import LocalhostBackend
 
@@ -394,9 +393,9 @@ default_project_path: /var/repos/dgs
                     dst_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(src_path, dst_path, follow_symlinks=False)
         
-        # Create configs
-        local_config_data = self._create_config_file(local_path, spec, base_path)
-        remote_config_data = self._create_config_file(remote_path, spec, base_path)
+        # Create configs (called for side effects - creates config files)
+        self._create_config_file(local_path, spec, base_path)
+        self._create_config_file(remote_path, spec, base_path)
         
         # Generate manifest for remote
         self._generate_manifest_for_path(remote_path, spec)
@@ -574,7 +573,7 @@ default_project_path: /var/repos/dgs
         """Create debug info file when KEEP_TEST_DIR is set."""
         info_file = base_path / f"{spec.style}_{spec.setup}_INFO.txt"
         with open(info_file, "w") as f:
-            f.write(f"DSG Repository Factory Debug Info\n")
+            f.write("DSG Repository Factory Debug Info\n")
             f.write(f"Style: {spec.style}\n")
             f.write(f"Setup: {spec.setup}\n") 
             f.write(f"Base: {base_path}\n")

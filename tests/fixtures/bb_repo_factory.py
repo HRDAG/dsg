@@ -17,24 +17,16 @@ Creates a realistic repository structure with:
 - Local/remote repository pairs for testing
 """
 
-import atexit
 import json
 import os
-import shutil
-import tempfile
-import yaml
 from pathlib import Path
 from typing import Dict
 
-import pytest
 
-from dsg.backends import LocalhostBackend
 from dsg.config.manager import (
-    Config, ProjectConfig, SSHRepositoryConfig,
-    IgnoreSettings, UserConfig)
+    Config)
 from dsg.data.manifest import Manifest, FileRef
 from dsg.core.scanner import scan_directory
-from tests.fixtures.repository_factory import dsg_repository_factory
 
 
 # Use KEEP_TEST_DIR to preserve test directories for inspection

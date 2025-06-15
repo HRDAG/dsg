@@ -15,7 +15,7 @@ import pytest
 
 from dsg.config.manager import (
     Config, ProjectConfig, UserConfig,
-    SSHRepositoryConfig, IgnoreSettings
+    SSHRepositoryConfig
 )
 from dsg.storage import (
     SSHBackend, 

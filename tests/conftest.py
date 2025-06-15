@@ -11,17 +11,17 @@ Shared test fixtures for dsg test suite.
 Consolidates duplicated setup patterns across test files.
 """
 
-import socket
 from pathlib import Path
 from typing import Dict
 
 import pytest
 
 from dsg.config.manager import (
-    Config, ProjectConfig, UserConfig,
-    SSHRepositoryConfig, IgnoreSettings,
-    SSHUserConfig
+    Config
 )
+
+# Import repository factory fixture
+from tests.fixtures.repository_factory import dsg_repository_factory
 
 
 @pytest.fixture
@@ -138,7 +138,6 @@ def create_test_files(repo_dir: Path) -> Dict[str, Path]:
 def load_config_with_paths(project_root: Path, user_config_dir: Path):
     """Helper to load Config with explicit paths instead of environment variables."""
     import os
-    from dsg.config.manager import Config
     
     # Temporarily set environment variable for config loading
     old_config_home = os.environ.get("DSG_CONFIG_HOME")
@@ -183,7 +182,6 @@ def with_config_paths(project_root: Path, user_config_dir: Path):
 
 
 # Import new repository factory
-from tests.fixtures.repository_factory import dsg_repository_factory
 
 # Legacy fixture imports removed in Phase 5B
 # All regular tests now use dsg_repository_factory directly

@@ -11,8 +11,6 @@ Tests for the unified repository factory.
 Ensures the factory can create all repository scenarios correctly.
 """
 
-import pytest
-from pathlib import Path
 
 
 def test_factory_empty_style(dsg_repository_factory):

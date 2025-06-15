@@ -14,13 +14,12 @@ The bug: ZFS init creates local .dsg structure but fails to create remote .dsg d
 """
 
 import pytest
-import tempfile
 import subprocess
 import uuid
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from dsg.core.lifecycle import init_repository, InitResult
+from dsg.core.lifecycle import init_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.storage.backends import LocalhostBackend
 
@@ -160,7 +159,7 @@ class TestZFSInitBugDemonstration:
                 os.chdir(project_root)
                 
                 # Run init_repository - this should create both local and remote .dsg
-                init_result = init_repository(config, force=True)
+                init_result = init_repository(config, force=True)  # noqa: F841
                 
                 # Verify local .dsg structure was created correctly
                 local_dsg = project_root / ".dsg"
