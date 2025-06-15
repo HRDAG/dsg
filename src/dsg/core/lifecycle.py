@@ -1572,7 +1572,10 @@ def create_local_metadata(
 
 def init_repository(config: Config, normalize: bool = True, force: bool = False) -> InitResult:
     """
-    Initialize a complete DSG repository (local + backend).
+    Initialize a complete DSG repository (local + backend) using unified sync approach.
+    
+    This implements init as: sync_manifests(L=current_files, C=empty, R=empty)
+    which results in bulk upload of all local files.
     
     Args:
         config: Loaded DSG configuration
@@ -1582,21 +1585,61 @@ def init_repository(config: Config, normalize: bool = True, force: bool = False)
     Returns:
         InitResult with snapshot hash, files included, and normalization results
     """
+    from dsg.data.manifest import Manifest
+    from collections import OrderedDict
+    
     logger = loguru.logger
+    console = Console()
     logger.info(f"Initializing DSG repository for {config.project.name}")
     
-    # 1. Create local metadata (.dsg structure, manifests)
+    # 1. Create manifest from filesystem first (same as create_local_metadata does internally)
+    from dsg.core.lifecycle import init_create_manifest
+    local_manifest, normalization_result = init_create_manifest(
+        config.project_root, 
+        config.user.user_id, 
+        normalize=normalize
+    )
+    
+    # 2. Create empty manifests for C and R (init scenario: L=files, C=empty, R=empty)
+    cache_manifest = Manifest(entries=OrderedDict())  # Empty - no previous sync
+    remote_manifest = Manifest(entries=OrderedDict())  # Empty - no remote data yet
+    
+    # 3. For init, we need to create the backend repository first before sync
+    # This is different from regular sync where the remote already exists
+    backend = create_backend(config)
+    
+    # Create local metadata first to get snapshot hash
     init_result = create_local_metadata(
         config.project_root, 
         config.user.user_id, 
         normalize=normalize
     )
     
-    # 2. Initialize backend repository with this data
-    backend = create_backend(config)
+    # Initialize backend repository (creates ZFS dataset, etc.)
     backend.init_repository(init_result.snapshot_hash, force=force)
     
-    logger.info(f"Successfully initialized DSG repository with snapshot hash: {init_result.snapshot_hash}")
+    # 4. Now use unified sync approach to upload files to the newly created remote
+    sync_result = sync_manifests(
+        config=config,
+        local_manifest=local_manifest,
+        cache_manifest=cache_manifest,
+        remote_manifest=remote_manifest,
+        operation_type="init",
+        console=console,
+        dry_run=False,
+        force=force
+    )
+    
+    # 5. Extract files from sync result for compatibility with existing InitResult format
+    for file_path in sync_result.get('upload_files', []):
+        if file_path in local_manifest.entries:
+            entry = local_manifest.entries[file_path]
+            init_result.add_file(file_path, entry.hash, entry.filesize)
+    
+    # 6. Add normalization result to init_result
+    init_result.normalization_result = normalization_result
+    
+    logger.info(f"Successfully initialized DSG repository with {len(init_result.files_included)} files")
     return init_result
 
 
@@ -1735,6 +1778,76 @@ def _create_operation_result(sync_plan: dict, operation_type: str) -> dict:
         'upload_files': sync_plan['upload_files'],
         'download_files': sync_plan['download_files'],
         'delete_files': sync_plan['delete_local'] + sync_plan['delete_remote']
+    }
+
+
+def clone_repository(config: Config, source_url: str, dest_path: Path,
+                    resume: bool = False, console: Console = None) -> dict:
+    """
+    Clone repository using unified sync approach.
+    
+    This implements clone as: sync_manifests(L=empty, C=empty, R=remote_manifest)
+    which results in bulk download of all remote files.
+    
+    Args:
+        config: DSG configuration for the destination
+        source_url: URL/path of source repository  
+        dest_path: Destination path for cloned repository
+        resume: Resume interrupted clone operation
+        console: Rich console for progress reporting
+        
+    Returns:
+        Dict with clone results for JSON output
+    """
+    from dsg.data.manifest import Manifest
+    from collections import OrderedDict
+    
+    logger = loguru.logger
+    if console is None:
+        console = Console()
+    
+    logger.info(f"Cloning repository from {source_url} to {dest_path}")
+    
+    # 1. Create empty local manifest (L) - no local files yet
+    local_manifest = Manifest(entries=OrderedDict())
+    
+    # 2. Create empty cache manifest (C) - no previous sync
+    cache_manifest = Manifest(entries=OrderedDict())
+    
+    # 3. Fetch remote manifest (R) from source
+    backend = create_backend(config)
+    try:
+        remote_manifest_data = backend.read_file(".dsg/last-sync.json")
+        remote_manifest = Manifest.from_json_bytes(remote_manifest_data)
+        logger.debug(f"Retrieved remote manifest with {len(remote_manifest.entries)} files")
+    except FileNotFoundError:
+        raise ValueError(f"Source repository has no manifest file at {source_url}")
+    except Exception as e:
+        raise ValueError(f"Failed to fetch remote manifest: {e}")
+    
+    # 4. Use unified sync approach (clone scenario: L=empty, C=empty, R=files)
+    sync_result = sync_manifests(
+        config=config,
+        local_manifest=local_manifest,
+        cache_manifest=cache_manifest,
+        remote_manifest=remote_manifest,
+        operation_type="clone",
+        console=console,
+        dry_run=False,
+        force=False
+    )
+    
+    # 5. Return CloneResult with expected structure
+    files_downloaded = sync_result.get('download_files', [])
+    logger.info(f"Successfully cloned {len(files_downloaded)} files to {dest_path}")
+    
+    return {
+        'operation': 'clone',
+        'status': 'success',
+        'destination_path': str(dest_path),
+        'files_downloaded': len(files_downloaded),
+        'source_url': source_url,
+        'sync_result': sync_result
     }
 
 

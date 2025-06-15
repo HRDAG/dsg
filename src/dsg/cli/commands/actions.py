@@ -17,7 +17,7 @@ from typing import Any
 from rich.console import Console
 
 from dsg.config.manager import Config
-from dsg.core.lifecycle import init_repository, sync_repository
+from dsg.core.lifecycle import init_repository, sync_repository, clone_repository
 
 
 def init(
@@ -127,21 +127,19 @@ def clone(
     if not quiet:
         console.print("[dim]Starting clone operation...[/dim]")
     
-    # TODO: Implement actual clone functionality
-    # This is a placeholder for now
-    result = {
-        'operation': 'clone',
-        'status': 'placeholder_success',
-        'message': 'Clone operation placeholder - implementation needed',
-        'config': config,
-        'dest_path': dest_path,
-        'resume': resume,
-        'force': force,
-        'normalize': normalize
-    }
+    # Use the new unified clone implementation
+    from pathlib import Path
+    result = clone_repository(
+        config=config,
+        source_url=config.storage.host,  # Use configured storage host as source
+        dest_path=Path(dest_path) if dest_path else config.project_root,
+        resume=resume,
+        console=console
+    )
     
     if not quiet:
-        console.print("[green]Clone operation completed (placeholder)[/green]")
+        files_count = result.get('files_downloaded', 0)
+        console.print(f"[green]✓ Clone completed - {files_count} files downloaded[/green]")
     
     return result
 

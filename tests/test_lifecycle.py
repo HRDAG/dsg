@@ -240,23 +240,43 @@ class TestMetadataOperations:
 class TestInitRepository:
     """Tests for the main init_repository workflow"""
     
+    @patch('dsg.core.lifecycle.sync_manifests')
     @patch('dsg.core.lifecycle.create_backend')
     @patch('dsg.core.lifecycle.create_local_metadata')
+    @patch('dsg.core.lifecycle.init_create_manifest')
     @patch('dsg.core.lifecycle.loguru.logger')
-    def test_init_repository_success(self, mock_logger, mock_local_meta, mock_backend):
+    def test_init_repository_success(self, mock_logger, mock_init_create_manifest, mock_local_meta, mock_backend, mock_sync_manifests):
         """Test successful repository initialization"""
         # Setup mocks
         from dsg.core.lifecycle import InitResult, NormalizationResult
+        from dsg.data.manifest import Manifest
+        from collections import OrderedDict
+        
         mock_norm_result = MagicMock(spec=NormalizationResult)
         mock_init_result = InitResult(
             snapshot_hash="test_snapshot_hash",
             normalization_result=mock_norm_result
         )
         mock_init_result.files_included = [{"path": "test.txt", "hash": "abc123", "size": 100}]
+        
+        # Mock the manifest creation step
+        mock_manifest = Manifest(entries=OrderedDict())
+        mock_init_create_manifest.return_value = (mock_manifest, mock_norm_result)
+        
+        # Mock the metadata creation
         mock_local_meta.return_value = mock_init_result
         
+        # Mock backend
         mock_backend_instance = MagicMock()
         mock_backend.return_value = mock_backend_instance
+        
+        # Mock sync_manifests result
+        mock_sync_manifests.return_value = {
+            'upload_files': ['test.txt'],
+            'download_files': [],
+            'delete_local': [],
+            'delete_remote': []
+        }
         
         # Create mock config
         mock_config = MagicMock()
@@ -266,7 +286,12 @@ class TestInitRepository:
         
         init_result = init_repository(mock_config, normalize=True)
         
-        # Verify workflow
+        # Verify workflow - new unified approach
+        mock_init_create_manifest.assert_called_once_with(
+            Path("/test/project"), 
+            "test@example.com", 
+            normalize=True
+        )
         mock_local_meta.assert_called_once_with(
             Path("/test/project"), 
             "test@example.com", 
@@ -274,6 +299,7 @@ class TestInitRepository:
         )
         mock_backend.assert_called_once_with(mock_config)
         mock_backend_instance.init_repository.assert_called_once_with("test_snapshot_hash", force=False)
+        mock_sync_manifests.assert_called_once()
         
         assert init_result.snapshot_hash == "test_snapshot_hash"
         assert init_result.normalization_result is not None
