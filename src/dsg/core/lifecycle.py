@@ -49,6 +49,7 @@ from dsg.system.display import display_sync_dry_run_preview, display_normalizati
 from dsg.data.filename_validation import fix_problematic_path
 from dsg.data.manifest_merger import SyncState
 from dsg.system.exceptions import SyncError, ValidationError
+from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan
 
 
 class SyncOperationType(Enum):
@@ -919,7 +920,7 @@ def _build_sync_messages_file(manifest: Manifest, dsg_dir: Path, snapshot_id: st
     logger.debug(f"Updated sync-messages.json with snapshot {snapshot_id}")
 
 
-def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
+def _update_manifests_after_sync(config: Config, console: 'Console', operation_type: str = "sync") -> None:
     """
     Complete metadata management after sync operations using migration architecture patterns.
     
@@ -932,6 +933,7 @@ def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
     Args:
         config: DSG configuration
         console: Rich console for output
+        operation_type: Type of operation ("sync", "init", "clone") for logging
     """
     logger = loguru.logger
     dsg_dir = config.project_root / ".dsg"
@@ -964,13 +966,13 @@ def _update_manifests_after_sync(config: Config, console: 'Console') -> None:
     # Set snapshot chain
     updated_manifest.metadata.snapshot_id = next_snapshot_id
     updated_manifest.metadata.snapshot_previous = current_snapshot_id
-    updated_manifest.metadata.snapshot_message = "Sync operation"
-    updated_manifest.metadata.snapshot_notes = "sync"
+    updated_manifest.metadata.snapshot_message = f"{operation_type.title()} operation"
+    updated_manifest.metadata.snapshot_notes = operation_type
     
     # Compute snapshot hash (includes message and previous hash)
     prev_snapshot_hash = prev_manifest.metadata.snapshot_hash if prev_manifest and prev_manifest.metadata else None
     snapshot_hash = updated_manifest.compute_snapshot_hash(
-        "Sync operation",
+        f"{operation_type.title()} operation",
         prev_snapshot_hash
     )
     updated_manifest.metadata.snapshot_hash = snapshot_hash
@@ -1596,3 +1598,143 @@ def init_repository(config: Config, normalize: bool = True, force: bool = False)
     
     logger.info(f"Successfully initialized DSG repository with snapshot hash: {init_result.snapshot_hash}")
     return init_result
+
+
+# ---- Unified Sync Functions ----
+
+def sync_manifests(config: Config, 
+                   local_manifest: Manifest,
+                   cache_manifest: Manifest, 
+                   remote_manifest: Manifest,
+                   operation_type: str,
+                   console: Console,
+                   dry_run: bool = False,
+                   force: bool = False) -> dict:
+    """
+    Unified manifest synchronization for init/clone/sync operations.
+    
+    This function implements the core insight that init, clone, and sync are just
+    different initial conditions of the same manifest synchronization problem:
+    
+    - INIT: sync_manifests(L=current_files, C=empty, R=empty) → bulk upload
+    - CLONE: sync_manifests(L=empty, C=empty, R=remote_files) → bulk download  
+    - SYNC: sync_manifests(L=current_files, C=last_sync, R=remote_files) → mixed operations
+    
+    Args:
+        config: DSG configuration
+        local_manifest: Current local filesystem state (L)
+        cache_manifest: Last sync state (C) 
+        remote_manifest: Current remote state (R)
+        operation_type: "init", "clone", or "sync" for logging/reporting
+        console: Rich console for progress reporting
+        dry_run: Preview mode if True
+        force: Override conflicts if True
+        
+    Returns:
+        Dict with operation results for JSON output
+    """
+    from dsg.data.manifest_merger import ManifestMerger
+    
+    logger = loguru.logger
+    
+    # 1. Create ManifestMerger to determine all sync states
+    merger = ManifestMerger(local_manifest, cache_manifest, remote_manifest, config)
+    sync_states = merger.get_sync_states()
+    
+    # 2. Calculate sync plan (same logic for all operations)  
+    sync_plan = calculate_sync_plan(type('MockStatus', (), {'sync_states': sync_states})(), config)
+    
+    # 3. Log operation strategy
+    logger.info(f"Operation: {operation_type}")
+    logger.info(f"Upload files: {len(sync_plan['upload_files'])}")
+    logger.info(f"Download files: {len(sync_plan['download_files'])}")
+    logger.info(f"Delete local: {len(sync_plan['delete_local'])}")
+    logger.info(f"Delete remote: {len(sync_plan['delete_remote'])}")
+    
+    if dry_run:
+        return _preview_sync_plan(sync_plan, operation_type, console)
+    
+    # 4. Execute with transaction system (same for all operations)
+    try:
+        with create_transaction(config) as tx:
+            tx.sync_files(sync_plan, console)
+        
+        # 5. Update manifests after successful sync
+        _update_manifests_after_sync(config, console, operation_type)
+        
+        return _create_operation_result(sync_plan, operation_type)
+        
+    except Exception as e:
+        logger.error(f"{operation_type} transaction failed: {e}")
+        console.print(f"[red]✗ {operation_type.title()} failed: {e}[/red]")
+        raise
+
+
+def _preview_sync_plan(sync_plan: dict, operation_type: str, console: Console) -> dict:
+    """Preview sync plan without executing (dry run mode)"""
+    console.print(f"[bold blue]Preview: {operation_type} operation[/bold blue]")
+    
+    if sync_plan['upload_files']:
+        console.print(f"[green]↑[/green] Would upload {len(sync_plan['upload_files'])} files:")
+        for file_path in sync_plan['upload_files'][:5]:  # Show first 5
+            console.print(f"    {file_path}")
+        if len(sync_plan['upload_files']) > 5:
+            console.print(f"    ... and {len(sync_plan['upload_files']) - 5} more")
+    
+    if sync_plan['download_files']:
+        console.print(f"[blue]↓[/blue] Would download {len(sync_plan['download_files'])} files:")
+        for file_path in sync_plan['download_files'][:5]:  # Show first 5
+            console.print(f"    {file_path}")
+        if len(sync_plan['download_files']) > 5:
+            console.print(f"    ... and {len(sync_plan['download_files']) - 5} more")
+    
+    if sync_plan['delete_local']:
+        console.print(f"[red]✗[/red] Would delete {len(sync_plan['delete_local'])} local files:")
+        for file_path in sync_plan['delete_local'][:3]:  # Show first 3
+            console.print(f"    {file_path}")
+        if len(sync_plan['delete_local']) > 3:
+            console.print(f"    ... and {len(sync_plan['delete_local']) - 3} more")
+    
+    if sync_plan['delete_remote']:
+        console.print(f"[red]✗[/red] Would delete {len(sync_plan['delete_remote'])} remote files:")
+        for file_path in sync_plan['delete_remote'][:3]:  # Show first 3
+            console.print(f"    {file_path}")
+        if len(sync_plan['delete_remote']) > 3:
+            console.print(f"    ... and {len(sync_plan['delete_remote']) - 3} more")
+    
+    total_operations = (
+        len(sync_plan['upload_files']) + 
+        len(sync_plan['download_files']) + 
+        len(sync_plan['delete_local']) + 
+        len(sync_plan['delete_remote'])
+    )
+    
+    if total_operations == 0:
+        console.print("[dim]No changes needed - everything is in sync[/dim]")
+    else:
+        console.print(f"[dim]Total operations: {total_operations}[/dim]")
+    
+    return {
+        'operation_type': operation_type,
+        'dry_run': True,
+        'total_operations': total_operations,
+        'upload_count': len(sync_plan['upload_files']),
+        'download_count': len(sync_plan['download_files']),
+        'delete_count': len(sync_plan['delete_local']) + len(sync_plan['delete_remote'])
+    }
+
+
+def _create_operation_result(sync_plan: dict, operation_type: str) -> dict:
+    """Create standardized operation result"""
+    return {
+        'operation_type': operation_type,
+        'status': 'success',
+        'files_uploaded': len(sync_plan['upload_files']),
+        'files_downloaded': len(sync_plan['download_files']),
+        'files_deleted': len(sync_plan['delete_local']) + len(sync_plan['delete_remote']),
+        'upload_files': sync_plan['upload_files'],
+        'download_files': sync_plan['download_files'],
+        'delete_files': sync_plan['delete_local'] + sync_plan['delete_remote']
+    }
+
+
