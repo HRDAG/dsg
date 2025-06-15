@@ -650,26 +650,56 @@ def _execute_file_by_file_sync(config: Config, sync_states: dict[str, SyncState]
 
 def _execute_sync_operations(config: Config, console: 'Console') -> None:
     """
-    Perform the actual sync operations using manifest-level analysis.
+    Perform the actual sync operations using the unified transaction system.
     
-    Uses atomic sync when available (ZFS backends) for guaranteed consistency,
-    otherwise falls back to incremental sync operations.
+    Replaces the old atomic/incremental sync pattern with a unified transaction
+    approach that coordinates ClientFilesystem, RemoteFilesystem, and Transport.
     
     Args:
         config: DSG configuration
         console: Rich console for output
     """
-    logger = loguru.logger
-    logger.debug("No conflicts found - proceeding with sync...")
+    from dsg.storage import create_transaction, calculate_sync_plan
+    from dsg.core.operations import get_sync_status
     
-    # Check if backend supports atomic sync
-    backend = create_backend(config)
-    if backend.supports_atomic_sync():
-        logger.debug("Backend supports atomic sync - using atomic operations")
-        _execute_atomic_sync_operations(config, console, backend)
-    else:
-        logger.debug("Backend does not support atomic sync - using incremental operations")
-        _execute_incremental_sync_operations(config, console)
+    logger = loguru.logger
+    logger.debug("No conflicts found - proceeding with transaction-based sync...")
+    
+    # Step 1: Get current sync status to determine what operations are needed
+    console.print("[dim]Analyzing sync status...[/dim]")
+    status = get_sync_status(config, include_remote=True, verbose=False)
+    
+    # Step 2: Calculate sync plan from status
+    sync_plan = calculate_sync_plan(status, config)
+    
+    # Log sync plan for debugging
+    upload_count = len(sync_plan.get('upload_files', []))
+    download_count = len(sync_plan.get('download_files', []))
+    delete_local_count = len(sync_plan.get('delete_local', []))
+    delete_remote_count = len(sync_plan.get('delete_remote', []))
+    
+    logger.debug(f"Sync plan: {upload_count} uploads, {download_count} downloads, "
+                f"{delete_local_count} local deletions, {delete_remote_count} remote deletions")
+    
+    # Early return if nothing to sync
+    total_operations = upload_count + download_count + delete_local_count + delete_remote_count
+    if total_operations == 0:
+        console.print("[green]✓ Everything up to date[/green]")
+        return
+    
+    # Step 3: Execute sync operations atomically using transaction system
+    console.print(f"[dim]Synchronizing {total_operations} changes...[/dim]")
+    
+    try:
+        with create_transaction(config) as tx:
+            tx.sync_files(sync_plan, console)
+        
+        console.print("[green]✓ Sync completed successfully[/green]")
+        
+    except Exception as e:
+        logger.error(f"Sync transaction failed: {e}")
+        console.print(f"[red]✗ Sync failed: {e}[/red]")
+        raise SyncError(f"Transaction-based sync failed: {e}")
 
 
 def _execute_atomic_sync_operations(config: Config, console: 'Console', backend) -> None:

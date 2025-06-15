@@ -19,6 +19,7 @@ This module provides abstractions for:
 from .client import ClientFilesystem
 from .remote import ZFSFilesystem, XFSFilesystem
 from .io_transports import LocalhostTransport, SSHTransport, create_transport
+from .transaction_factory import create_transaction, calculate_sync_plan
 
 # Legacy ZFS operations (used by remote.py)
 from .snapshots import ZFSOperations, XFSOperations
@@ -54,6 +55,8 @@ __all__ = [
     'LocalhostTransport',
     'SSHTransport',
     'create_transport',
+    'create_transaction',
+    'calculate_sync_plan',
     'ZFSOperations',
     'XFSOperations',
     # Legacy compatibility

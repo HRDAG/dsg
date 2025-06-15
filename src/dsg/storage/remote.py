@@ -108,17 +108,19 @@ class XFSFilesystem:
     def begin_transaction(self, transaction_id: str) -> None:
         """Create staging directory for XFS operations"""
         self.transaction_id = transaction_id
-        self.staging_dir = self.repo_path / f".staging-{transaction_id}"
+        self.staging_dir = self.repo_path.parent / f".staging-{transaction_id}"
         self.staging_dir.mkdir(parents=True, exist_ok=True)
         
-        # Copy current state to staging
-        for item in self.repo_path.iterdir():
-            if item.name.startswith('.staging-'):
-                continue  # Skip other staging directories
-            if item.is_file():
-                shutil.copy2(item, self.staging_dir / item.name)
-            elif item.is_dir():
-                shutil.copytree(item, self.staging_dir / item.name)
+        # Copy current state to staging if repo exists
+        if self.repo_path.exists():
+            for item in self.repo_path.iterdir():
+                if item.name.startswith('.staging-'):
+                    continue  # Skip other staging directories
+                if item.is_file():
+                    shutil.copy2(item, self.staging_dir / item.name)
+                elif item.is_dir():
+                    shutil.copytree(item, self.staging_dir / item.name)
+        # If repo doesn't exist, start with empty staging area
     
     def send_file(self, rel_path: str) -> ContentStream:
         """Stream from staging directory"""
@@ -154,17 +156,21 @@ class XFSFilesystem:
         if not self.staging_dir:
             return
         
-        # Atomic directory swap
-        old_backup = self.repo_path.parent / f"{self.repo_path.name}.old-{transaction_id}"
-        
-        # 1. Rename current repo to backup
-        self.repo_path.rename(old_backup)
-        
-        # 2. Rename staging to become new repo
-        self.staging_dir.rename(self.repo_path)
-        
-        # 3. Remove old backup
-        shutil.rmtree(old_backup)
+        if self.repo_path.exists():
+            # Atomic directory swap for existing repo
+            old_backup = self.repo_path.parent / f"{self.repo_path.name}.old-{transaction_id}"
+            
+            # 1. Rename current repo to backup
+            self.repo_path.rename(old_backup)
+            
+            # 2. Rename staging to become new repo
+            self.staging_dir.rename(self.repo_path)
+            
+            # 3. Remove old backup
+            shutil.rmtree(old_backup)
+        else:
+            # Simple rename for new repo creation
+            self.staging_dir.rename(self.repo_path)
         
         self.staging_dir = None
         self.transaction_id = None
