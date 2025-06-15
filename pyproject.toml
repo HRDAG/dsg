@@ -5,7 +5,7 @@
 
 [project]
 name = "dsg"
-version = "0.1.2"
+version = "0.3.5"
 description = "Data Sync Gizmo - HRDAG's data versioning system"
 authors = [
     { name = "Sam Z", email = "shimian.zhang@gmail.com" },
