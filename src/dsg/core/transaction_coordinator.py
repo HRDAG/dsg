@@ -15,8 +15,16 @@ sync operations as defined in TRANSACTION_IMPLEMENTATION.md.
 """
 
 import uuid
+import logging
 from pathlib import Path
 from typing import Iterator, Protocol
+
+from dsg.system.exceptions import (
+    TransactionError, TransactionRollbackError, TransactionCommitError,
+    TransactionIntegrityError, ClientFilesystemError, RemoteFilesystemError,
+    TransportError, NetworkError
+)
+from dsg.core.retry import retry_transfer_operation, TRANSFER_RETRY_CONFIG
 
 
 class ContentStream(Protocol):
@@ -145,24 +153,73 @@ class Transaction:
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Commit or rollback based on success/failure"""
+        """Commit or rollback based on success/failure with comprehensive error handling"""
+        rollback_errors = []
+        commit_errors = []
+        
         try:
             if exc_type is None:
-                # SUCCESS: Commit all components
-                self.remote_fs.commit_transaction(self.transaction_id)
-                self.client_fs.commit_transaction(self.transaction_id)
+                # SUCCESS: Commit all components in reverse order (remote first, then client)
+                try:
+                    logging.info(f"Committing transaction {self.transaction_id}")
+                    self.remote_fs.commit_transaction(self.transaction_id)
+                except Exception as e:
+                    commit_errors.append(f"Remote filesystem commit failed: {e}")
+                    raise TransactionCommitError(
+                        f"Failed to commit remote filesystem: {e}",
+                        transaction_id=self.transaction_id,
+                        recovery_hint="Check remote filesystem permissions and available space"
+                    )
+                
+                try:
+                    self.client_fs.commit_transaction(self.transaction_id)
+                except Exception as e:
+                    commit_errors.append(f"Client filesystem commit failed: {e}")
+                    # If client commit fails after remote commit succeeds, we have a problem
+                    raise TransactionCommitError(
+                        f"Failed to commit client filesystem after remote commit: {e}",
+                        transaction_id=self.transaction_id,
+                        recovery_hint="Manual intervention may be required to sync client state with remote"
+                    )
+                
+                logging.info(f"Successfully committed transaction {self.transaction_id}")
+                
             else:
-                # FAILURE: Rollback all components (best effort)
+                # FAILURE: Rollback all components with detailed error tracking
+                logging.warning(f"Rolling back transaction {self.transaction_id} due to: {exc_val}")
+                
+                # Rollback remote filesystem first
                 try:
                     self.remote_fs.rollback_transaction(self.transaction_id)
-                except Exception:
-                    pass  # Continue with client rollback even if remote fails
+                    logging.info(f"Successfully rolled back remote filesystem for transaction {self.transaction_id}")
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"Remote filesystem rollback failed: {rollback_exc}")
+                    logging.error(f"Failed to rollback remote filesystem: {rollback_exc}")
+                
+                # Rollback client filesystem second
                 try:
                     self.client_fs.rollback_transaction(self.transaction_id)
-                except Exception:
-                    pass  # Continue with transport cleanup even if client fails
+                    logging.info(f"Successfully rolled back client filesystem for transaction {self.transaction_id}")
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"Client filesystem rollback failed: {rollback_exc}")
+                    logging.error(f"Failed to rollback client filesystem: {rollback_exc}")
+                
+                # If rollback errors occurred, log them but don't override the original exception
+                if rollback_errors:
+                    rollback_error_msg = "; ".join(rollback_errors)
+                    logging.critical(f"Transaction {self.transaction_id} rollback incomplete: {rollback_error_msg}")
+                    # Store rollback errors for potential manual cleanup
+                    if hasattr(exc_val, 'rollback_errors'):
+                        exc_val.rollback_errors = rollback_errors
+                    
         finally:
-            self.transport.end_session()
+            # Always cleanup transport session
+            try:
+                self.transport.end_session()
+                logging.debug(f"Cleaned up transport session for transaction {self.transaction_id}")
+            except Exception as transport_exc:
+                logging.error(f"Failed to cleanup transport session: {transport_exc}")
+                # Don't raise here - transport cleanup failure shouldn't override transaction result
     
     def sync_files(self, sync_plan: dict[str, list[str]], console=None) -> None:
         """Execute complete sync plan atomically"""
@@ -218,18 +275,56 @@ class Transaction:
                 self._upload_regular_file(rel_path)
     
     def _upload_regular_file(self, rel_path: str) -> None:
-        """Upload a regular file using content streaming"""
-        # 1. Client provides content stream
-        content_stream = self.client_fs.send_file(rel_path)
-        
-        # 2. Transport handles transfer with temp staging
-        temp_file = self.transport.transfer_to_remote(content_stream)
-        
-        # 3. Remote filesystem stages from temp
-        self.remote_fs.recv_file(rel_path, temp_file)
-        
-        # 4. Cleanup transport temp
-        temp_file.cleanup()
+        """Upload a regular file using content streaming with integrity verification"""
+        temp_file = None
+        try:
+            # 1. Client provides content stream
+            content_stream = self.client_fs.send_file(rel_path)
+            logging.debug(f"Starting upload of {rel_path} (size: {content_stream.size} bytes)")
+            
+            # 2. Transport handles transfer with temp staging (with retry)
+            temp_file = retry_transfer_operation(
+                self.transport.transfer_to_remote,
+                content_stream
+            )
+            
+            # 3. Verify transfer integrity (if supported)
+            if hasattr(content_stream, 'size') and hasattr(temp_file, 'path'):
+                actual_size = temp_file.path.stat().st_size if temp_file.path.exists() else 0
+                if actual_size != content_stream.size:
+                    raise TransactionIntegrityError(
+                        f"File transfer size mismatch for {rel_path}: expected {content_stream.size}, got {actual_size}",
+                        transaction_id=self.transaction_id,
+                        recovery_hint="Retry the upload operation"
+                    )
+            
+            # 4. Remote filesystem stages from temp
+            self.remote_fs.recv_file(rel_path, temp_file)
+            logging.debug(f"Successfully uploaded {rel_path}")
+            
+        except (TransportError, NetworkError) as e:
+            logging.error(f"Transport error uploading {rel_path}: {e}")
+            # Add context to transport errors
+            if hasattr(e, 'transaction_id'):
+                e.transaction_id = self.transaction_id
+            raise
+        except (ClientFilesystemError, RemoteFilesystemError, TransactionIntegrityError) as e:
+            logging.error(f"Filesystem or integrity error uploading {rel_path}: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error uploading {rel_path}: {e}")
+            raise TransactionError(
+                f"Failed to upload {rel_path}: {e}",
+                transaction_id=self.transaction_id,
+                recovery_hint="Check file permissions and disk space"
+            )
+        finally:
+            # 5. Always cleanup transport temp file
+            if temp_file:
+                try:
+                    temp_file.cleanup()
+                except Exception as cleanup_exc:
+                    logging.warning(f"Failed to cleanup temp file for {rel_path}: {cleanup_exc}")
     
     def _upload_symlink(self, rel_path: str) -> None:
         """Upload a symlink by recreating it on the remote"""
@@ -261,18 +356,56 @@ class Transaction:
                 self._download_regular_file(rel_path)
     
     def _download_regular_file(self, rel_path: str) -> None:
-        """Download a regular file using content streaming"""
-        # 1. Remote provides content stream
-        content_stream = self.remote_fs.send_file(rel_path)
-        
-        # 2. Transport handles transfer with temp staging
-        temp_file = self.transport.transfer_to_local(content_stream)
-        
-        # 3. Client filesystem stages from temp
-        self.client_fs.recv_file(rel_path, temp_file)
-        
-        # 4. Cleanup transport temp
-        temp_file.cleanup()
+        """Download a regular file using content streaming with integrity verification"""
+        temp_file = None
+        try:
+            # 1. Remote provides content stream
+            content_stream = self.remote_fs.send_file(rel_path)
+            logging.debug(f"Starting download of {rel_path} (size: {content_stream.size} bytes)")
+            
+            # 2. Transport handles transfer with temp staging (with retry)
+            temp_file = retry_transfer_operation(
+                self.transport.transfer_to_local,
+                content_stream
+            )
+            
+            # 3. Verify transfer integrity (if supported)
+            if hasattr(content_stream, 'size') and hasattr(temp_file, 'path'):
+                actual_size = temp_file.path.stat().st_size if temp_file.path.exists() else 0
+                if actual_size != content_stream.size:
+                    raise TransactionIntegrityError(
+                        f"File transfer size mismatch for {rel_path}: expected {content_stream.size}, got {actual_size}",
+                        transaction_id=self.transaction_id,
+                        recovery_hint="Retry the download operation"
+                    )
+            
+            # 4. Client filesystem stages from temp
+            self.client_fs.recv_file(rel_path, temp_file)
+            logging.debug(f"Successfully downloaded {rel_path}")
+            
+        except (TransportError, NetworkError) as e:
+            logging.error(f"Transport error downloading {rel_path}: {e}")
+            # Add context to transport errors
+            if hasattr(e, 'transaction_id'):
+                e.transaction_id = self.transaction_id
+            raise
+        except (ClientFilesystemError, RemoteFilesystemError, TransactionIntegrityError) as e:
+            logging.error(f"Filesystem or integrity error downloading {rel_path}: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error downloading {rel_path}: {e}")
+            raise TransactionError(
+                f"Failed to download {rel_path}: {e}",
+                transaction_id=self.transaction_id,
+                recovery_hint="Check network connectivity and disk space"
+            )
+        finally:
+            # 5. Always cleanup transport temp file
+            if temp_file:
+                try:
+                    temp_file.cleanup()
+                except Exception as cleanup_exc:
+                    logging.warning(f"Failed to cleanup temp file for {rel_path}: {cleanup_exc}")
     
     def _download_symlink(self, rel_path: str) -> None:
         """Download a symlink by recreating it locally"""

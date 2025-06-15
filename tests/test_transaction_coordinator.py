@@ -30,11 +30,30 @@ class MockContentStream:
 
 class MockTempFile:
     """Mock temporary file for testing"""
-    def __init__(self, path: str = "/tmp/mock-temp-file"):
-        self.path = Path(path)
+    def __init__(self, path: str = "/tmp/mock-temp-file", size: int = 12):
+        self.path = MockPath(path, size=size)
     
     def cleanup(self):
         pass
+
+
+class MockPath:
+    """Mock Path object that supports stat() operations"""
+    def __init__(self, path_str: str, size: int = 12):
+        self.path_str = path_str
+        self._size = size
+    
+    def __str__(self):
+        return self.path_str
+    
+    def exists(self):
+        return True
+    
+    def stat(self):
+        class MockStat:
+            def __init__(self, size):
+                self.st_size = size
+        return MockStat(self._size)
 
 @pytest.fixture
 def mock_client_fs():
@@ -58,7 +77,7 @@ def mock_remote_fs():
     mock.begin_transaction = Mock()
     mock.commit_transaction = Mock()
     mock.rollback_transaction = Mock()
-    mock.send_file = Mock(return_value=MockContentStream(b"remote content"))
+    mock.send_file = Mock(return_value=MockContentStream(b"remote content"))  # 14 bytes
     mock.recv_file = Mock()
     mock.delete_file = Mock()
     mock.is_symlink = Mock(return_value=False)  # Default: no symlinks in tests
@@ -72,8 +91,16 @@ def mock_transport():
     mock = Mock()
     mock.begin_session = Mock()
     mock.end_session = Mock()
-    mock.transfer_to_remote = Mock(return_value=MockTempFile("/tmp/remote-temp"))
-    mock.transfer_to_local = Mock(return_value=MockTempFile("/tmp/local-temp"))
+    
+    # Smart transport mock that returns temp files with correct sizes
+    def mock_transfer_to_remote(content_stream):
+        return MockTempFile("/tmp/remote-temp", size=content_stream.size)
+    
+    def mock_transfer_to_local(content_stream):
+        return MockTempFile("/tmp/local-temp", size=content_stream.size)
+    
+    mock.transfer_to_remote = Mock(side_effect=mock_transfer_to_remote)
+    mock.transfer_to_local = Mock(side_effect=mock_transfer_to_local)
     return mock
 
 @pytest.fixture

@@ -14,10 +14,15 @@ protocol for the transaction coordinator.
 """
 
 import shutil
+import logging
 from pathlib import Path
 from typing import Iterator
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
+from dsg.system.exceptions import (
+    RemoteFilesystemError, ZFSOperationError, XFSOperationError, 
+    TransactionRollbackError, TransactionCommitError
+)
 from .snapshots import ZFSOperations
 
 
@@ -112,23 +117,50 @@ class ZFSFilesystem:
         return str(file_path.readlink())
     
     def commit_transaction(self, transaction_id: str) -> None:
-        """Promote ZFS clone (atomic)"""
-        if transaction_id != self.transaction_id:
-            raise RuntimeError(f"Transaction ID mismatch: expected {self.transaction_id}, got {transaction_id}")
-        
-        self.zfs_ops.commit_atomic_sync(transaction_id)
-        self.clone_path = None
-        self.transaction_id = None
+        """Promote ZFS clone (atomic) with comprehensive error handling"""
+        try:
+            if transaction_id != self.transaction_id:
+                raise ZFSOperationError(
+                    f"Transaction ID mismatch: expected {self.transaction_id}, got {transaction_id}",
+                    zfs_command="promote",
+                    path=str(self.clone_path) if self.clone_path else None
+                )
+            
+            logging.info(f"Committing ZFS transaction {transaction_id}")
+            self.zfs_ops.commit_atomic_sync(transaction_id)
+            logging.info(f"Successfully committed ZFS transaction {transaction_id}")
+            
+            self.clone_path = None
+            self.transaction_id = None
+            
+        except Exception as e:
+            logging.error(f"Failed to commit ZFS transaction {transaction_id}: {e}")
+            raise TransactionCommitError(
+                f"ZFS commit failed: {e}",
+                transaction_id=transaction_id,
+                recovery_hint="Check ZFS pool health and available space"
+            )
     
     def rollback_transaction(self, transaction_id: str) -> None:
-        """Destroy ZFS clone"""
-        if transaction_id != self.transaction_id:
-            # Still try to rollback even with ID mismatch - cleanup is important
-            pass
-        
-        self.zfs_ops.rollback_atomic_sync(transaction_id)
-        self.clone_path = None
-        self.transaction_id = None
+        """Destroy ZFS clone with comprehensive error handling"""
+        try:
+            if transaction_id != self.transaction_id:
+                logging.warning(f"Transaction ID mismatch during ZFS rollback: expected {self.transaction_id}, got {transaction_id}")
+                # Still try to rollback - cleanup is important
+            
+            logging.info(f"Rolling back ZFS transaction {transaction_id}")
+            self.zfs_ops.rollback_atomic_sync(transaction_id)
+            logging.info(f"Successfully rolled back ZFS transaction {transaction_id}")
+            
+            self.clone_path = None
+            self.transaction_id = None
+            
+        except Exception as e:
+            logging.error(f"Failed to rollback ZFS transaction {transaction_id}: {e}")
+            # Don't raise on rollback failure - log and continue
+            # This prevents cascading failures during error recovery
+            self.clone_path = None
+            self.transaction_id = None
 
 
 class XFSFilesystem:

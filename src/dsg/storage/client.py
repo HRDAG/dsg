@@ -14,11 +14,13 @@ atomic file operations using the .pending-{transaction_id} staging pattern.
 """
 
 import shutil
+import logging
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Iterator
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
+from dsg.system.exceptions import ClientFilesystemError, TransactionRollbackError
 
 
 class FileContentStream:
@@ -134,13 +136,56 @@ class ClientFilesystem:
             shutil.rmtree(self.backup_dir)
     
     def rollback_transaction(self, transaction_id: str) -> None:
-        """Rollback by cleaning staging and restoring backup"""
-        # Clean staging
-        if self.staging_dir and self.staging_dir.exists():
-            shutil.rmtree(self.staging_dir)
+        """Rollback by cleaning staging and restoring backup with comprehensive error handling"""
+        rollback_errors = []
         
-        # Restore from backup (from original ClientTransaction logic)
-        self._restore_from_backup()
+        try:
+            logging.info(f"Rolling back client filesystem transaction {transaction_id}")
+            
+            # Verify transaction ID matches
+            if self.transaction_id != transaction_id:
+                logging.warning(f"Transaction ID mismatch during rollback: expected {self.transaction_id}, got {transaction_id}")
+            
+            # Clean staging directory
+            if self.staging_dir and self.staging_dir.exists():
+                try:
+                    shutil.rmtree(self.staging_dir)
+                    logging.debug(f"Cleaned staging directory: {self.staging_dir}")
+                except Exception as e:
+                    rollback_errors.append(f"Failed to clean staging directory {self.staging_dir}: {e}")
+                    logging.error(f"Failed to clean staging directory: {e}")
+            
+            # Restore from backup
+            try:
+                self._restore_from_backup()
+                logging.debug("Successfully restored from backup")
+            except Exception as e:
+                rollback_errors.append(f"Failed to restore from backup: {e}")
+                logging.error(f"Failed to restore from backup: {e}")
+            
+            # Reset transaction state
+            self.staging_dir = None
+            self.transaction_id = None
+            
+            if rollback_errors:
+                error_msg = "; ".join(rollback_errors)
+                raise TransactionRollbackError(
+                    f"Client filesystem rollback completed with errors: {error_msg}",
+                    transaction_id=transaction_id,
+                    recovery_hint="Manual cleanup may be required"
+                )
+            
+            logging.info(f"Successfully rolled back client filesystem transaction {transaction_id}")
+            
+        except TransactionRollbackError:
+            raise  # Re-raise our custom rollback errors
+        except Exception as e:
+            logging.critical(f"Unexpected error during client filesystem rollback: {e}")
+            raise TransactionRollbackError(
+                f"Critical failure during client filesystem rollback: {e}",
+                transaction_id=transaction_id,
+                recovery_hint="Manual intervention required - check .dsg/backup directory"
+            )
     
     def _restore_from_backup(self) -> None:
         """Restore state from backup"""
