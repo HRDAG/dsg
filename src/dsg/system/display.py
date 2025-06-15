@@ -448,18 +448,19 @@ def _suggest_filename_fix(path: str) -> str:
     return suggestion
 
 
-def display_sync_status(console: Console, status_result) -> None:
+def display_sync_status(console: Console, status_result, quiet: bool = False) -> None:
     """Display sync status results in user-friendly format."""
     from dsg.core.operations import SyncStatusResult
     from dsg.data.manifest_merger import SyncState
     from dsg.data.manifest_comparison import SyncStateLabels
     
     if not isinstance(status_result, SyncStatusResult):
-        console.print("[red]Error: Invalid status result[/red]")
+        if not quiet:
+            console.print("[red]Error: Invalid status result[/red]")
         return
     
-    # Show validation warnings in Rich Panel format
-    if status_result.warnings:
+    # Show validation warnings in Rich Panel format (skip in quiet mode)
+    if not quiet and status_result.warnings:
         warnings_panel = format_validation_warnings(status_result.warnings)
         if warnings_panel:
             console.print(warnings_panel)
@@ -489,25 +490,26 @@ def display_sync_status(console: Console, status_result) -> None:
         elif sync_state == SyncState.sLCR__all_eq:
             synced.append((file_path, status_label))
     
-    # Display sections
-    if local_changes:
-        console.print("[bold]Your local changes:[/bold]")
-        for file_path, status in local_changes:
-            color = "green" if "new" in status else "yellow"
-            console.print(f"  [{color}]{file_path}[/{color}] ({status})")
-        console.print()
-    
-    if status_result.include_remote and remote_changes:
-        console.print("[bold]Remote changes (team updates):[/bold]")
-        for file_path, status in remote_changes:
-            console.print(f"  [blue]{file_path}[/blue] ({status})")
-        console.print()
-    
-    if conflicts:
-        console.print("[bold red]Conflicts requiring attention:[/bold red]")
-        for file_path, status in conflicts:
-            console.print(f"  [red]{file_path}[/red] ({status})")
-        console.print()
+    # Display sections (skip detailed sections in quiet mode)
+    if not quiet:
+        if local_changes:
+            console.print("[bold]Your local changes:[/bold]")
+            for file_path, status in local_changes:
+                color = "green" if "new" in status else "yellow"
+                console.print(f"  [{color}]{file_path}[/{color}] ({status})")
+            console.print()
+        
+        if status_result.include_remote and remote_changes:
+            console.print("[bold]Remote changes (team updates):[/bold]")
+            for file_path, status in remote_changes:
+                console.print(f"  [blue]{file_path}[/blue] ({status})")
+            console.print()
+        
+        if conflicts:
+            console.print("[bold red]Conflicts requiring attention:[/bold red]")
+            for file_path, status in conflicts:
+                console.print(f"  [red]{file_path}[/red] ({status})")
+            console.print()
     
     # Summary
     local_count = len(local_changes)
