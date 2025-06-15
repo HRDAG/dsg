@@ -83,9 +83,14 @@ def get_all_data_dir_paths(config, filename: str) -> dict[str, str]:
 class TestManifestLevelSyncIntegration:
     """Test manifest-level sync operations with real file transfers."""
 
-    def test_init_like_sync_integration(self, bb_local_remote_setup):
+    def test_init_like_sync_integration(self, dsg_repository_factory):
         """Test init-like sync: L != C but C == R (bulk upload)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/init_test.csv"
         test_content = "id,value,category\n1,100,init_like_test\n2,200,sync_test\n"
@@ -107,9 +112,14 @@ class TestManifestLevelSyncIntegration:
         assert remote_file_content_matches(setup, test_file, "init_like_test")
         assert cache_manifest_updated(setup)
 
-    def test_clone_like_sync_integration(self, bb_local_remote_setup):
+    def test_clone_like_sync_integration(self, dsg_repository_factory):
         """Test clone-like sync: L == C but C != R (bulk download)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/clone_test.csv"
         test_content = "id,name,category\n1,RemoteData,clone_like_test\n2,MoreData,sync_test\n"
@@ -131,9 +141,14 @@ class TestManifestLevelSyncIntegration:
         assert local_file_content_matches(setup, test_file, "clone_like_test")
         assert cache_manifest_updated(setup)
 
-    def test_mixed_sync_integration(self, bb_local_remote_setup):
+    def test_mixed_sync_integration(self, dsg_repository_factory):
         """Test mixed sync: Complex state requiring file-by-file analysis"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Setup: Multiple files in different sync states
@@ -170,9 +185,14 @@ class TestManifestLevelSyncIntegration:
 class TestRealFileTransferIntegration:
     """Test sync operations with realistic file types and content."""
 
-    def test_sync_csv_files_localhost_backend(self, bb_local_remote_setup):
+    def test_sync_csv_files_localhost_backend(self, dsg_repository_factory):
         """Test sync with real CSV files using localhost backend"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         csv_file = "task1/import/input/some-data.csv"
         
@@ -197,9 +217,14 @@ class TestRealFileTransferIntegration:
         assert "Grace Chen" in remote_content
         assert cache_manifest_updated(setup)
 
-    def test_sync_binary_files(self, bb_local_remote_setup):
+    def test_sync_binary_files(self, dsg_repository_factory):
         """Test sync with binary files (HDF5, Parquet)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         binary_file = "task1/analysis/output/results.h5"
         
@@ -218,9 +243,14 @@ class TestRealFileTransferIntegration:
         assert len(remote_binary) > 1000  # Verify substantial content
         assert cache_manifest_updated(setup)
 
-    def test_sync_multiple_file_types(self, bb_local_remote_setup):
+    def test_sync_multiple_file_types(self, dsg_repository_factory):
         """Test sync with multiple file types in one operation"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         config = setup["local_config"]
         
@@ -251,9 +281,14 @@ class TestRealFileTransferIntegration:
 class TestMultiUserWorkflowIntegration:
     """Test realistic multi-user collaboration scenarios."""
 
-    def test_collaborative_sync_workflow(self, bb_local_remote_setup):
+    def test_collaborative_sync_workflow(self, dsg_repository_factory):
         """Test realistic multi-user collaboration scenario"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         shared_file = "task1/analysis/src/processor.R"  # Use existing file from BB fixture
         
@@ -360,9 +395,14 @@ if (!interactive()) {
         assert local_file_content_matches(setup, shared_file, "Enhanced analysis")
         assert cache_manifest_updated(setup)
 
-    def test_simple_conflict_detection(self, bb_local_remote_setup):
+    def test_simple_conflict_detection(self, dsg_repository_factory):
         """Test that sync detects conflicts correctly"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         conflict_file = "task1/import/input/conflict_test.csv"
         
@@ -397,9 +437,14 @@ if (!interactive()) {
 class TestSyncEdgeCases:
     """Test edge cases and error conditions."""
 
-    def test_shapeshifter_file_to_symlink_sync(self, bb_local_remote_setup):
+    def test_shapeshifter_file_to_symlink_sync(self, dsg_repository_factory):
         """Test sync when file changes from regular file to symlink (and back)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         shapeshifter_path = "task1/import/input/shapeshifter_test.txt"
         
@@ -445,9 +490,14 @@ class TestSyncEdgeCases:
         assert "different content" in final_content
         assert cache_manifest_updated(setup)
 
-    def test_symlink_target_shapeshifter_sync(self, bb_local_remote_setup):
+    def test_symlink_target_shapeshifter_sync(self, dsg_repository_factory):
         """Test sync when symlink target changes from file to directory"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         symlink_path = "task1/import/input/target_shifter.link"
         
@@ -478,9 +528,14 @@ class TestSyncEdgeCases:
         assert remote_symlink.readlink() == Path(".")
         assert cache_manifest_updated(setup)
 
-    def test_doppelganger_same_user_different_machines(self, bb_local_remote_setup):
+    def test_doppelganger_same_user_different_machines(self, dsg_repository_factory):
         """Test sync when same user ID operates from multiple machines"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Simulate Machine A (original setup)
@@ -604,9 +659,14 @@ class TestSyncEdgeCases:
         assert "Machine A version" in local_a_content  # A has different content
         assert cache_manifest_updated(setup)
 
-    def test_perfect_storm_multiple_failures_critical_moment(self, bb_local_remote_setup):
+    def test_perfect_storm_multiple_failures_critical_moment(self, dsg_repository_factory):
         """Test sync under multiple simultaneous failure conditions"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Set up a critical scenario: large important dataset
@@ -715,9 +775,14 @@ class TestSyncEdgeCases:
                 except OSError:
                     pass  # Best effort cleanup
 
-    def test_sync_with_empty_repository(self, bb_local_remote_setup):
+    def test_sync_with_empty_repository(self, dsg_repository_factory):
         """Test sync when repositories are empty or nearly empty"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         config = setup["local_config"]
         
@@ -733,9 +798,14 @@ class TestSyncEdgeCases:
         assert remote_file_exists(setup, test_file)
         assert cache_manifest_updated(setup)
 
-    def test_sync_large_file_content(self, bb_local_remote_setup):
+    def test_sync_large_file_content(self, dsg_repository_factory):
         """Test sync with larger file content"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         config = setup["local_config"]
         large_file = get_valid_data_dir_path(config, "large_dataset.csv")
@@ -758,9 +828,14 @@ class TestSyncEdgeCases:
         assert "sample_data_999" in remote_content  # Verify complete content
         assert cache_manifest_updated(setup)
 
-    def test_vanishing_act_files_disappear_reappear(self, bb_local_remote_setup):
+    def test_vanishing_act_files_disappear_reappear(self, dsg_repository_factory):
         """Test sync when files vanish and reappear during operations"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # The Vanishing Act: Files that disappear and reappear at critical moments
@@ -857,9 +932,14 @@ class TestSyncEdgeCases:
         
         assert cache_manifest_updated(setup)
 
-    def test_time_traveler_clock_timing_issues(self, bb_local_remote_setup):
+    def test_time_traveler_clock_timing_issues(self, dsg_repository_factory):
         """Test sync when clock/timing issues cause temporal confusion"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # The Time Traveler: Clock skew, timezone issues, and timing-related edge cases

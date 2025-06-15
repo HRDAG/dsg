@@ -27,9 +27,14 @@ from tests.fixtures.bb_repo_factory import (
 class TestDetailedSyncDebug:
     """Detailed debug tests for sync operations."""
 
-    def test_mixed_state_with_detailed_logging(self, bb_local_remote_setup):
+    def test_mixed_state_with_detailed_logging(self, dsg_repository_factory):
         """Test mixed state with detailed logging of file operations."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create mixed state

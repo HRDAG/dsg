@@ -34,6 +34,7 @@ from dsg.config.manager import (
     IgnoreSettings, UserConfig)
 from dsg.data.manifest import Manifest, FileRef
 from dsg.core.scanner import scan_directory
+from tests.fixtures.repository_factory import dsg_repository_factory
 
 
 # Use KEEP_TEST_DIR to preserve test directories for inspection
@@ -257,396 +258,80 @@ def create_dsg_structure(bb_path: Path) -> None:
     archive_file.touch()
 
 
+# =============================================================================
+# PHASE 2: Replace old fixtures with factory-based implementations  
+# =============================================================================
+
 @pytest.fixture
-def bb_repo_structure():
+def bb_repo_structure(dsg_repository_factory):
     """Create comprehensive BB repository structure with realistic content."""
-    bb_base = tempfile.mkdtemp(prefix="bb_repo_")
-    bb_path = Path(bb_base) / "BB"
-    bb_path.mkdir()
-
-    bb_repo_content = create_bb_file_content()
-    directories = [
-        "task1/import/input",
-        "task1/import/src",
-        "task1/import/hand",
-        "task1/import/output",
-        "task1/analysis/input",
-        "task1/analysis/src",
-        "task1/analysis/output"
-    ]
-
-    for dir_path in directories:
-        (bb_path / dir_path).mkdir(parents=True, exist_ok=True)
-    file_mappings = {
-        "task1/import/input/some-data.csv": bb_repo_content["some-data.csv"],
-        "task1/import/input/more-data.csv": bb_repo_content["more-data.csv"],
-        "task1/import/src/script1.py": bb_repo_content["script1.py"],
-        "task1/import/hand/config-data.yaml": bb_repo_content["config-data.yaml"],
-        "task1/analysis/src/processor.R": bb_repo_content["processor.R"],
-        "task1/import/Makefile": bb_repo_content["import_makefile"],
-        "task1/analysis/Makefile": bb_repo_content["analysis_makefile"]
-    }
-
-    for file_path, content in file_mappings.items():
-        full_path = bb_path / file_path
-        full_path.write_text(content)
-
-    (bb_path / "task1/import/src/script1.py").chmod(0o755)
-    (bb_path / "task1/analysis/src/processor.R").chmod(0o755)
-
-    create_binary_files(bb_path)
-
-    symlink_target = "../../import/output/combined-data.h5"
-    symlink_path = bb_path / "task1/analysis/input/combined-data.h5"
-    symlink_path.symlink_to(symlink_target)
-
-    create_dsg_structure(bb_path)
-    if not KEEP_TEST_DIR:
-        atexit.register(lambda: shutil.rmtree(bb_base, ignore_errors=True))
-
-    if KEEP_TEST_DIR:
-        test_info_path = Path(bb_base) / "BB_REPO_INFO.txt"
-        with open(test_info_path, "w") as f:
-            f.write(f"BB Repository Test Fixture\nPath: {bb_path}\nBase: {bb_base}\n")
-        print(f"\n💾 BB repository preserved at: {bb_path}")
-        print(f"💾 Base directory: {bb_base}")
-
-    return bb_path
+    result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+    return result["repo_path"]
 
 
 @pytest.fixture
-def bb_repo_with_validation_issues(bb_repo_structure):
+def bb_repo_with_validation_issues(dsg_repository_factory):
     """BB repository with additional problematic directory paths for validation testing."""
-    bb_path = bb_repo_structure
-    
-    # Add problematic directory structures that should trigger validation warnings
-    problematic_files = {
-        "task2/import/project<illegal>/input/test-data.csv": "id,value\n1,100\n2,200\n",
-        "task2/analysis/CON/output/results.txt": "Analysis results here",
-        "task3/import/backup_dir~/input/archived.csv": "archived,data\n1,old\n2,data\n"
-    }
-    
-    # Create the problematic directories and files
-    for file_path, content in problematic_files.items():
-        full_path = bb_path / file_path
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(content)
-    
-    return bb_path
+    result = dsg_repository_factory(
+        style="realistic",
+        with_validation_issues=True,
+        repo_name="BB"
+    )
+    return result["repo_path"]
 
 
 @pytest.fixture 
-def bb_repo_with_validation_issues_and_config(bb_repo_with_validation_issues):
+def bb_repo_with_validation_issues_and_config(dsg_repository_factory):
     """BB repository with validation issues AND proper .dsgconfig.yml setup."""
-    bb_path = bb_repo_with_validation_issues
-    
-    # Add the same config as bb_repo_with_config
-    bb_base = bb_path.parent
-    remote_base = bb_base / "remote"
-    config_dict = {
-        "name": "BB",
-        "transport": "ssh", 
-        "ssh": {
-            "host": "localhost",
-            "path": str(remote_base),
-            "name": "BB",
-            "type": "xfs"
-        },
-        "data_dirs": ["input", "output", "hand", "src"],
-        "ignore": {
-            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-            "paths": []
-        }
-    }
-    
-    config_path = bb_path / ".dsgconfig.yml" 
-    with open(config_path, 'w') as f:
-        yaml.dump(config_dict, f, default_flow_style=False)
-    
-    return bb_path
+    result = dsg_repository_factory(
+        style="realistic",
+        with_config=True,
+        with_validation_issues=True,
+        repo_name="BB",
+        backend_type="xfs"
+    )
+    return result["repo_path"]
 
 
 @pytest.fixture
-def bb_repo_with_config(bb_repo_structure):
+def bb_repo_with_config(dsg_repository_factory):
     """BB repository with .dsgconfig.yml for localhost backend testing."""
-
-    bb_path = bb_repo_structure
-
-    bb_base = bb_path.parent
-    remote_base = bb_base / "remote"
-    remote_path = remote_base / "BB"
-    config_dict = {
-        "name": "BB",
-        "transport": "ssh",
-        "ssh": {
-            "host": "localhost",
-            "path": str(remote_base),
-            "name": "BB",
-            "type": "xfs"
-        },
-        "data_dirs": ["input", "output", "hand", "src"],
-        "ignore": {
-            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-            "paths": []
-        }
-    }
-
-    config_path = bb_path / ".dsgconfig.yml"
-    with open(config_path, 'w') as f:
-        yaml.dump(config_dict, f, default_flow_style=False)
-
+    result = dsg_repository_factory(
+        style="realistic",
+        with_config=True,
+        repo_name="BB",
+        backend_type="xfs"
+    )
+    
+    remote_path = result["base_path"] / "remote" / "BB"
     return {
-        "bb_path": bb_path,
-        "config_path": config_path,
+        "bb_path": result["repo_path"],
+        "config_path": result["config_path"],
         "remote_path": remote_path,
-        "base_path": bb_base
+        "base_path": result["base_path"]
     }
 
 
 @pytest.fixture
-def bb_clone_integration_setup(bb_repo_with_config):
+def bb_clone_integration_setup(dsg_repository_factory):
     """Create remote with DSG-managed files and local stub with non-DSG files for clone testing."""
-
-    bb_info = bb_repo_with_config
-    bb_path = bb_info["bb_path"]
-    base_path = bb_info["base_path"]
-
-    # Create remote with only DSG-managed content
-    remote_base = base_path / "remote"
-    remote_bb = remote_base / "BB"
-    remote_bb.mkdir(parents=True)
-
-    # Copy .dsgconfig.yml to remote (will be modified)
-    shutil.copy2(bb_path / ".dsgconfig.yml", remote_bb / ".dsgconfig.yml")
-
-    # Copy .dsg directory to remote
-    shutil.copytree(bb_path / ".dsg", remote_bb / ".dsg")
-
-    # Copy only data directories to remote (input, output)
-    data_structure = [
-        "task1/import/input",
-        "task1/import/output",
-        "task1/analysis/input",
-        "task1/analysis/output"
-    ]
-
-    for dir_path in data_structure:
-        src_dir = bb_path / dir_path
-        dst_dir = remote_bb / dir_path
-        if src_dir.exists():
-            shutil.copytree(src_dir, dst_dir, symlinks=True)
-
-    # Create local stub with non-DSG files only
-    local_base = base_path / "local"
-    local_bb = local_base / "BB"
-    local_bb.mkdir(parents=True)
-
-    # Copy .dsgconfig.yml to local (points to remote)
-    local_config_dict = {
-        "name": "BB",
-        "transport": "ssh",
-        "ssh": {
-            "host": "localhost",
-            "path": str(remote_base),
-            "name": "BB",
-            "type": "xfs"
-        },
-        "data_dirs": ["input", "output", "hand", "src"],
-        "ignore": {
-            "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
-            "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
-            "paths": []
-        }
-    }
-
-    local_config_path = local_bb / ".dsgconfig.yml"
-    with open(local_config_path, 'w') as f:
-        yaml.dump(local_config_dict, f, default_flow_style=False)
-
-    # Copy non-DSG files to local (src, hand, Makefiles)
-    non_dsg_structure = [
-        ("task1/import/src", "task1/import/src"),
-        ("task1/import/hand", "task1/import/hand"),
-        ("task1/import/Makefile", "task1/import/Makefile"),
-        ("task1/analysis/src", "task1/analysis/src"),
-        ("task1/analysis/Makefile", "task1/analysis/Makefile")
-    ]
-
-    for src_rel, dst_rel in non_dsg_structure:
-        src_path = bb_path / src_rel
-        dst_path = local_bb / dst_rel
-        if src_path.exists():
-            if src_path.is_dir():
-                shutil.copytree(src_path, dst_path, symlinks=True)
-            else:
-                dst_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_path, dst_path, follow_symlinks=False)
-
-    # Create a project README in local
-    readme_content = """# BB Analysis Pipeline
-
-This is a test repository for DSG integration testing.
-
-## Structure
-- task1/import/ - Data import and processing
-- task1/analysis/ - Data analysis workflows
-
-Use `dsg clone` to get the data files from the remote repository.
-"""
-    (local_bb / "README.md").write_text(readme_content)
-
-    # Generate proper manifest for remote
-
-    remote_project_config = ProjectConfig(
-        name="BB",
-        transport="ssh",
-        ssh=SSHRepositoryConfig(
-            host="localhost",
-            path=remote_base,
-            name="BB",
-            type="xfs"
-        ),
-        data_dirs={"input", "output", "hand", "src"},
-        ignore=IgnoreSettings(
-            names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
-            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
-            paths=set()
-        )
+    return dsg_repository_factory(
+        style="realistic",
+        setup="clone_integration",
+        repo_name="BB",
+        backend_type="xfs"
     )
-
-    remote_user_config = UserConfig(
-        user_name="Test User",
-        user_id="test@example.com"
-    )
-
-    remote_config = Config(
-        user=remote_user_config,
-        project=remote_project_config,
-        project_root=remote_bb
-    )
-
-    # Scan remote and generate manifest
-    remote_scan_result = scan_directory(remote_config, compute_hashes=True, include_dsg_files=False)
-    remote_manifest_path = remote_bb / ".dsg" / "last-sync.json"
-    remote_scan_result.manifest.to_json(remote_manifest_path, include_metadata=True)
-
-    # Create backends
-    local_backend = LocalhostBackend(local_base, "BB")
-    remote_backend = LocalhostBackend(remote_base, "BB")
-
-    # If KEEP_TEST_DIR is set, display paths
-    if KEEP_TEST_DIR:
-        test_info_path = base_path / "BB_CLONE_INTEGRATION_INFO.txt"
-        with open(test_info_path, "w") as f:
-            f.write("BB Clone Integration Setup\n")
-            f.write(f"Local Stub: {local_bb}\n")
-            f.write(f"Remote Full: {remote_bb}\n")
-            f.write(f"Remote Manifest: {remote_manifest_path}\n")
-            f.write(f"Base: {base_path}\n")
-        print(f"\n💾 BB clone integration setup preserved at: {base_path}")
-
-    return {
-        "local_path": local_bb,
-        "remote_path": remote_bb,
-        "local_backend": local_backend,
-        "remote_backend": remote_backend,
-        "remote_manifest": remote_scan_result.manifest,
-        "remote_manifest_path": remote_manifest_path,
-        "base_path": base_path
-    }
 
 
 @pytest.fixture
-def bb_local_remote_setup(bb_repo_with_config):
+def bb_local_remote_setup(dsg_repository_factory):
     """Create local and remote BB repositories with backends and configs."""
-
-    bb_info = bb_repo_with_config
-    local_path = bb_info["bb_path"]
-    remote_base = bb_info["remote_path"]
-    base_path = bb_info["base_path"]
-
-    # Create remote repository (exact copy initially)
-    remote_base.parent.mkdir(exist_ok=True)
-    shutil.copytree(local_path, remote_base, symlinks=True)
-
-    # Create backends
-    local_backend = LocalhostBackend(local_path.parent, "BB")
-    remote_backend = LocalhostBackend(remote_base.parent, "BB")
-
-    # Create config objects
-    local_project_config = ProjectConfig(
-        name="BB",
-        transport="ssh",
-        ssh=SSHRepositoryConfig(
-            host="localhost",
-            path=remote_base.parent,
-            name="BB",
-            type="xfs"
-        ),
-        data_dirs={"input", "output", "hand", "src"},
-        ignore=IgnoreSettings(
-            names={".DS_Store", "__pycache__", ".ipynb_checkpoints"},
-            suffixes={".pyc", ".log", ".tmp", ".temp", ".swp", "~"},
-            paths=set()
-        )
+    return dsg_repository_factory(
+        style="realistic", 
+        setup="local_remote_pair",
+        repo_name="BB",
+        backend_type="xfs"
     )
-
-    local_user_config = UserConfig(
-        user_name="Test User",
-        user_id="test@example.com"
-    )
-
-    local_config = Config(
-        user=local_user_config,
-        project=local_project_config,
-        project_root=local_path
-    )
-
-    # Remote config (same structure, different root)
-    remote_config = Config(
-        user=local_user_config,
-        project=local_project_config,
-        project_root=remote_base
-    )
-
-    # Generate initial manifests
-    local_scan_result = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
-    remote_scan_result = scan_directory(remote_config, compute_hashes=True, include_dsg_files=False)
-
-    # Create last-sync.json (cache manifest)
-    last_sync_path = local_path / ".dsg" / "last-sync.json"
-    local_scan_result.manifest.to_json(last_sync_path, include_metadata=True)
-
-    # Create remote last-sync.json (remote manifest) - CRITICAL for DSG functionality
-    remote_manifest_path = remote_base / ".dsg" / "last-sync.json"
-    remote_scan_result.manifest.to_json(remote_manifest_path, include_metadata=True)
-
-    # If KEEP_TEST_DIR is set, display paths
-    if KEEP_TEST_DIR:
-        test_info_path = base_path / "BB_LOCAL_REMOTE_INFO.txt"
-        with open(test_info_path, "w") as f:
-            f.write("BB Local/Remote Setup\n")
-            f.write(f"Local: {local_path}\n")
-            f.write(f"Remote: {remote_base}\n")
-            f.write(f"Last-sync: {last_sync_path}\n")
-            f.write(f"Base: {base_path}\n")
-        print(f"\n💾 BB local/remote setup preserved at: {base_path}")
-
-    return {
-        "local_path": local_path,
-        "remote_path": remote_base,
-        "local_backend": local_backend,
-        "remote_backend": remote_backend,
-        "local_config": local_config,
-        "remote_config": remote_config,
-        "local_manifest": local_scan_result.manifest,
-        "remote_manifest": remote_scan_result.manifest,
-        "cache_manifest": local_scan_result.manifest,  # Initially identical
-        "last_sync_path": last_sync_path,
-        "base_path": base_path
-    }
 
 
 def modify_file_content(

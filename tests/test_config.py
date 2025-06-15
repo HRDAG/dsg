@@ -29,12 +29,21 @@ from dsg.config.manager import (
 # base_config fixture replaced with legacy_format_config_objects from conftest.py
 
 
-def test_config_load_success(complete_config_setup):
+def test_config_load_success(dsg_repository_factory):
     from tests.conftest import load_config_with_paths
     
+    # Create repository with config and user config
+    repo_result = dsg_repository_factory(
+        style="minimal",
+        with_config=True,
+        with_user_config=True,
+        repo_name="test-project",
+        backend_type="zfs"
+    )
+    
     cfg = load_config_with_paths(
-        complete_config_setup["project_root"],
-        complete_config_setup["user_config_dir"]
+        repo_result["repo_path"],
+        repo_result["user_config_dir"]
     )
     assert cfg.user is not None
     assert cfg.user.user_name == "Joe"
@@ -42,10 +51,10 @@ def test_config_load_success(complete_config_setup):
     # Default fields are now optional in user config
     assert cfg.project is not None
     assert cfg.project.transport == "ssh"
-    assert cfg.project.name == complete_config_setup["repo_name"]
+    assert cfg.project.name == repo_result["repo_name"]
     assert cfg.project.ssh.type == "zfs"
     assert isinstance(cfg.project_root, Path)
-    assert cfg.project_root == complete_config_setup["project_root"]
+    assert cfg.project_root == repo_result["repo_path"]
 
 
 def test_missing_user_config_exits(monkeypatch):
@@ -171,16 +180,23 @@ def test_project_config_path_handling():
     assert PurePosixPath("../parent.txt") in cfg.ignore._ignored_exact
 
 
-def test_config_load_project_only(basic_repo_structure, monkeypatch):
+def test_config_load_project_only(dsg_repository_factory, monkeypatch):
     """Test that Config.load() requires both project and user config."""
     from unittest.mock import patch
+    
+    # Create basic repository with config only (no user config)
+    repo_result = dsg_repository_factory(
+        style="empty",
+        with_config=True,
+        repo_name="test-project"
+    )
     
     # Mock the user config loading to raise FileNotFoundError
     with patch('dsg.config.manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
         # Change to project directory
-        monkeypatch.chdir(basic_repo_structure["repo_dir"])
+        monkeypatch.chdir(repo_result["repo_path"])
         
         # Should fail without user config in the new design
         with pytest.raises(FileNotFoundError, match="No dsg.yml found"):
@@ -275,31 +291,47 @@ ssh:
         assert cfg.ssh.key_path == Path("~/.ssh/id_rsa")
 
 
-def test_config_with_user_config(complete_config_setup):
+def test_config_with_user_config(dsg_repository_factory):
     """Test loading Config with both project and user config."""
     from tests.conftest import load_config_with_paths
     
+    # Create repository with both project and user config
+    repo_result = dsg_repository_factory(
+        style="minimal",
+        with_config=True,
+        with_user_config=True,
+        repo_name="test-project",
+        backend_type="zfs"
+    )
+    
     cfg = load_config_with_paths(
-        complete_config_setup["project_root"],
-        complete_config_setup["user_config_dir"]
+        repo_result["repo_path"],
+        repo_result["user_config_dir"]
     )
     assert cfg.user is not None
     assert cfg.user.user_name == "Joe"
     assert cfg.user.user_id == "joe@example.org"
     assert cfg.project is not None
-    assert cfg.project.name == complete_config_setup["repo_name"]
-    assert cfg.project_root == complete_config_setup["project_root"]
+    assert cfg.project.name == repo_result["repo_name"]
+    assert cfg.project_root == repo_result["repo_path"]
 
 
-def test_config_without_user_config(basic_repo_structure, monkeypatch):
+def test_config_without_user_config(dsg_repository_factory, monkeypatch):
     """Test that Config.load() requires user config in new design."""
     from unittest.mock import patch
+    
+    # Create basic repository with project config only
+    repo_result = dsg_repository_factory(
+        style="empty",
+        with_config=True,
+        repo_name="test-project"
+    )
     
     # Mock the user config loading to raise FileNotFoundError
     with patch('dsg.config.manager.load_merged_user_config') as mock_load_user:
         mock_load_user.side_effect = FileNotFoundError("No dsg.yml found in any standard location")
         
-        monkeypatch.chdir(basic_repo_structure["repo_dir"])
+        monkeypatch.chdir(repo_result["repo_path"])
         
         # Should fail without user config in the new design
         with pytest.raises(FileNotFoundError, match="No dsg.yml found"):

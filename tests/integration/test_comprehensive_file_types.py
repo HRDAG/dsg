@@ -151,9 +151,14 @@ def create_symlink_edge_cases(repo_path: Path) -> dict[str, str]:
 class TestComprehensiveFileTypes:
     """Comprehensive file type and content edge case testing."""
 
-    def test_text_encoding_sync(self, bb_local_remote_setup):
+    def test_text_encoding_sync(self, dsg_repository_factory):
         """Test sync operations with files in different text encodings."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         encoding_examples = create_text_encoding_examples()
@@ -179,9 +184,14 @@ class TestComprehensiveFileTypes:
             remote_content = (setup["remote_path"] / file_path).read_bytes()
             assert local_content == remote_content
 
-    def test_line_ending_variations_sync(self, bb_local_remote_setup):
+    def test_line_ending_variations_sync(self, dsg_repository_factory):
         """Test sync operations preserve different line ending styles."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         line_ending_examples = create_line_ending_examples()
@@ -207,9 +217,14 @@ class TestComprehensiveFileTypes:
             remote_content = remote_content_bytes.decode('utf-8')
             assert remote_content == original_content, f"Line endings not preserved in {filename}"
 
-    def test_unicode_edge_cases_sync(self, bb_local_remote_setup):
+    def test_unicode_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with Unicode normalization and edge cases."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         unicode_examples = create_unicode_edge_cases()
@@ -233,9 +248,14 @@ class TestComprehensiveFileTypes:
             remote_content = (setup["remote_path"] / file_path).read_text(encoding='utf-8')
             assert remote_content == original_content
 
-    def test_size_edge_cases_sync(self, bb_local_remote_setup):
+    def test_size_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with various file sizes and characteristics."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         size_examples = create_size_edge_cases()
@@ -266,9 +286,14 @@ class TestComprehensiveFileTypes:
             remote_content = (setup["remote_path"] / file_path).read_bytes()
             assert local_content == remote_content
 
-    def test_symlink_edge_cases_sync(self, bb_local_remote_setup):
+    def test_symlink_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with various symlink scenarios."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create symlink edge cases
@@ -288,9 +313,14 @@ class TestComprehensiveFileTypes:
             local_symlink_path = setup["local_path"] / file_path
             assert local_symlink_path.is_symlink() or local_symlink_path.exists(), f"Symlink {symlink_name} should exist locally after sync"
 
-    def test_mixed_content_types_sync(self, bb_local_remote_setup):
+    def test_mixed_content_types_sync(self, dsg_repository_factory):
         """Test sync operations with multiple file types mixed together."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create a mix of different content types
@@ -330,9 +360,14 @@ class TestComprehensiveFileTypes:
         remote_binary = (setup["remote_path"] / binary_file).read_bytes()
         assert local_binary == remote_binary
 
-    def test_content_modification_edge_cases(self, bb_local_remote_setup):
+    def test_content_modification_edge_cases(self, dsg_repository_factory):
         """Test sync when files with edge case content are modified."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create initial file with unicode content
@@ -360,9 +395,14 @@ class TestComprehensiveFileTypes:
         remote_content = (setup["remote_path"] / test_file).read_text(encoding='utf-8')
         assert remote_content == modified_content
 
-    def test_hash_consistency_edge_cases(self, bb_local_remote_setup):
+    def test_hash_consistency_edge_cases(self, dsg_repository_factory):
         """Test that hash computation is consistent for edge case content."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create file with content that might cause hash issues
@@ -400,9 +440,14 @@ class TestComprehensiveFileTypes:
                 from dsg.data.manifest_merger import SyncState
                 assert status.sync_states[file_path] == SyncState.sLCR__all_eq
 
-    def test_comprehensive_edge_cases_factory(self, bb_local_remote_setup):
+    def test_comprehensive_edge_cases_factory(self, dsg_repository_factory):
         """Test comprehensive edge cases using the factory functions."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create all types of edge case files using factory functions
@@ -441,9 +486,14 @@ class TestComprehensiveFileTypes:
                 assert local_file_exists(setup, symlink_path), f"Valid symlink missing: {symlink_path}"
             # Don't assert on broken/problematic symlinks - they may be cleaned up
 
-    def test_edge_case_modification_sync(self, bb_local_remote_setup):
+    def test_edge_case_modification_sync(self, dsg_repository_factory):
         """Test modifications of files with edge case content."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create initial edge case files
@@ -475,9 +525,14 @@ class TestComprehensiveFileTypes:
                 remote_content = (setup["remote_path"] / file_path).read_text(encoding='utf-8')
                 assert remote_content == expected_content
 
-    def test_large_scale_edge_case_sync(self, bb_local_remote_setup):
+    def test_large_scale_edge_case_sync(self, dsg_repository_factory):
         """Test sync performance and reliability with many edge case files."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create a large number of files with various edge cases
@@ -517,9 +572,14 @@ class TestComprehensiveFileTypes:
                 assert remote_file_exists(setup, test_file)
                 assert local_file_content_matches(setup, test_file, "café")
 
-    def test_stress_unicode_normalization(self, bb_local_remote_setup):
+    def test_stress_unicode_normalization(self, dsg_repository_factory):
         """Stress test Unicode normalization across sync operations."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create files that test Unicode normalization edge cases extensively

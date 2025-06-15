@@ -28,9 +28,14 @@ from tests.fixtures.bb_repo_factory import (
 class TestSimpleSyncUpload:
     """Simple, clean sync upload tests."""
 
-    def test_simple_local_only_upload(self, bb_local_remote_setup):
+    def test_simple_local_only_upload(self, dsg_repository_factory):
         """Test uploading a simple local-only file."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create a local-only file
@@ -53,9 +58,14 @@ class TestSimpleSyncUpload:
         remote_content = (setup["remote_path"] / test_file).read_text()
         assert remote_content == test_content
 
-    def test_simple_remote_only_download(self, bb_local_remote_setup):
+    def test_simple_remote_only_download(self, dsg_repository_factory):
         """Test downloading a simple remote-only file."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create a remote-only file
@@ -79,9 +89,14 @@ class TestSimpleSyncUpload:
         local_content = (setup["local_path"] / test_file).read_text()
         assert local_content == test_content
 
-    def test_both_upload_and_download(self, bb_local_remote_setup):
+    def test_both_upload_and_download(self, dsg_repository_factory):
         """Test both upload and download in same sync."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create local-only file

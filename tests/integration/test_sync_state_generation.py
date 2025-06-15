@@ -172,9 +172,14 @@ def test_sync_state_enum_import():
     assert "000: file not present in any manifest" in str(SyncState.sxLxCxR__none)
 
 
-def test_create_sync_state_all_eq(bb_local_remote_setup):
+def test_create_sync_state_all_eq(dsg_repository_factory):
     """Test creating the simplest sync state: all equal."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-all-eq.csv"
     
     # Generate the ALL_EQ state
@@ -212,9 +217,14 @@ def test_create_sync_state_all_eq(bb_local_remote_setup):
     assert cache_entry == remote_entry, "Cache and remote entries should be equal"
 
 
-def test_create_sync_state_none(bb_local_remote_setup):
+def test_create_sync_state_none(dsg_repository_factory):
     """Test creating the none state: file not present anywhere."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-none.csv"
     
     # Generate the NONE state
@@ -232,9 +242,14 @@ def test_create_sync_state_none(bb_local_remote_setup):
     assert target_file not in cache_manifest.entries, "Cache entry should not exist"
 
 
-def test_create_sync_state_only_local(bb_local_remote_setup):
+def test_create_sync_state_only_local(dsg_repository_factory):
     """Test creating the only-local state: file exists only locally."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-only-local.csv"
     
     # Generate the ONLY_L state
@@ -252,9 +267,14 @@ def test_create_sync_state_only_local(bb_local_remote_setup):
     assert target_file not in cache_manifest.entries, "Cache entry should not exist"
 
 
-def test_create_sync_state_all_different(bb_local_remote_setup):
+def test_create_sync_state_all_different(dsg_repository_factory):
     """Test creating the all-different state: all three differ."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-all-diff.csv"
     
     # Generate the ALL_NE state
@@ -288,9 +308,14 @@ def test_create_sync_state_all_different(bb_local_remote_setup):
     assert cache_entry != remote_entry, "Cache and remote entries should differ"
 
 
-def test_create_sync_state_cache_eq_remote(bb_local_remote_setup):
+def test_create_sync_state_cache_eq_remote(dsg_repository_factory):
     """Test creating state where local is missing but cache and remote match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     
     # This state uses an existing file, so we use the known file path
     target_file = "task1/import/input/some-data.csv"
@@ -318,9 +343,14 @@ def test_create_sync_state_cache_eq_remote(bb_local_remote_setup):
     assert cache_entry == remote_entry, "Cache and remote entries should be equal"
 
 
-def test_create_sync_state_local_eq_remote(bb_local_remote_setup):
+def test_create_sync_state_local_eq_remote(dsg_repository_factory):
     """Test creating state where cache is missing but local and remote match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-local-eq-remote.csv"
     
     # Generate the L_eq_R state
@@ -349,9 +379,14 @@ def test_create_sync_state_local_eq_remote(bb_local_remote_setup):
     assert local_entry == remote_entry, "Local and remote entries should be equal"
 
 
-def test_create_sync_state_local_eq_cache(bb_local_remote_setup):
+def test_create_sync_state_local_eq_cache(dsg_repository_factory):
     """Test creating state where remote is missing but local and cache match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-local-eq-cache.csv"
     
     # Generate the L_eq_C state
@@ -378,9 +413,14 @@ def test_create_sync_state_local_eq_cache(bb_local_remote_setup):
     assert local_entry == cache_entry, "Local and cache entries should be equal"
 
 
-def test_create_sync_state_remote_changed(bb_local_remote_setup):
+def test_create_sync_state_remote_changed(dsg_repository_factory):
     """Test creating state where remote changed but local and cache match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     
     # This state uses an existing file, so we use the known file path
     target_file = "task1/import/input/more-data.csv"
@@ -416,9 +456,14 @@ def test_create_sync_state_remote_changed(bb_local_remote_setup):
     assert cache_entry != remote_entry, "Cache and remote entries should differ"
 
 
-def test_create_sync_state_cache_outdated(bb_local_remote_setup):
+def test_create_sync_state_cache_outdated(dsg_repository_factory):
     """Test creating state where cache is outdated but local and remote match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-cache-outdated.csv"
     
     # Generate the L_eq_R_ne_C state
@@ -452,9 +497,14 @@ def test_create_sync_state_cache_outdated(bb_local_remote_setup):
     assert remote_entry != cache_entry, "Remote and cache entries should differ"
 
 
-def test_create_sync_state_only_remote(bb_local_remote_setup):
+def test_create_sync_state_only_remote(dsg_repository_factory):
     """Test creating state where only remote has the file."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-only-remote.csv"
     
     # Generate the ONLY_R state
@@ -472,9 +522,14 @@ def test_create_sync_state_only_remote(bb_local_remote_setup):
     assert target_file not in cache_manifest.entries, "Cache entry should not exist"
 
 
-def test_create_sync_state_local_changed(bb_local_remote_setup):
+def test_create_sync_state_local_changed(dsg_repository_factory):
     """Test creating state where local changed but cache and remote match."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     
     # This state uses an existing file, so we use the known file path
     target_file = "task1/analysis/src/processor.R"
@@ -510,9 +565,14 @@ def test_create_sync_state_local_changed(bb_local_remote_setup):
     assert local_entry != remote_entry, "Local and remote entries should differ"
 
 
-def test_create_sync_state_cache_ne_remote(bb_local_remote_setup):
+def test_create_sync_state_cache_ne_remote(dsg_repository_factory):
     """Test creating state where local is missing and cache differs from remote."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-cache-ne-remote.csv"
     
     # Generate the C_ne_R state (local missing, cache and remote differ)
@@ -537,9 +597,14 @@ def test_create_sync_state_cache_ne_remote(bb_local_remote_setup):
     assert cache_entry != remote_entry, "Cache and remote entries should differ"
 
 
-def test_create_sync_state_local_ne_remote(bb_local_remote_setup):
+def test_create_sync_state_local_ne_remote(dsg_repository_factory):
     """Test creating state where cache is missing and local differs from remote."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-local-ne-remote.csv"
     
     # Generate the L_ne_R state (cache missing, local and remote differ)
@@ -568,9 +633,14 @@ def test_create_sync_state_local_ne_remote(bb_local_remote_setup):
     assert local_entry != remote_entry, "Local and remote entries should differ"
 
 
-def test_create_sync_state_local_ne_cache(bb_local_remote_setup):
+def test_create_sync_state_local_ne_cache(dsg_repository_factory):
     """Test creating state where remote is missing and local differs from cache."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-local-ne-cache.csv"
     
     # Generate the L_ne_C state (remote missing, local and cache differ)
@@ -597,9 +667,14 @@ def test_create_sync_state_local_ne_cache(bb_local_remote_setup):
     assert local_entry != cache_entry, "Local and cache entries should differ"
 
 
-def test_create_sync_state_only_cache(bb_local_remote_setup):
+def test_create_sync_state_only_cache(dsg_repository_factory):
     """Test creating state where only cache has the file."""
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-only-cache.csv"
     
     # Generate the ONLY_C state

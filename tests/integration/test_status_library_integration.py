@@ -72,11 +72,16 @@ def create_simple_sync_state(
         raise NotImplementedError(f"State {state} not implemented yet")
 
 
-def test_get_sync_status_all_eq(bb_local_remote_setup):
+def test_get_sync_status_all_eq(dsg_repository_factory):
     """
     Test get_sync_status() for the all-equal sync state.
     """
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     target_file = "task1/import/input/test-all-eq-status.csv"
     
     # Create the sync state
@@ -106,14 +111,19 @@ def test_get_sync_status_all_eq(bb_local_remote_setup):
     assert target_file in result.remote_manifest.entries
 
 
-def test_get_sync_status_library_functionality(bb_local_remote_setup):
+def test_get_sync_status_library_functionality(dsg_repository_factory):
     """
     Test basic get_sync_status() library functionality.
     
     This test validates the library interface and basic operation without
     needing to create specific sync states.
     """
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+        style="realistic",
+        setup="local_remote_pair", 
+        repo_name="BB",
+        backend_type="xfs"
+    )
     config = setup["local_config"]
     
     # Test basic library functionality

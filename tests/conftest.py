@@ -56,181 +56,44 @@ default_project_path: /var/repos/dgs
 """
 
 
+# =============================================================================
+# PHASE 2: Replace old fixtures with factory-based implementations
+# =============================================================================
+
 @pytest.fixture
-def basic_repo_structure(tmp_path, dsg_project_config_text):
+def basic_repo_structure(factory_basic_repo_structure):
     """Create basic repository structure with config file."""
-    repo_name = "test-project"
-    repo_dir = tmp_path / repo_name
-    repo_dir.mkdir()
-    
-    project_cfg = repo_dir / ".dsgconfig.yml"
-    project_cfg.write_text(dsg_project_config_text.format(repo_name=repo_name))
-    
-    return {
-        "repo_name": repo_name,
-        "repo_dir": repo_dir,
-        "config_path": project_cfg
-    }
+    return factory_basic_repo_structure
 
 
 @pytest.fixture
-def repo_with_dsg_dir(basic_repo_structure):
+def repo_with_dsg_dir(factory_repo_with_dsg_dir):
     """Repository structure with .dsg directory and test files."""
-    repo_dir = basic_repo_structure["repo_dir"]
-    dsg_dir = repo_dir / ".dsg"
-    dsg_dir.mkdir()
-    
-    # Add a test file
-    test_file = repo_dir / "test_file.txt"
-    test_file.write_text("This is a test file")
-    
-    return {
-        **basic_repo_structure,
-        "dsg_dir": dsg_dir,
-        "test_file": test_file
-    }
+    return factory_repo_with_dsg_dir
 
 
 @pytest.fixture
-def complete_config_setup(basic_repo_structure, tmp_path, dsg_user_config_text):
+def complete_config_setup(factory_complete_config_setup):
     """Complete config setup with both user and project configs."""
-    # User config
-    user_dir = tmp_path / "usercfg"
-    user_dir.mkdir()
-    user_cfg = user_dir / "dsg.yml"
-    user_cfg.write_text(dsg_user_config_text)
-
-    return {
-        "project_root": basic_repo_structure["repo_dir"],
-        "repo_dir": basic_repo_structure["repo_dir"],
-        "user_cfg": user_cfg,
-        "user_config_dir": user_dir,
-        "project_cfg": basic_repo_structure["config_path"],
-        "repo_name": basic_repo_structure["repo_name"],
-    }
+    return factory_complete_config_setup
 
 
 @pytest.fixture
-def standard_config_objects(tmp_path):
+def standard_config_objects(factory_standard_config_objects):
     """Create standard Config objects programmatically."""
-    repo_name = "KO"
-    
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),
-        path=tmp_path,
-        name=repo_name,
-        type="zfs"
-    )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/"},
-        names=set(),
-        suffixes=set()
-    )
-    project = ProjectConfig(
-        name=repo_name,
-        transport="ssh",
-        ssh=ssh_config,
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    
-    return {
-        "config": cfg,
-        "ssh_config": ssh_config,
-        "user": user,
-        "repo_name": repo_name
-    }
+    return factory_standard_config_objects
 
 
 @pytest.fixture
-def legacy_format_config_objects(tmp_path):
+def legacy_format_config_objects(factory_legacy_format_config_objects):
     """Create Config objects for legacy format compatibility testing."""
-    repo_name = "KO"
-    
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),
-        path=tmp_path,
-        name=repo_name,  # Legacy: name in transport config
-        type="zfs"
-    )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/plot1.png"},
-        names=set(),
-        suffixes=set()
-    )
-    project = ProjectConfig(
-        name=repo_name,  # Also add top-level name for new format
-        transport="ssh",
-        ssh=ssh_config,
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    return cfg
+    return factory_legacy_format_config_objects
 
 
 @pytest.fixture
-def new_format_config_objects(tmp_path):
+def new_format_config_objects(factory_new_format_config_objects):
     """Create Config objects using new format (no name in transport config)."""
-    repo_name = "KO"
-    
-    ssh_config = SSHRepositoryConfig(
-        host=socket.gethostname(),
-        path=tmp_path,
-        name=None,  # New format: no name in transport config
-        type="zfs"
-    )
-    ignore_settings = IgnoreSettings(
-        paths={"graphs/"},
-        names=set(),
-        suffixes=set()
-    )
-    project = ProjectConfig(
-        name=repo_name,  # New format: top-level name
-        transport="ssh",
-        ssh=ssh_config,
-        data_dirs={"input", "output", "frozen"},
-        ignore=ignore_settings
-    )
-    
-    user_ssh = SSHUserConfig()
-    user = UserConfig(
-        user_name="Clayton Chiclitz",
-        user_id="clayton@yoyodyne.net",
-        ssh=user_ssh
-    )
-    
-    cfg = Config(
-        user=user,
-        project=project,
-        project_root=tmp_path
-    )
-    return cfg
+    return factory_new_format_config_objects
 
 
 def create_legacy_config_file(config_path: Path, repo_name: str, base_path: Path) -> None:
@@ -319,7 +182,11 @@ def with_config_paths(project_root: Path, user_config_dir: Path):
     return _context()
 
 
+# Import new repository factory
+from tests.fixtures.repository_factory import dsg_repository_factory
+
 # Import BB repository fixtures to make them discoverable by pytest
+# Note: BB fixtures are now factory-based and defined in bb_repo_factory.py
 from tests.fixtures.bb_repo_factory import (
     bb_repo_structure,
     bb_repo_with_validation_issues,
@@ -328,6 +195,195 @@ from tests.fixtures.bb_repo_factory import (
     bb_clone_integration_setup,
     bb_local_remote_setup
 )
+
+
+# =============================================================================
+# PHASE 1: Factory-based compatibility fixtures
+# These maintain 100% backward compatibility while using the new factory
+# =============================================================================
+
+@pytest.fixture
+def factory_basic_repo_structure(dsg_repository_factory, dsg_project_config_text):
+    """Factory-based replacement for basic_repo_structure."""
+    # Original basic_repo_structure only creates directory + config, no files
+    result = dsg_repository_factory(
+        style="empty",
+        with_config=True,
+        repo_name="test-project"
+    )
+    
+    # Override config with original template to match exactly
+    project_cfg = result["repo_path"] / ".dsgconfig.yml"
+    project_cfg.write_text(dsg_project_config_text.format(repo_name="test-project"))
+    
+    return {
+        "repo_name": result["repo_name"],
+        "repo_dir": result["repo_path"],
+        "config_path": project_cfg
+    }
+
+
+@pytest.fixture
+def factory_repo_with_dsg_dir(dsg_repository_factory):
+    """Factory-based replacement for repo_with_dsg_dir."""
+    result = dsg_repository_factory(
+        style="minimal",
+        with_config=True,
+        with_dsg_dir=True,
+        repo_name="test-project",
+        backend_type="zfs"
+    )
+    return {
+        "repo_name": result["repo_name"],
+        "repo_dir": result["repo_path"],
+        "config_path": result["config_path"],
+        "dsg_dir": result["repo_path"] / ".dsg",
+        "test_file": result["repo_path"] / "test_file.txt"
+    }
+
+
+@pytest.fixture
+def factory_complete_config_setup(dsg_repository_factory):
+    """Factory-based replacement for complete_config_setup."""
+    result = dsg_repository_factory(
+        style="minimal",
+        with_config=True,
+        with_user_config=True,
+        repo_name="test-project",
+        backend_type="zfs"
+    )
+    return {
+        "project_root": result["repo_path"],
+        "repo_dir": result["repo_path"],
+        "user_cfg": result["user_cfg"],
+        "user_config_dir": result["user_config_dir"],
+        "project_cfg": result["config_path"],
+        "repo_name": result["repo_name"]
+    }
+
+
+@pytest.fixture
+def factory_standard_config_objects(dsg_repository_factory):
+    """Factory-based replacement for standard_config_objects."""
+    result = dsg_repository_factory(
+        style="minimal",
+        repo_name="KO",
+        backend_type="zfs"
+    )
+    
+    # Extract config components using the factory's config creation logic
+    from tests.fixtures.repository_factory import _factory
+    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    
+    return {
+        "config": config,
+        "ssh_config": config.project.ssh,
+        "user": config.user,
+        "repo_name": result["repo_name"]
+    }
+
+
+@pytest.fixture  
+def factory_legacy_format_config_objects(dsg_repository_factory):
+    """Factory-based replacement for legacy_format_config_objects."""
+    result = dsg_repository_factory(
+        style="minimal",
+        repo_name="KO",
+        config_format="legacy",
+        backend_type="zfs"
+    )
+    
+    from tests.fixtures.repository_factory import _factory
+    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    return config
+
+
+@pytest.fixture
+def factory_new_format_config_objects(dsg_repository_factory):
+    """Factory-based replacement for new_format_config_objects."""
+    result = dsg_repository_factory(
+        style="minimal",
+        repo_name="KO",
+        config_format="modern",
+        ssh_name=None,  # Explicitly no name in transport config
+        backend_type="zfs"
+    )
+    
+    from tests.fixtures.repository_factory import _factory
+    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    return config
+
+
+@pytest.fixture
+def factory_bb_repo_structure(dsg_repository_factory):
+    """Factory-based replacement for bb_repo_structure."""
+    result = dsg_repository_factory(style="realistic", repo_name="BB")
+    return result["repo_path"]
+
+
+@pytest.fixture
+def factory_bb_repo_with_config(dsg_repository_factory):
+    """Factory-based replacement for bb_repo_with_config."""
+    result = dsg_repository_factory(
+        style="realistic",
+        with_config=True,
+        repo_name="BB",
+        backend_type="xfs"
+    )
+    
+    remote_path = result["base_path"] / "remote" / "BB"
+    return {
+        "bb_path": result["repo_path"],
+        "config_path": result["config_path"],
+        "remote_path": remote_path,
+        "base_path": result["base_path"]
+    }
+
+
+@pytest.fixture
+def factory_bb_repo_with_validation_issues(dsg_repository_factory):
+    """Factory-based replacement for bb_repo_with_validation_issues."""
+    result = dsg_repository_factory(
+        style="realistic",
+        with_validation_issues=True,
+        repo_name="BB"
+    )
+    return result["repo_path"]
+
+
+@pytest.fixture
+def factory_bb_repo_with_validation_issues_and_config(dsg_repository_factory):
+    """Factory-based replacement for bb_repo_with_validation_issues_and_config."""
+    result = dsg_repository_factory(
+        style="realistic",
+        with_config=True,
+        with_validation_issues=True,
+        repo_name="BB",
+        backend_type="xfs"
+    )
+    return result["repo_path"]
+
+
+@pytest.fixture
+def factory_bb_clone_integration_setup(dsg_repository_factory):
+    """Factory-based replacement for bb_clone_integration_setup."""
+    return dsg_repository_factory(
+        style="realistic",
+        setup="clone_integration",
+        repo_name="BB",
+        backend_type="xfs"
+    )
+
+
+@pytest.fixture
+def factory_bb_local_remote_setup(dsg_repository_factory):
+    """Factory-based replacement for bb_local_remote_setup."""
+    return dsg_repository_factory(
+        style="realistic", 
+        setup="local_remote_pair",
+        repo_name="BB",
+        backend_type="xfs"
+    )
 
 
 def pytest_runtest_teardown(item, nextitem):

@@ -63,9 +63,14 @@ from tests.fixtures.bb_repo_factory import (
 class TestSystematicSyncStates:
     """Systematic test suite for all 11 non-conflict sync states."""
 
-    def test_sLCR__all_eq_no_operation_needed(self, bb_local_remote_setup):
+    def test_sLCR__all_eq_no_operation_needed(self, dsg_repository_factory):
         """Test sLCR__all_eq: All three manifests identical - no operation needed"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/identical_file.csv"
         test_content = "id,data\n1,identical_content\n2,same_everywhere\n"
@@ -89,9 +94,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "identical_content")
         assert remote_file_content_matches(setup, test_file, "identical_content")
 
-    def test_sLCR__L_eq_C_ne_R_download_from_remote(self, bb_local_remote_setup):
+    def test_sLCR__L_eq_C_ne_R_download_from_remote(self, dsg_repository_factory):
         """Test sLCR__L_eq_C_ne_R: Remote changed - download from remote"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/remote_changed.csv"
         
@@ -116,9 +126,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "remote_modified")
         assert remote_file_content_matches(setup, test_file, "remote_modified")
 
-    def test_sLCR__L_eq_R_ne_C_update_cache_only(self, bb_local_remote_setup):
+    def test_sLCR__L_eq_R_ne_C_update_cache_only(self, dsg_repository_factory):
         """Test sLCR__L_eq_R_ne_C: Cache outdated - update cache only"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/cache_outdated.csv"
         
@@ -146,9 +161,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "both_have_this")
         assert remote_file_content_matches(setup, test_file, "both_have_this")
 
-    def test_sLCR__C_eq_R_ne_L_upload_to_remote(self, bb_local_remote_setup):
+    def test_sLCR__C_eq_R_ne_L_upload_to_remote(self, dsg_repository_factory):
         """Test sLCR__C_eq_R_ne_L: Local changed - upload to remote"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/local_changed.csv"
         
@@ -173,9 +193,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "local_modified")
         assert remote_file_content_matches(setup, test_file, "local_modified")
 
-    def test_sxLCR__C_eq_R_delete_from_remote(self, bb_local_remote_setup):
+    def test_sxLCR__C_eq_R_delete_from_remote(self, dsg_repository_factory):
         """Test sxLCR__C_eq_R: Local missing, cache and remote match - delete from remote (propagate local deletion)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/local_deleted.csv"
         
@@ -199,9 +224,14 @@ class TestSystematicSyncStates:
         assert not local_file_exists(setup, test_file)
         assert not remote_file_exists(setup, test_file)
 
-    def test_sxLCR__C_ne_R_conflict_detection(self, bb_local_remote_setup):
+    def test_sxLCR__C_ne_R_conflict_detection(self, dsg_repository_factory):
         """Test sxLCR__C_ne_R: Local missing, remote newer - should be CONFLICT"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/local_missing_remote_newer.csv"
         
@@ -228,9 +258,14 @@ class TestSystematicSyncStates:
         assert not local_file_exists(setup, test_file)
         assert remote_file_content_matches(setup, test_file, "remote_newer")
 
-    def test_sLxCR__L_eq_R_update_cache_only(self, bb_local_remote_setup):
+    def test_sLxCR__L_eq_R_update_cache_only(self, dsg_repository_factory):
         """Test sLxCR__L_eq_R: Cache missing, local and remote match - update cache"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/cache_missing.csv"
         
@@ -252,9 +287,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "matching")
         assert remote_file_content_matches(setup, test_file, "matching")
 
-    def test_sLCxR__L_eq_C_delete_local(self, bb_local_remote_setup):
+    def test_sLCxR__L_eq_C_delete_local(self, dsg_repository_factory):
         """Test sLCxR__L_eq_C: Remote missing, local and cache match - delete local (propagate remote deletion)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/remote_deleted.csv"
         
@@ -279,9 +319,14 @@ class TestSystematicSyncStates:
         assert not local_file_exists(setup, test_file)
         assert not remote_file_exists(setup, test_file)
 
-    def test_sLCxR__L_ne_C_conflict_detection(self, bb_local_remote_setup):
+    def test_sLCxR__L_ne_C_conflict_detection(self, dsg_repository_factory):
         """Test sLCxR__L_ne_C: Remote missing, local changed - should be CONFLICT"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/remote_missing_local_changed.csv"
         
@@ -307,9 +352,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "modified_local")
         assert not remote_file_exists(setup, test_file)
 
-    def test_sxLCxR__only_R_download_from_remote(self, bb_local_remote_setup):
+    def test_sxLCxR__only_R_download_from_remote(self, dsg_repository_factory):
         """Test sxLCxR__only_R: Only remote has file - download from remote"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/only_on_remote.csv"
         
@@ -330,9 +380,14 @@ class TestSystematicSyncStates:
         assert local_file_content_matches(setup, test_file, "only_remote")
         assert remote_file_content_matches(setup, test_file, "only_remote")
 
-    def test_sLxCxR__only_L_upload_to_remote(self, bb_local_remote_setup):
+    def test_sLxCxR__only_L_upload_to_remote(self, dsg_repository_factory):
         """Test sLxCxR__only_L: Only local has file - upload to remote"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/only_local.csv"
         
@@ -353,9 +408,14 @@ class TestSystematicSyncStates:
         assert remote_file_exists(setup, test_file)
         assert remote_file_content_matches(setup, test_file, "only_local")
 
-    def test_sxLCRx__only_C_remove_from_cache(self, bb_local_remote_setup):
+    def test_sxLCRx__only_C_remove_from_cache(self, dsg_repository_factory):
         """Test sxLCRx__only_C: Only cache has file - remove from cache (multi-user deletion scenario)"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         test_file = "task1/import/input/cache_only.csv"
         
@@ -381,9 +441,14 @@ class TestSystematicSyncStates:
         assert not local_file_exists(setup, test_file)
         assert not remote_file_exists(setup, test_file)
 
-    def test_sync_state_matrix_coverage(self, bb_local_remote_setup):
+    def test_sync_state_matrix_coverage(self, dsg_repository_factory):
         """Integration test verifying all non-conflict states work together"""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create multiple files in different states simultaneously

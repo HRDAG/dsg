@@ -26,11 +26,16 @@ from tests.fixtures.bb_repo_factory import (
 )
 
 
-def test_debug_integration_step_by_step(bb_local_remote_setup):
+def test_debug_integration_step_by_step(dsg_repository_factory):
     """
     Debug: Compare our working unit approach vs get_sync_status() step by step.
     """
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
     target_file = "task1/import/input/test-debug.csv"
     
     # Use exactly the same setup as working unit test

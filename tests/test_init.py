@@ -231,9 +231,11 @@ class TestInitManifestGeneration:
         for path in manifest.entries.keys():
             assert path == unicodedata.normalize("NFC", path)
     
-    def test_init_manifest_with_bb_repository(self, bb_repo_structure):
+    def test_init_manifest_with_bb_repository(self, dsg_repository_factory):
         """Test manifest generation using realistic BB repository structure."""
-        bb_path = bb_repo_structure
+        # Create BB repository with realistic structure
+        repo_result = dsg_repository_factory(style="realistic", repo_name="BB")
+        bb_path = repo_result["repo_path"]
         
         try:
             # Generate manifest for the BB repository

@@ -50,11 +50,13 @@ def safe_chdir(path):
             os.chdir(Path.home())
 
 
-def test_status_command_basic_functionality(bb_repo_structure, tmp_path):
+def test_status_command_basic_functionality(dsg_repository_factory, tmp_path):
     """
     Smoke test: verify status command runs without crashing.
     """
-    local_path = bb_repo_structure
+    # Create BB repository with realistic structure and .dsg directory
+    repo_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+    local_path = repo_result["repo_path"]
     
     runner = CliRunner()
     

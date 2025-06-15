@@ -26,9 +26,14 @@ from tests.fixtures.bb_repo_factory import (
 class TestSyncUploadDebug:
     """Debug tests for sync upload issues."""
 
-    def test_simple_local_only_file_upload(self, bb_local_remote_setup):
+    def test_simple_local_only_file_upload(self, dsg_repository_factory):
         """Test the simplest case: one local-only file should be uploaded."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create a single local-only file
@@ -63,9 +68,14 @@ class TestSyncUploadDebug:
         assert result["success"]
         assert remote_file_exists(setup, test_file), f"File {test_file} should exist remotely after sync"
 
-    def test_mixed_files_upload_download(self, bb_local_remote_setup):
+    def test_mixed_files_upload_download(self, dsg_repository_factory):
         """Test that both upload and download work in a mixed scenario."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Create local-only file (should be uploaded)
@@ -99,9 +109,14 @@ class TestSyncUploadDebug:
         assert remote_file_exists(setup, local_file), "Local file should be uploaded to remote"
         assert local_file_exists(setup, remote_file), "Remote file should be downloaded to local"
 
-    def test_debug_sync_state_detection(self, bb_local_remote_setup):
+    def test_debug_sync_state_detection(self, dsg_repository_factory):
         """Debug what sync states are being detected for various scenarios."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         
         # Create various file scenarios
         scenarios = {
@@ -136,9 +151,14 @@ class TestSyncUploadDebug:
         # This test doesn't sync, just debugs the detection
         assert len(sync_status.sync_states) > 0, "Should detect some sync states"
 
-    def test_exact_mixed_state_replication(self, bb_local_remote_setup):
+    def test_exact_mixed_state_replication(self, dsg_repository_factory):
         """Test exact replication of the failing mixed state test."""
-        setup = bb_local_remote_setup
+        setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
         console = Console()
         
         # Use the exact same function as the failing test

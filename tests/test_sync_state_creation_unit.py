@@ -25,14 +25,19 @@ from tests.fixtures.bb_repo_factory import (
 )
 
 
-def test_sync_state_creation_unit(bb_local_remote_setup):
+def test_sync_state_creation_unit(dsg_repository_factory):
     """
     Unit test: verify create_sync_state actually creates expected states.
     
     This test directly verifies the state creation logic without going
     through get_sync_status() to isolate the problem.
     """
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
     target_file = "task1/import/input/test-unit.csv"
     
     # Step 1: Create the "all equal" state manually
@@ -94,13 +99,18 @@ def test_sync_state_creation_unit(bb_local_remote_setup):
     assert actual_state == expected_state, f"Expected {expected_state}, got {actual_state}"
 
 
-def test_file_modification_creates_different_hash(bb_local_remote_setup):
+def test_file_modification_creates_different_hash(dsg_repository_factory):
     """
     Unit test: verify that modifying a file actually changes its hash.
     
     This is a more basic test to ensure our file modification is working.
     """
-    setup = bb_local_remote_setup
+    setup = dsg_repository_factory(
+            style="realistic",
+            setup="local_remote_pair", 
+            repo_name="BB",
+            backend_type="xfs"
+        )
     target_file = "task1/import/input/test-hash-change.csv"
     
     local_path = setup["local_path"]
