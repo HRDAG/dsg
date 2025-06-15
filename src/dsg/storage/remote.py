@@ -77,6 +77,40 @@ class ZFSFilesystem:
         if target_path.exists():
             target_path.unlink()
     
+    def create_symlink(self, rel_path: str, target: str) -> None:
+        """Create symlink in ZFS clone"""
+        if not self.clone_path:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        symlink_path = Path(self.clone_path) / rel_path
+        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Remove existing file/symlink if it exists
+        if symlink_path.exists() or symlink_path.is_symlink():
+            symlink_path.unlink()
+        
+        # Create the symlink
+        symlink_path.symlink_to(target)
+    
+    def is_symlink(self, rel_path: str) -> bool:
+        """Check if file in ZFS clone is a symlink"""
+        if not self.clone_path:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        file_path = Path(self.clone_path) / rel_path
+        return file_path.is_symlink()
+    
+    def get_symlink_target(self, rel_path: str) -> str:
+        """Get symlink target from ZFS clone"""
+        if not self.clone_path:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        file_path = Path(self.clone_path) / rel_path
+        if not file_path.is_symlink():
+            raise RuntimeError(f"File {rel_path} is not a symlink")
+        
+        return str(file_path.readlink())
+    
     def commit_transaction(self, transaction_id: str) -> None:
         """Promote ZFS clone (atomic)"""
         if transaction_id != self.transaction_id:
@@ -147,6 +181,40 @@ class XFSFilesystem:
         target_path = self.staging_dir / rel_path
         if target_path.exists():
             target_path.unlink()
+    
+    def create_symlink(self, rel_path: str, target: str) -> None:
+        """Create symlink in staging directory"""
+        if not self.staging_dir:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        symlink_path = self.staging_dir / rel_path
+        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Remove existing file/symlink if it exists
+        if symlink_path.exists() or symlink_path.is_symlink():
+            symlink_path.unlink()
+        
+        # Create the symlink
+        symlink_path.symlink_to(target)
+    
+    def is_symlink(self, rel_path: str) -> bool:
+        """Check if file in staging directory is a symlink"""
+        if not self.staging_dir:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        file_path = self.staging_dir / rel_path
+        return file_path.is_symlink()
+    
+    def get_symlink_target(self, rel_path: str) -> str:
+        """Get symlink target from staging directory"""
+        if not self.staging_dir:
+            raise RuntimeError("Transaction not started - call begin_transaction first")
+        
+        file_path = self.staging_dir / rel_path
+        if not file_path.is_symlink():
+            raise RuntimeError(f"File {rel_path} is not a symlink")
+        
+        return str(file_path.readlink())
     
     def commit_transaction(self, transaction_id: str) -> None:
         """Move staging to final location (atomic directory rename)"""

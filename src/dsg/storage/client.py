@@ -82,9 +82,26 @@ class ClientFilesystem:
     
     def delete_file(self, rel_path: str) -> None:
         """Stage file deletion (mark for removal on commit)"""
+        if not self.staging_dir:
+            return
         deletion_marker = self.staging_dir / ".deletions" / rel_path
         deletion_marker.parent.mkdir(parents=True, exist_ok=True)
-        deletion_marker.touch()
+        deletion_marker.write_text(f"delete:{rel_path}")
+    
+    def create_symlink(self, rel_path: str, target: str) -> None:
+        """Stage symlink creation"""
+        if not self.staging_dir:
+            return
+        
+        symlink_path = self.staging_dir / rel_path
+        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Remove existing file/symlink if it exists
+        if symlink_path.exists() or symlink_path.is_symlink():
+            symlink_path.unlink()
+        
+        # Create the symlink in staging
+        symlink_path.symlink_to(target)
     
     def commit_transaction(self, transaction_id: str) -> None:
         """Atomically move staged files to final locations"""
@@ -93,7 +110,7 @@ class ClientFilesystem:
         
         # Move all staged files to final locations
         for staged_file in self.staging_dir.rglob("*"):
-            if staged_file.is_file() and not staged_file.match(".deletions/*"):
+            if staged_file.is_file() and ".deletions" not in str(staged_file.relative_to(self.staging_dir)):
                 rel_path = staged_file.relative_to(self.staging_dir)
                 final_path = self.project_root / rel_path
                 final_path.parent.mkdir(parents=True, exist_ok=True)

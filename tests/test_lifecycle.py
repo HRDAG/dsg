@@ -425,27 +425,38 @@ class TestInitRepository:
 class TestSyncOperations:
     """Tests for sync operation execution and manifest-level sync logic"""
     
-    @patch('dsg.core.lifecycle.get_sync_status')
-    @patch('dsg.core.lifecycle._determine_sync_operation_type')
-    @patch('dsg.core.lifecycle._execute_bulk_upload')
     @patch('dsg.core.lifecycle._update_manifests_after_sync')
-    @patch('dsg.core.lifecycle.create_backend')
-    def test_execute_sync_operations_init_like(self, mock_create_backend, mock_update_manifests, mock_bulk_upload, mock_determine_type, mock_get_sync_status):
-        """Test _execute_sync_operations with init-like sync (L != C but C == R)"""
-        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+    @patch('dsg.storage.create_transaction')
+    @patch('dsg.storage.calculate_sync_plan')
+    @patch('dsg.core.operations.get_sync_status')
+    def test_execute_sync_operations_init_like(self, mock_get_sync_status, mock_calculate_sync_plan, mock_create_transaction, mock_update_manifests):
+        """Test _execute_sync_operations with transaction system integration"""
+        from dsg.core.lifecycle import _execute_sync_operations
         from dsg.data.manifest_merger import SyncState
         from rich.console import Console
         
-        # Setup mocks for init-like sync
-        mock_determine_type.return_value = SyncOperationType.INIT_LIKE
+        # Setup mock status result
         mock_sync_status = MagicMock()
         mock_sync_status.sync_states = {
             'changed_file.txt': SyncState.sLCR__C_eq_R_ne_L,
             'new_file.txt': SyncState.sLxCxR__only_L
         }
         mock_get_sync_status.return_value = mock_sync_status
-        mock_create_backend.return_value = MagicMock()
-        mock_update_manifests.return_value = None
+        
+        # Setup mock sync plan
+        mock_sync_plan = {
+            'upload_files': ['changed_file.txt', 'new_file.txt'],
+            'download_files': [],
+            'delete_local': [],
+            'delete_remote': [],
+            'upload_archive': [],
+            'download_archive': []
+        }
+        mock_calculate_sync_plan.return_value = mock_sync_plan
+        
+        # Setup mock transaction
+        mock_transaction = MagicMock()
+        mock_create_transaction.return_value.__enter__.return_value = mock_transaction
         
         mock_config = MagicMock()
         mock_config.user.user_id = "test_user"
@@ -454,31 +465,44 @@ class TestSyncOperations:
         # Execute
         _execute_sync_operations(mock_config, console)
         
-        # Verify init-like workflow
-        mock_determine_type.assert_called_once()
-        mock_bulk_upload.assert_called_once_with(mock_config, mock.ANY, console)
+        # Verify transaction workflow
+        mock_get_sync_status.assert_called_once_with(mock_config, include_remote=True, verbose=False)
+        mock_calculate_sync_plan.assert_called_once_with(mock_sync_status, mock_config)
+        mock_create_transaction.assert_called_once_with(mock_config)
+        mock_transaction.sync_files.assert_called_once_with(mock_sync_plan, console)
         
-    @patch('dsg.core.lifecycle.get_sync_status')
-    @patch('dsg.core.lifecycle._determine_sync_operation_type')
-    @patch('dsg.core.lifecycle._execute_bulk_download')
     @patch('dsg.core.lifecycle._update_manifests_after_sync')
-    @patch('dsg.core.lifecycle.create_backend')
-    def test_execute_sync_operations_clone_like(self, mock_create_backend, mock_update_manifests, mock_bulk_download, mock_determine_type, mock_get_sync_status):
-        """Test _execute_sync_operations with clone-like sync (L == C but C != R)"""
-        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+    @patch('dsg.storage.create_transaction')
+    @patch('dsg.storage.calculate_sync_plan')
+    @patch('dsg.core.operations.get_sync_status')
+    def test_execute_sync_operations_clone_like(self, mock_get_sync_status, mock_calculate_sync_plan, mock_create_transaction, mock_update_manifests):
+        """Test _execute_sync_operations with transaction system for clone-like sync"""
+        from dsg.core.lifecycle import _execute_sync_operations
         from dsg.data.manifest_merger import SyncState
         from rich.console import Console
         
-        # Setup mocks for clone-like sync
-        mock_determine_type.return_value = SyncOperationType.CLONE_LIKE
+        # Setup mock status result for clone-like sync
         mock_sync_status = MagicMock()
         mock_sync_status.sync_states = {
             'remote_changed.txt': SyncState.sLCR__L_eq_C_ne_R,
             'remote_new.txt': SyncState.sxLCxR__only_R
         }
         mock_get_sync_status.return_value = mock_sync_status
-        mock_create_backend.return_value = MagicMock()
-        mock_update_manifests.return_value = None
+        
+        # Setup mock sync plan for download operations
+        mock_sync_plan = {
+            'upload_files': [],
+            'download_files': ['remote_changed.txt', 'remote_new.txt'],
+            'delete_local': [],
+            'delete_remote': [],
+            'upload_archive': [],
+            'download_archive': []
+        }
+        mock_calculate_sync_plan.return_value = mock_sync_plan
+        
+        # Setup mock transaction
+        mock_transaction = MagicMock()
+        mock_create_transaction.return_value.__enter__.return_value = mock_transaction
         
         mock_config = MagicMock()
         mock_config.user.user_id = "test_user"
@@ -487,32 +511,45 @@ class TestSyncOperations:
         # Execute
         _execute_sync_operations(mock_config, console)
         
-        # Verify clone-like workflow
-        mock_determine_type.assert_called_once()
-        mock_bulk_download.assert_called_once_with(mock_config, mock.ANY, console)
+        # Verify transaction workflow
+        mock_get_sync_status.assert_called_once_with(mock_config, include_remote=True, verbose=False)
+        mock_calculate_sync_plan.assert_called_once_with(mock_sync_status, mock_config)
+        mock_create_transaction.assert_called_once_with(mock_config)
+        mock_transaction.sync_files.assert_called_once_with(mock_sync_plan, console)
 
-    @patch('dsg.core.lifecycle.get_sync_status')
-    @patch('dsg.core.lifecycle._determine_sync_operation_type')
-    @patch('dsg.core.lifecycle._execute_file_by_file_sync')
     @patch('dsg.core.lifecycle._update_manifests_after_sync')
-    @patch('dsg.core.lifecycle.create_backend')
-    def test_execute_sync_operations_mixed(self, mock_create_backend, mock_update_manifests, mock_file_by_file, mock_determine_type, mock_get_sync_status):
-        """Test _execute_sync_operations with mixed sync (complex state)"""
-        from dsg.core.lifecycle import _execute_sync_operations, SyncOperationType
+    @patch('dsg.storage.create_transaction')
+    @patch('dsg.storage.calculate_sync_plan')
+    @patch('dsg.core.operations.get_sync_status')
+    def test_execute_sync_operations_mixed(self, mock_get_sync_status, mock_calculate_sync_plan, mock_create_transaction, mock_update_manifests):
+        """Test _execute_sync_operations with transaction system for mixed sync operations"""
+        from dsg.core.lifecycle import _execute_sync_operations
         from dsg.data.manifest_merger import SyncState
         from rich.console import Console
         
-        # Setup mocks for mixed sync
-        mock_determine_type.return_value = SyncOperationType.MIXED
+        # Setup mock status result for mixed sync operations
         mock_sync_status = MagicMock()
         mock_sync_status.sync_states = {
-            'conflict_file.txt': SyncState.sLCR__all_ne,
-            'local_only.txt': SyncState.sLxCxR__only_L,
-            'remote_only.txt': SyncState.sxLCxR__only_R
+            'upload_file.txt': SyncState.sLxCxR__only_L,
+            'download_file.txt': SyncState.sxLCxR__only_R,
+            'update_file.txt': SyncState.sLCR__C_eq_R_ne_L
         }
         mock_get_sync_status.return_value = mock_sync_status
-        mock_create_backend.return_value = MagicMock()
-        mock_update_manifests.return_value = None
+        
+        # Setup mock sync plan for mixed operations
+        mock_sync_plan = {
+            'upload_files': ['upload_file.txt', 'update_file.txt'],
+            'download_files': ['download_file.txt'],
+            'delete_local': [],
+            'delete_remote': [],
+            'upload_archive': [],
+            'download_archive': []
+        }
+        mock_calculate_sync_plan.return_value = mock_sync_plan
+        
+        # Setup mock transaction
+        mock_transaction = MagicMock()
+        mock_create_transaction.return_value.__enter__.return_value = mock_transaction
         
         mock_config = MagicMock()
         mock_config.user.user_id = "test_user"
@@ -521,9 +558,11 @@ class TestSyncOperations:
         # Execute
         _execute_sync_operations(mock_config, console)
         
-        # Verify mixed workflow
-        mock_determine_type.assert_called_once()
-        mock_file_by_file.assert_called_once_with(mock_config, mock_sync_status.sync_states, console)
+        # Verify transaction workflow
+        mock_get_sync_status.assert_called_once_with(mock_config, include_remote=True, verbose=False)
+        mock_calculate_sync_plan.assert_called_once_with(mock_sync_status, mock_config)
+        mock_create_transaction.assert_called_once_with(mock_config)
+        mock_transaction.sync_files.assert_called_once_with(mock_sync_plan, console)
 
     def test_determine_sync_operation_type_init_like(self):
         """Test manifest-level sync type detection for init-like scenario"""

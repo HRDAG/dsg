@@ -694,6 +694,9 @@ def _execute_sync_operations(config: Config, console: 'Console') -> None:
         with create_transaction(config) as tx:
             tx.sync_files(sync_plan, console)
         
+        # Step 4: Update manifests and metadata after successful sync
+        _update_manifests_after_sync(config, console)
+        
         console.print("[green]✓ Sync completed successfully[/green]")
         
     except Exception as e:

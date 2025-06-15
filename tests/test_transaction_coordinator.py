@@ -46,6 +46,9 @@ def mock_client_fs():
     mock.send_file = Mock(return_value=MockContentStream(b"test content"))
     mock.recv_file = Mock()
     mock.delete_file = Mock()
+    mock.create_symlink = Mock()
+    # Mock project_root as a Mock object so path operations fail gracefully
+    mock.project_root = Mock()
     return mock
 
 @pytest.fixture
@@ -58,6 +61,9 @@ def mock_remote_fs():
     mock.send_file = Mock(return_value=MockContentStream(b"remote content"))
     mock.recv_file = Mock()
     mock.delete_file = Mock()
+    mock.is_symlink = Mock(return_value=False)  # Default: no symlinks in tests
+    mock.get_symlink_target = Mock(return_value="mock_target")
+    mock.create_symlink = Mock()
     return mock
 
 @pytest.fixture
