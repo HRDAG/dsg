@@ -19,16 +19,16 @@ def repo_with_history(repo_with_dsg_dir):
     repo_with_dsg_dir["repo_dir"]
     dsg_dir = repo_with_dsg_dir["dsg_dir"]
     archive_dir = dsg_dir / "archive"
-    archive_dir.mkdir()
+    archive_dir.mkdir(exist_ok=True)
     
     # Create test archive files with realistic manifest data
     test_archives = [
         {
-            "filename": "s1-sync.json.gz",
+            "filename": "s2-sync.json.gz",
             "data": {
                 "metadata": {
                     "manifest_version": "0.1.0",
-                    "snapshot_id": "s1",
+                    "snapshot_id": "s2",
                     "created_at": "2025-06-01T10:00:00-08:00",
                     "entry_count": 2,
                     "entries_hash": "abc123",
@@ -56,11 +56,11 @@ def repo_with_history(repo_with_dsg_dir):
             }
         },
         {
-            "filename": "s2-sync.json.gz",
+            "filename": "s3-sync.json.gz",
             "data": {
                 "metadata": {
                     "manifest_version": "0.1.0",
-                    "snapshot_id": "s2",
+                    "snapshot_id": "s3",
                     "created_at": "2025-06-01T14:00:00-08:00",
                     "entry_count": 2,
                     "entries_hash": "def456",
@@ -143,11 +143,13 @@ class TestHistoryWalker:
         walker = HistoryWalker(repo_with_history["repo_dir"])
         archive_files = walker.get_archive_files()
         
-        assert len(archive_files) == 2
-        assert archive_files[0][0] == 1  # s1
-        assert archive_files[1][0] == 2  # s2
-        assert archive_files[0][1].name == "s1-sync.json.gz"
+        assert len(archive_files) == 3
+        assert archive_files[0][0] == 1  # s1 (from factory)
+        assert archive_files[1][0] == 2  # s2 (from test)
+        assert archive_files[2][0] == 3  # s3 (from test)
+        assert archive_files[0][1].name == "s1-sync.json.lz4"
         assert archive_files[1][1].name == "s2-sync.json.gz"
+        assert archive_files[2][1].name == "s3-sync.json.gz"
     
     def test_parse_snapshot_number(self, repo_with_history):
         walker = HistoryWalker(repo_with_history["repo_dir"])

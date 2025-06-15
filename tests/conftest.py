@@ -235,7 +235,7 @@ def factory_repo_with_dsg_dir(dsg_repository_factory):
 
 
 @pytest.fixture
-def factory_complete_config_setup(dsg_repository_factory):
+def factory_complete_config_setup(dsg_repository_factory, dsg_project_config_text, dsg_user_config_text):
     """Factory-based replacement for complete_config_setup."""
     result = dsg_repository_factory(
         style="minimal",
@@ -244,6 +244,14 @@ def factory_complete_config_setup(dsg_repository_factory):
         repo_name="test-project",
         backend_type="zfs"
     )
+    
+    # Override with expected config templates to maintain test compatibility
+    project_cfg = result["config_path"]
+    project_cfg.write_text(dsg_project_config_text.format(repo_name="test-project"))
+    
+    user_cfg = result["user_cfg"]
+    user_cfg.write_text(dsg_user_config_text)
+    
     return {
         "project_root": result["repo_path"],
         "repo_dir": result["repo_path"],
@@ -260,7 +268,8 @@ def factory_standard_config_objects(dsg_repository_factory):
     result = dsg_repository_factory(
         style="minimal",
         repo_name="KO",
-        backend_type="zfs"
+        backend_type="zfs",
+        with_config=True
     )
     
     # Extract config components using the factory's config creation logic
@@ -282,7 +291,8 @@ def factory_legacy_format_config_objects(dsg_repository_factory):
         style="minimal",
         repo_name="KO",
         config_format="legacy",
-        backend_type="zfs"
+        backend_type="zfs",
+        with_config=True
     )
     
     from tests.fixtures.repository_factory import _factory
@@ -298,7 +308,8 @@ def factory_new_format_config_objects(dsg_repository_factory):
         repo_name="KO",
         config_format="modern",
         ssh_name=None,  # Explicitly no name in transport config
-        backend_type="zfs"
+        backend_type="zfs",
+        with_config=True
     )
     
     from tests.fixtures.repository_factory import _factory
