@@ -18,7 +18,7 @@ import pytest
 pytest_plugins = ["tests.fixtures.bb_repo_factory"]
 
 
-def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_config):
+def test_sync_blocks_on_validation_warnings(dsg_repository_factory):
     """
     Test that sync command blocks when validation warnings exist.
     
@@ -28,7 +28,8 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
     - CON/ (Windows reserved name)  
     - backup_dir~/ (trailing ~)
     """
-    bb_path = bb_repo_with_validation_issues_and_config
+    factory_result = dsg_repository_factory(style="realistic", with_config=True, with_validation_issues=True, repo_name="BB", backend_type="xfs")
+    bb_path = factory_result["repo_path"]
     
     # This test will fail until we implement sync_repository() function
     # that checks for validation warnings and blocks
@@ -59,13 +60,14 @@ def test_sync_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_c
         sync_repository(config, console, dry_run=False, normalize=False)
 
 
-def test_sync_proceeds_with_normalize_option(bb_repo_with_validation_issues_and_config):
+def test_sync_proceeds_with_normalize_option(dsg_repository_factory):
     """
     Test that sync proceeds when normalization is used.
     
     This should attempt to normalize problematic paths before syncing.
     """
-    bb_path = bb_repo_with_validation_issues_and_config
+    factory_result = dsg_repository_factory(style="realistic", with_config=True, with_validation_issues=True, repo_name="BB", backend_type="xfs")
+    bb_path = factory_result["repo_path"]
     
     from dsg.config.manager import Config, ProjectConfig, UserConfig, IgnoreSettings, SSHRepositoryConfig
     from dsg.core.lifecycle import sync_repository

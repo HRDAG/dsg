@@ -30,9 +30,10 @@ pytest_plugins = ["tests.fixtures.bb_repo_factory"]
 class TestTransactionIntegration:
     """Integration tests using real filesystem operations"""
     
-    def test_transaction_with_real_components(self, bb_repo_structure):
+    def test_transaction_with_real_components(self, dsg_repository_factory):
         """Test Transaction coordinator with real ClientFilesystem and LocalhostTransport"""
-        repo_path = bb_repo_structure
+        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+        repo_path = factory_result["repo_path"]
         
         # Create real components
         client_fs = ClientFilesystem(repo_path)
@@ -61,7 +62,7 @@ class TestTransactionIntegration:
             # Find actual files that exist
             csv_files = list(repo_path.rglob("*.csv"))
             if not csv_files:
-                pytest.skip("No CSV files found in bb_repo_structure")
+                pytest.skip("No CSV files found in repository")
             
             # Test successful transaction with real file
             sync_plan = {
@@ -79,9 +80,10 @@ class TestTransactionIntegration:
             mock_zfs_ops.commit_atomic_sync.assert_called_once()
             assert not mock_zfs_ops.rollback_atomic_sync.called
     
-    def test_transaction_rollback_on_failure(self, bb_repo_structure):
+    def test_transaction_rollback_on_failure(self, dsg_repository_factory):
         """Test that Transaction properly rolls back on failure"""
-        repo_path = bb_repo_structure
+        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+        repo_path = factory_result["repo_path"]
         
         client_fs = ClientFilesystem(repo_path)
         
@@ -216,9 +218,10 @@ class TestTransactionIntegration:
 class TestTransactionWithRealisticData:
     """Integration tests using the comprehensive bb_repo fixtures"""
     
-    def test_transaction_with_bb_repo(self, bb_repo_with_config):
+    def test_transaction_with_bb_repo(self, dsg_repository_factory):
         """Test Transaction with realistic repository structure"""
-        repo_path = bb_repo_with_config['bb_path']
+        factory_result = dsg_repository_factory(style="realistic", with_config=True, repo_name="BB", backend_type="xfs")
+        repo_path = factory_result["repo_path"]
         
         # Create components
         client_fs = ClientFilesystem(repo_path)

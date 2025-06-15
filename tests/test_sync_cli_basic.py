@@ -21,14 +21,15 @@ from dsg.cli import app
 pytest_plugins = ["tests.fixtures.bb_repo_factory"]
 
 
-def test_sync_cli_blocks_on_validation_warnings(bb_repo_with_validation_issues_and_config):
+def test_sync_cli_blocks_on_validation_warnings(dsg_repository_factory):
     """
     Test that sync CLI command fails appropriately when validation warnings exist.
     
     For now, this tests that the CLI command runs without syntax errors.
     The full validation blocking will be tested once we have user config setup.
     """
-    bb_path = bb_repo_with_validation_issues_and_config
+    factory_result = dsg_repository_factory(style="realistic", with_config=True, with_validation_issues=True, repo_name="BB", backend_type="xfs")
+    bb_path = factory_result["repo_path"]
     
     # Change to bb repo directory for CLI test
     old_cwd = os.getcwd()

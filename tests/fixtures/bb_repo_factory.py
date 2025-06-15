@@ -262,76 +262,8 @@ def create_dsg_structure(bb_path: Path) -> None:
 # PHASE 2: Replace old fixtures with factory-based implementations  
 # =============================================================================
 
-@pytest.fixture
-def bb_repo_structure(dsg_repository_factory):
-    """Create comprehensive BB repository structure with realistic content."""
-    result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
-    return result["repo_path"]
-
-
-@pytest.fixture
-def bb_repo_with_validation_issues(dsg_repository_factory):
-    """BB repository with additional problematic directory paths for validation testing."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_validation_issues=True,
-        repo_name="BB"
-    )
-    return result["repo_path"]
-
-
-@pytest.fixture 
-def bb_repo_with_validation_issues_and_config(dsg_repository_factory):
-    """BB repository with validation issues AND proper .dsgconfig.yml setup."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_config=True,
-        with_validation_issues=True,
-        repo_name="BB",
-        backend_type="xfs"
-    )
-    return result["repo_path"]
-
-
-@pytest.fixture
-def bb_repo_with_config(dsg_repository_factory):
-    """BB repository with .dsgconfig.yml for localhost backend testing."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_config=True,
-        repo_name="BB",
-        backend_type="xfs"
-    )
-    
-    remote_path = result["base_path"] / "remote" / "BB"
-    return {
-        "bb_path": result["repo_path"],
-        "config_path": result["config_path"],
-        "remote_path": remote_path,
-        "base_path": result["base_path"]
-    }
-
-
-@pytest.fixture
-def bb_clone_integration_setup(dsg_repository_factory):
-    """Create remote with DSG-managed files and local stub with non-DSG files for clone testing."""
-    return dsg_repository_factory(
-        style="realistic",
-        setup="clone_integration",
-        repo_name="BB",
-        backend_type="xfs"
-    )
-
-
-@pytest.fixture
-def bb_local_remote_setup(dsg_repository_factory):
-    """Create local and remote BB repositories with backends and configs."""
-    return dsg_repository_factory(
-        style="realistic", 
-        setup="local_remote_pair",
-        repo_name="BB",
-        backend_type="xfs"
-    )
+# Legacy fixture definitions removed in Phase 5B
+# All regular tests now use dsg_repository_factory directly
 
 
 def modify_file_content(

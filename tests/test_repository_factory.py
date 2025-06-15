@@ -132,23 +132,4 @@ def test_factory_config_formats(dsg_repository_factory):
     assert legacy_config["project"]["ssh"]["name"] == "test-legacy"
 
 
-def test_factory_backward_compatibility_basic_repo_structure(factory_basic_repo_structure):
-    """Test factory-based replacement maintains compatibility."""
-    result = factory_basic_repo_structure
-    
-    assert "repo_name" in result
-    assert "repo_dir" in result  
-    assert "config_path" in result
-    assert result["repo_name"] == "test-project"
-    assert result["repo_dir"].exists()
-    assert result["config_path"].exists()
-
-
-def test_factory_backward_compatibility_bb_repo_structure(factory_bb_repo_structure):
-    """Test factory-based BB replacement maintains compatibility."""
-    bb_path = factory_bb_repo_structure
-    
-    assert bb_path.exists()
-    assert (bb_path / "task1" / "import" / "input").exists()
-    assert (bb_path / "task1" / "import" / "input" / "some-data.csv").exists()
-    assert (bb_path / "task1" / "analysis" / "src" / "processor.R").exists()
+# Backward compatibility tests removed in Phase 6 - legacy fixtures no longer exist

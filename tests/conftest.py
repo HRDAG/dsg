@@ -185,16 +185,8 @@ def with_config_paths(project_root: Path, user_config_dir: Path):
 # Import new repository factory
 from tests.fixtures.repository_factory import dsg_repository_factory
 
-# Import BB repository fixtures to make them discoverable by pytest
-# Note: BB fixtures are now factory-based and defined in bb_repo_factory.py
-from tests.fixtures.bb_repo_factory import (
-    bb_repo_structure,
-    bb_repo_with_validation_issues,
-    bb_repo_with_validation_issues_and_config,
-    bb_repo_with_config,
-    bb_clone_integration_setup,
-    bb_local_remote_setup
-)
+# Legacy fixture imports removed in Phase 5B
+# All regular tests now use dsg_repository_factory directly
 
 
 # =============================================================================
@@ -314,76 +306,7 @@ def factory_new_format_config_objects(dsg_repository_factory):
     return config
 
 
-@pytest.fixture
-def factory_bb_repo_structure(dsg_repository_factory):
-    """Factory-based replacement for bb_repo_structure."""
-    result = dsg_repository_factory(style="realistic", repo_name="BB")
-    return result["repo_path"]
-
-
-@pytest.fixture
-def factory_bb_repo_with_config(dsg_repository_factory):
-    """Factory-based replacement for bb_repo_with_config."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_config=True,
-        repo_name="BB",
-        backend_type="xfs"
-    )
-    
-    remote_path = result["base_path"] / "remote" / "BB"
-    return {
-        "bb_path": result["repo_path"],
-        "config_path": result["config_path"],
-        "remote_path": remote_path,
-        "base_path": result["base_path"]
-    }
-
-
-@pytest.fixture
-def factory_bb_repo_with_validation_issues(dsg_repository_factory):
-    """Factory-based replacement for bb_repo_with_validation_issues."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_validation_issues=True,
-        repo_name="BB"
-    )
-    return result["repo_path"]
-
-
-@pytest.fixture
-def factory_bb_repo_with_validation_issues_and_config(dsg_repository_factory):
-    """Factory-based replacement for bb_repo_with_validation_issues_and_config."""
-    result = dsg_repository_factory(
-        style="realistic",
-        with_config=True,
-        with_validation_issues=True,
-        repo_name="BB",
-        backend_type="xfs"
-    )
-    return result["repo_path"]
-
-
-@pytest.fixture
-def factory_bb_clone_integration_setup(dsg_repository_factory):
-    """Factory-based replacement for bb_clone_integration_setup."""
-    return dsg_repository_factory(
-        style="realistic",
-        setup="clone_integration",
-        repo_name="BB",
-        backend_type="xfs"
-    )
-
-
-@pytest.fixture
-def factory_bb_local_remote_setup(dsg_repository_factory):
-    """Factory-based replacement for bb_local_remote_setup."""
-    return dsg_repository_factory(
-        style="realistic", 
-        setup="local_remote_pair",
-        repo_name="BB",
-        backend_type="xfs"
-    )
+# Legacy compatibility fixtures removed in Phase 6 - no longer needed
 
 
 def pytest_runtest_teardown(item, nextitem):

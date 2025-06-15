@@ -44,9 +44,10 @@ def safe_chdir(path):
 
 
 
-def test_scan_result_has_validation_warnings_field(bb_repo_structure):
+def test_scan_result_has_validation_warnings_field(dsg_repository_factory):
     """Test that ScanResult includes validation_warnings field."""
-    bb_path = bb_repo_structure
+    result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+    bb_path = result["repo_path"]
     
     # Scan the BB repository
     result = scan_directory_no_cfg(bb_path, include_dsg_files=False)
@@ -56,9 +57,10 @@ def test_scan_result_has_validation_warnings_field(bb_repo_structure):
     assert isinstance(result.validation_warnings, list)
 
 
-def test_scanner_collects_validation_warnings_for_problematic_paths(bb_repo_with_validation_issues):
+def test_scanner_collects_validation_warnings_for_problematic_paths(dsg_repository_factory):
     """Test that scanner collects validation warnings for problematic directory paths."""
-    bb_path = bb_repo_with_validation_issues
+    factory_result = dsg_repository_factory(style="realistic", with_validation_issues=True, repo_name="BB")
+    bb_path = factory_result["repo_path"]
     
     # Scan with validation warnings collection
     result = scan_directory_no_cfg(bb_path, include_dsg_files=False)
@@ -87,9 +89,10 @@ def test_scanner_collects_validation_warnings_for_problematic_paths(bb_repo_with
     assert 'illegal characters' in combined_messages or 'Reserved name' in combined_messages
 
 
-def test_scanner_validation_warnings_dont_break_manifest_creation(bb_repo_with_validation_issues):
+def test_scanner_validation_warnings_dont_break_manifest_creation(dsg_repository_factory):
     """Test that validation warnings don't prevent manifest creation."""
-    bb_path = bb_repo_with_validation_issues
+    factory_result = dsg_repository_factory(style="realistic", with_validation_issues=True, repo_name="BB")
+    bb_path = factory_result["repo_path"]
     
     # Scan directory
     result = scan_directory_no_cfg(bb_path, include_dsg_files=False)
@@ -143,9 +146,10 @@ def test_scanner_unicode_normalization_warnings_in_paths(tmp_path):
         assert len(normalization_warnings) > 0
 
 
-def test_scanner_no_warnings_for_valid_bb_repo(bb_repo_structure):
+def test_scanner_no_warnings_for_valid_bb_repo(dsg_repository_factory):
     """Test that scanner doesn't generate warnings for valid BB repo structure."""
-    bb_path = bb_repo_structure
+    factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+    bb_path = factory_result["repo_path"]
     
     # Scan the BB repository (should have all valid directory paths)
     result = scan_directory_no_cfg(bb_path, include_dsg_files=False)
@@ -184,6 +188,6 @@ def test_scanner_multiple_validation_issues_in_single_path(tmp_path):
 
 
 # TODO: Add end-to-end integration test once user config loading is simplified
-# def test_status_command_shows_validation_warnings(bb_repo_with_validation_issues_and_config):
+# def test_status_command_shows_validation_warnings(dsg_repository_factory_and_config):
 #     """Test that dsg status command displays validation warnings."""
 #     # Complex config loading needed - save for future enhancement
