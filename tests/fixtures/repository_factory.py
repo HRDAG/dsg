@@ -170,7 +170,7 @@ class RepositoryFactory:
     
     def _create_realistic_files(self, repo_path: Path):
         """Create realistic file structure (BB style)."""
-        from tests.fixtures.bb_repo_factory import create_bb_file_content, create_binary_files
+        from tests.fixtures.test_utilities import create_bb_file_content, create_binary_files
         
         # Create directory structure
         directories = [
@@ -209,6 +209,11 @@ class RepositoryFactory:
         # Add binary files
         create_binary_files(repo_path)
         
+        # Create target file for symlink
+        target_file = repo_path / "task1/import/output/combined-data.h5"
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        target_file.write_bytes(b"HDF5 placeholder data")
+        
         # Add symlink
         symlink_target = "../../import/output/combined-data.h5"
         symlink_path = repo_path / "task1/analysis/input/combined-data.h5"
@@ -220,7 +225,7 @@ class RepositoryFactory:
         self._create_realistic_files(repo_path)
         
         # Add edge case content
-        from tests.fixtures.bb_repo_factory import (
+        from tests.fixtures.test_utilities import (
             create_edge_case_content_files,
             create_problematic_symlinks, 
             create_hash_collision_test_files
@@ -232,7 +237,7 @@ class RepositoryFactory:
     
     def _add_binary_files(self, repo_path: Path):
         """Add binary files to minimal structure."""
-        from tests.fixtures.bb_repo_factory import create_binary_files
+        from tests.fixtures.test_utilities import create_binary_files
         create_binary_files(repo_path)
     
     def _add_symlinks(self, repo_path: Path):
@@ -323,7 +328,7 @@ default_project_path: /var/repos/dgs
     
     def _create_dsg_structure(self, repo_path: Path, spec: RepositorySpec):
         """Create .dsg directory structure."""
-        from tests.fixtures.bb_repo_factory import create_dsg_structure
+        from tests.fixtures.test_utilities import create_dsg_structure
         create_dsg_structure(repo_path)
     
     def _add_validation_issues(self, repo_path: Path, spec: RepositorySpec):
@@ -732,7 +737,7 @@ default_project_path: /var/repos/dgs
         file_path.write_text(new_content)
 
         remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
-        from tests.fixtures.bb_repo_factory import regenerate_manifest
+        from tests.fixtures.test_utilities import regenerate_manifest
         new_manifest = regenerate_manifest(remote_config)
         new_manifest.to_json(remote_manifest_path, include_metadata=True)
 
@@ -746,7 +751,7 @@ default_project_path: /var/repos/dgs
         file_path.write_text(content)
 
         remote_manifest_path = remote_path / ".dsg" / "last-sync.json"
-        from tests.fixtures.bb_repo_factory import regenerate_manifest
+        from tests.fixtures.test_utilities import regenerate_manifest
         new_manifest = regenerate_manifest(remote_config)
         new_manifest.to_json(remote_manifest_path, include_metadata=True)
 
@@ -812,7 +817,7 @@ default_project_path: /var/repos/dgs
         local_config = setup["local_config"]
         cache_manifest_path = setup["local_path"] / ".dsg" / "last-sync.json"
         
-        from tests.fixtures.bb_repo_factory import regenerate_manifest
+        from tests.fixtures.test_utilities import regenerate_manifest
         new_manifest = regenerate_manifest(local_config)
         new_manifest.to_json(cache_manifest_path, include_metadata=True)
 
@@ -821,7 +826,7 @@ default_project_path: /var/repos/dgs
         remote_config = setup["remote_config"]
         remote_manifest_path = setup["remote_path"] / ".dsg" / "last-sync.json"
         
-        from tests.fixtures.bb_repo_factory import regenerate_manifest
+        from tests.fixtures.test_utilities import regenerate_manifest
         new_manifest = regenerate_manifest(remote_config)
         new_manifest.to_json(remote_manifest_path, include_metadata=True)
 
