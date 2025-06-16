@@ -31,18 +31,8 @@ from rich.console import Console
 from dsg.core.lifecycle import sync_repository
 from dsg.core.operations import get_sync_status
 
-# Import fixtures to make them available to pytest
-from tests.fixtures.bb_repo_factory import (
-    create_local_file,
-    modify_local_file,
-    local_file_exists,
-    remote_file_exists,
-    local_file_content_matches,
-    remote_file_content_matches,
-    create_edge_case_content_files,
-    create_problematic_symlinks,
-    create_hash_collision_test_files
-)
+# All state manipulation functions are now methods on dsg_repository_factory
+# No need to import individual functions from bb_repo_factory
 
 
 def create_text_encoding_examples() -> dict[str, bytes]:
@@ -153,6 +143,7 @@ class TestComprehensiveFileTypes:
 
     def test_text_encoding_sync(self, dsg_repository_factory):
         """Test sync operations with files in different text encodings."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -176,8 +167,8 @@ class TestComprehensiveFileTypes:
         # Verify all files were synced to remote
         for filename in encoding_examples.keys():
             file_path = f"task1/import/input/{filename}"
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
             
             # Content should be identical byte-for-byte
             local_content = (setup["local_path"] / file_path).read_bytes()
@@ -186,6 +177,7 @@ class TestComprehensiveFileTypes:
 
     def test_line_ending_variations_sync(self, dsg_repository_factory):
         """Test sync operations preserve different line ending styles."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -200,7 +192,7 @@ class TestComprehensiveFileTypes:
         for filename, content in line_ending_examples.items():
             file_path = f"task1/import/input/{filename}"
             # Use binary mode to ensure line endings are preserved exactly
-            create_local_file(setup["local_path"], file_path, content.encode('utf-8'), binary=True)
+            factory.create_local_file(setup, file_path, content.encode('utf-8'), binary=True)
         
         # Sync should preserve line endings exactly
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -209,8 +201,8 @@ class TestComprehensiveFileTypes:
         # Verify line endings are preserved using binary comparison
         for filename, original_content in line_ending_examples.items():
             file_path = f"task1/import/input/{filename}"
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
             
             # Content should be preserved exactly - use binary read to avoid line ending normalization
             remote_content_bytes = (setup["remote_path"] / file_path).read_bytes()
@@ -219,6 +211,7 @@ class TestComprehensiveFileTypes:
 
     def test_unicode_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with Unicode normalization and edge cases."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -232,7 +225,7 @@ class TestComprehensiveFileTypes:
         # Create files with Unicode edge cases
         for filename, content in unicode_examples.items():
             file_path = f"task1/import/input/{filename}"
-            create_local_file(setup["local_path"], file_path, content)
+            factory.create_local_file(setup, file_path, content)
         
         # Sync should handle Unicode edge cases
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -241,8 +234,8 @@ class TestComprehensiveFileTypes:
         # Verify Unicode content is preserved
         for filename, original_content in unicode_examples.items():
             file_path = f"task1/import/input/{filename}"
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
             
             # Unicode content should be preserved exactly
             remote_content = (setup["remote_path"] / file_path).read_text(encoding='utf-8')
@@ -250,6 +243,7 @@ class TestComprehensiveFileTypes:
 
     def test_size_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with various file sizes and characteristics."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -269,7 +263,7 @@ class TestComprehensiveFileTypes:
                 full_path.parent.mkdir(parents=True, exist_ok=True)
                 full_path.write_bytes(content.encode('latin-1'))
             else:
-                create_local_file(setup["local_path"], file_path, content)
+                factory.create_local_file(setup, file_path, content)
         
         # Sync should handle all size variations
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -278,8 +272,8 @@ class TestComprehensiveFileTypes:
         # Verify all files synced correctly
         for filename in size_examples.keys():
             file_path = f"task1/import/input/{filename}"
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
             
             # Content should be identical
             local_content = (setup["local_path"] / file_path).read_bytes()
@@ -288,6 +282,7 @@ class TestComprehensiveFileTypes:
 
     def test_symlink_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with various symlink scenarios."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -315,6 +310,7 @@ class TestComprehensiveFileTypes:
 
     def test_mixed_content_types_sync(self, dsg_repository_factory):
         """Test sync operations with multiple file types mixed together."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -334,7 +330,7 @@ class TestComprehensiveFileTypes:
         
         # Create all test files
         for file_path, content in test_files.items():
-            create_local_file(setup["local_path"], file_path, content)
+            factory.create_local_file(setup, file_path, content)
         
         # Also create a binary file
         binary_file = "task1/import/input/binary_data.dat"
@@ -348,12 +344,12 @@ class TestComprehensiveFileTypes:
         
         # Verify all files synced correctly
         for file_path in test_files.keys():
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
         
         # Verify binary file
-        assert local_file_exists(setup, binary_file)
-        assert remote_file_exists(setup, binary_file)
+        assert factory.local_file_exists(setup, binary_file)
+        assert factory.remote_file_exists(setup, binary_file)
         
         # Verify binary content is exact
         local_binary = (setup["local_path"] / binary_file).read_bytes()
@@ -362,6 +358,7 @@ class TestComprehensiveFileTypes:
 
     def test_content_modification_edge_cases(self, dsg_repository_factory):
         """Test sync when files with edge case content are modified."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -373,7 +370,7 @@ class TestComprehensiveFileTypes:
         # Create initial file with unicode content
         test_file = "task1/import/input/unicode_modify_test.txt"
         initial_content = "Initial: café"
-        create_local_file(setup["local_path"], test_file, initial_content)
+        factory.create_local_file(setup, test_file, initial_content)
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -381,15 +378,15 @@ class TestComprehensiveFileTypes:
         
         # Modify with different unicode normalization
         modified_content = "Modified: cafe\u0301 with NFD"  # NFD normalization
-        modify_local_file(setup["local_path"], test_file, modified_content)
+        factory.modify_local_file(setup, test_file, modified_content)
         
         # Sync modification
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result2["success"]
         
         # Verify modification synced correctly
-        assert local_file_content_matches(setup, test_file, "Modified:")
-        assert remote_file_content_matches(setup, test_file, "Modified:")
+        assert factory.local_file_content_matches(setup, test_file, "Modified:")
+        assert factory.remote_file_content_matches(setup, test_file, "Modified:")
         
         # Verify exact content preservation
         remote_content = (setup["remote_path"] / test_file).read_text(encoding='utf-8')
@@ -397,6 +394,7 @@ class TestComprehensiveFileTypes:
 
     def test_hash_consistency_edge_cases(self, dsg_repository_factory):
         """Test that hash computation is consistent for edge case content."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -420,7 +418,7 @@ class TestComprehensiveFileTypes:
                 full_path.parent.mkdir(parents=True, exist_ok=True)
                 full_path.write_bytes(content.encode('latin-1'))
             else:
-                create_local_file(setup["local_path"], file_path, content)
+                factory.create_local_file(setup, file_path, content)
         
         # Sync once
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -442,6 +440,7 @@ class TestComprehensiveFileTypes:
 
     def test_comprehensive_edge_cases_factory(self, dsg_repository_factory):
         """Test comprehensive edge cases using the factory functions."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -451,9 +450,9 @@ class TestComprehensiveFileTypes:
         console = Console()
         
         # Create all types of edge case files using factory functions
-        edge_case_files = create_edge_case_content_files(setup["local_path"])
-        hash_test_files = create_hash_collision_test_files(setup["local_path"])
-        symlink_files = create_problematic_symlinks(setup["local_path"])
+        edge_case_files = factory.create_edge_case_content_files(setup)
+        hash_test_files = factory.create_hash_collision_test_files(setup)
+        symlink_files = factory.create_problematic_symlinks(setup)
         
         print(f"Created {len(edge_case_files)} edge case files")
         print(f"Created {len(hash_test_files)} hash test files")
@@ -468,8 +467,8 @@ class TestComprehensiveFileTypes:
         
         for file_path, description in all_files.items():
             print(f"Verifying {description}: {file_path}")
-            assert local_file_exists(setup, file_path), f"Local file missing: {file_path}"
-            assert remote_file_exists(setup, file_path), f"Remote file missing: {file_path}"
+            assert factory.local_file_exists(setup, file_path), f"Local file missing: {file_path}"
+            assert factory.remote_file_exists(setup, file_path), f"Remote file missing: {file_path}"
             
             # Verify content is exactly identical
             local_content = (setup["local_path"] / file_path).read_bytes()
@@ -483,11 +482,12 @@ class TestComprehensiveFileTypes:
             # Some symlinks (like broken ones) might be cleaned up during sync
             if "broken" not in description and "self-referential" not in description:
                 # Valid symlinks should be preserved
-                assert local_file_exists(setup, symlink_path), f"Valid symlink missing: {symlink_path}"
+                assert factory.local_file_exists(setup, symlink_path), f"Valid symlink missing: {symlink_path}"
             # Don't assert on broken/problematic symlinks - they may be cleaned up
 
     def test_edge_case_modification_sync(self, dsg_repository_factory):
         """Test modifications of files with edge case content."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -497,7 +497,7 @@ class TestComprehensiveFileTypes:
         console = Console()
         
         # Create initial edge case files
-        create_edge_case_content_files(setup["local_path"])
+        factory.create_edge_case_content_files(setup)
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -511,8 +511,8 @@ class TestComprehensiveFileTypes:
         ]
         
         for file_path, new_content in modifications:
-            if local_file_exists(setup, file_path):
-                modify_local_file(setup["local_path"], file_path, new_content)
+            if factory.local_file_exists(setup, file_path):
+                factory.modify_local_file(setup, file_path, new_content)
         
         # Sync modifications
         result2 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -520,13 +520,14 @@ class TestComprehensiveFileTypes:
         
         # Verify modifications synced correctly
         for file_path, expected_content in modifications:
-            if local_file_exists(setup, file_path):
-                assert remote_file_exists(setup, file_path)
+            if factory.local_file_exists(setup, file_path):
+                assert factory.remote_file_exists(setup, file_path)
                 remote_content = (setup["remote_path"] / file_path).read_text(encoding='utf-8')
                 assert remote_content == expected_content
 
     def test_large_scale_edge_case_sync(self, dsg_repository_factory):
         """Test sync performance and reliability with many edge case files."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -568,12 +569,13 @@ class TestComprehensiveFileTypes:
         # Verify a sampling of files synced correctly
         for round_num in range(3):
             test_file = f"task1/import/input/round_{round_num}/unicode_0.txt"
-            if local_file_exists(setup, test_file):
-                assert remote_file_exists(setup, test_file)
-                assert local_file_content_matches(setup, test_file, "café")
+            if factory.local_file_exists(setup, test_file):
+                assert factory.remote_file_exists(setup, test_file)
+                assert factory.local_file_content_matches(setup, test_file, "café")
 
     def test_stress_unicode_normalization(self, dsg_repository_factory):
         """Stress test Unicode normalization across sync operations."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -594,7 +596,7 @@ class TestComprehensiveFileTypes:
         
         for filename, content in unicode_test_files.items():
             file_path = f"task1/import/input/{filename}"
-            create_local_file(setup["local_path"], file_path, content)
+            factory.create_local_file(setup, file_path, content)
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -603,8 +605,8 @@ class TestComprehensiveFileTypes:
         # Verify exact Unicode preservation
         for filename, original_content in unicode_test_files.items():
             file_path = f"task1/import/input/{filename}"
-            assert local_file_exists(setup, file_path)
-            assert remote_file_exists(setup, file_path)
+            assert factory.local_file_exists(setup, file_path)
+            assert factory.remote_file_exists(setup, file_path)
             
             # Content should be preserved exactly at byte level
             local_bytes = (setup["local_path"] / file_path).read_bytes()
