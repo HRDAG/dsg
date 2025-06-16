@@ -19,17 +19,8 @@ from typing import Dict, Any
 
 from dsg.data.manifest_merger import SyncState
 from dsg.data.manifest import Manifest
-from tests.fixtures.bb_repo_factory import (
-    modify_local_file,
-    create_local_file,
-    delete_local_file,
-    add_cache_entry,
-    remove_cache_entry,
-    regenerate_cache_from_current_local,
-    modify_remote_file,
-    create_remote_file,
-    delete_remote_file,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 def create_sync_state(
@@ -45,17 +36,13 @@ def create_sync_state(
         setup: BB local/remote setup from fixture
         target_file: Relative path of file to manipulate for state generation
     """
-    local_path = setup["local_path"]
-    remote_path = setup["remote_path"]
-    local_config = setup["local_config"]
-    remote_config = setup["remote_config"]
-    last_sync_path = setup["last_sync_path"]
+    from tests.fixtures.repository_factory import _factory as factory
     
     # Clear any existing state for this file (unless using existing file)
     if state not in {SyncState.sxLCR__C_eq_R, SyncState.sLCR__L_eq_C_ne_R, SyncState.sLCR__C_eq_R_ne_L}:
-        delete_local_file(local_path, target_file)
-        delete_remote_file(remote_path, target_file)
-        remove_cache_entry(last_sync_path, target_file)
+        factory.delete_local_file(setup, target_file)
+        factory.delete_remote_file(setup, target_file)
+        factory.remove_cache_entry(setup, target_file)
     
     # Content variations for different states
     original_content = "id,name,value\n1,Alice,100\n2,Bob,200\n"
@@ -64,9 +51,9 @@ def create_sync_state(
     
     if state == SyncState.sLCR__all_eq:
         # 111: All identical
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
-        regenerate_cache_from_current_local(local_config, last_sync_path)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
+        factory.regenerate_cache_from_current_local(setup)
         
     elif state == SyncState.sxLxCxR__none:
         # 000: File not present anywhere (already cleared above)
@@ -74,82 +61,82 @@ def create_sync_state(
         
     elif state == SyncState.sLxCxR__only_L:
         # 100: Only local has the file
-        create_local_file(local_path, target_file, local_content)
+        factory.create_local_file(setup, target_file, local_content)
         
     elif state == SyncState.sLCR__all_ne:
         # 111: All three differ
-        create_local_file(local_path, target_file, local_content)
-        create_remote_file(remote_path, target_file, remote_content, remote_config)
-        add_cache_entry(last_sync_path, target_file, "cache_hash_789", 70, "2024-01-01T10:00:00-08:00")
+        factory.create_local_file(setup, target_file, local_content)
+        factory.create_remote_file(setup, target_file, remote_content)
+        factory.add_cache_entry(setup, target_file, "cache_hash_789", 70, "2024-01-01T10:00:00-08:00")
         
     elif state == SyncState.sxLCR__C_eq_R:
         # 011: Local missing; remote and cache match
         # Use existing synced file and delete from local (realistic scenario)
         existing_file = "task1/import/input/some-data.csv"
-        delete_local_file(local_path, existing_file)
+        factory.delete_local_file(setup, existing_file)
         # Override target_file to use the existing file for verification
         target_file = existing_file
         
     elif state == SyncState.sLxCR__L_eq_R:
         # 101: Cache missing; local and remote match
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
         # Note: cache is already cleared above, so it remains missing
         
     elif state == SyncState.sLCxR__L_eq_C:
         # 110: Remote missing; local and cache match
-        create_local_file(local_path, target_file, original_content)
-        regenerate_cache_from_current_local(local_config, last_sync_path)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.regenerate_cache_from_current_local(setup)
         # Note: remote is already cleared above, so it remains missing
         
     elif state == SyncState.sLCR__L_eq_C_ne_R:
         # 111: Remote changed; local and cache match
         # Use existing synced file and modify just the remote (realistic scenario)
         existing_file = "task1/import/input/more-data.csv"
-        modify_remote_file(remote_path, existing_file, remote_content, remote_config)
+        factory.modify_remote_file(setup, existing_file, remote_content)
         # Override target_file to use the existing file for verification
         target_file = existing_file
         
     elif state == SyncState.sLCR__L_eq_R_ne_C:
         # 111: Another user uploaded identical file; cache is outdated
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
         # Add cache entry with different hash (simulating outdated cache)
-        add_cache_entry(last_sync_path, target_file, "outdated_cache_hash_xyz", 55, "2024-01-01T09:00:00-08:00")
+        factory.add_cache_entry(setup, target_file, "outdated_cache_hash_xyz", 55, "2024-01-01T09:00:00-08:00")
         
     elif state == SyncState.sxLCxR__only_R:
         # 001: Only remote has the file
-        create_remote_file(remote_path, target_file, remote_content, remote_config)
+        factory.create_remote_file(setup, target_file, remote_content)
         # Note: local and cache are already cleared above, so they remain missing
         
     elif state == SyncState.sLCR__C_eq_R_ne_L:
         # 111: Local changed; remote and cache match
         # Use existing synced file and modify just the local (realistic scenario)
         existing_file = "task1/analysis/src/processor.R"
-        modify_local_file(local_path, existing_file, local_content)
+        factory.modify_local_file(setup, existing_file, local_content)
         # Override target_file to use the existing file for verification
         target_file = existing_file
         
     elif state == SyncState.sxLCR__C_ne_R:
         # 011: Local missing; remote and cache differ
-        create_remote_file(remote_path, target_file, remote_content, remote_config)
-        add_cache_entry(last_sync_path, target_file, "different_cache_hash_abc", 80, "2024-01-01T08:00:00-08:00")
+        factory.create_remote_file(setup, target_file, remote_content)
+        factory.add_cache_entry(setup, target_file, "different_cache_hash_abc", 80, "2024-01-01T08:00:00-08:00")
         
     elif state == SyncState.sLxCR__L_ne_R:
         # 101: Cache missing; local and remote differ
-        create_local_file(local_path, target_file, local_content)
-        create_remote_file(remote_path, target_file, remote_content, remote_config)
+        factory.create_local_file(setup, target_file, local_content)
+        factory.create_remote_file(setup, target_file, remote_content)
         # Note: cache is already cleared above, so it remains missing
         
     elif state == SyncState.sLCxR__L_ne_C:
         # 110: Remote missing; local and cache differ
-        create_local_file(local_path, target_file, local_content)
-        add_cache_entry(last_sync_path, target_file, "different_cache_hash_def", 90, "2024-01-01T07:00:00-08:00")
+        factory.create_local_file(setup, target_file, local_content)
+        factory.add_cache_entry(setup, target_file, "different_cache_hash_def", 90, "2024-01-01T07:00:00-08:00")
         # Note: remote is already cleared above, so it remains missing
         
     elif state == SyncState.sxLCRx__only_C:
         # 010: Only cache has the file
-        add_cache_entry(last_sync_path, target_file, "only_cache_hash_ghi", 100, "2024-01-01T06:00:00-08:00")
+        factory.add_cache_entry(setup, target_file, "only_cache_hash_ghi", 100, "2024-01-01T06:00:00-08:00")
         # Note: local and remote are already cleared above, so they remain missing
         
     else:
@@ -174,6 +161,7 @@ def test_sync_state_enum_import():
 
 def test_create_sync_state_all_eq(dsg_repository_factory):
     """Test creating the simplest sync state: all equal."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -219,6 +207,7 @@ def test_create_sync_state_all_eq(dsg_repository_factory):
 
 def test_create_sync_state_none(dsg_repository_factory):
     """Test creating the none state: file not present anywhere."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -244,6 +233,7 @@ def test_create_sync_state_none(dsg_repository_factory):
 
 def test_create_sync_state_only_local(dsg_repository_factory):
     """Test creating the only-local state: file exists only locally."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -269,6 +259,7 @@ def test_create_sync_state_only_local(dsg_repository_factory):
 
 def test_create_sync_state_all_different(dsg_repository_factory):
     """Test creating the all-different state: all three differ."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -310,6 +301,7 @@ def test_create_sync_state_all_different(dsg_repository_factory):
 
 def test_create_sync_state_cache_eq_remote(dsg_repository_factory):
     """Test creating state where local is missing but cache and remote match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -345,6 +337,7 @@ def test_create_sync_state_cache_eq_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_eq_remote(dsg_repository_factory):
     """Test creating state where cache is missing but local and remote match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -381,6 +374,7 @@ def test_create_sync_state_local_eq_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_eq_cache(dsg_repository_factory):
     """Test creating state where remote is missing but local and cache match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -415,6 +409,7 @@ def test_create_sync_state_local_eq_cache(dsg_repository_factory):
 
 def test_create_sync_state_remote_changed(dsg_repository_factory):
     """Test creating state where remote changed but local and cache match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -458,6 +453,7 @@ def test_create_sync_state_remote_changed(dsg_repository_factory):
 
 def test_create_sync_state_cache_outdated(dsg_repository_factory):
     """Test creating state where cache is outdated but local and remote match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -499,6 +495,7 @@ def test_create_sync_state_cache_outdated(dsg_repository_factory):
 
 def test_create_sync_state_only_remote(dsg_repository_factory):
     """Test creating state where only remote has the file."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -524,6 +521,7 @@ def test_create_sync_state_only_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_changed(dsg_repository_factory):
     """Test creating state where local changed but cache and remote match."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -567,6 +565,7 @@ def test_create_sync_state_local_changed(dsg_repository_factory):
 
 def test_create_sync_state_cache_ne_remote(dsg_repository_factory):
     """Test creating state where local is missing and cache differs from remote."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -599,6 +598,7 @@ def test_create_sync_state_cache_ne_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_ne_remote(dsg_repository_factory):
     """Test creating state where cache is missing and local differs from remote."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -635,6 +635,7 @@ def test_create_sync_state_local_ne_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_ne_cache(dsg_repository_factory):
     """Test creating state where remote is missing and local differs from cache."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -669,6 +670,7 @@ def test_create_sync_state_local_ne_cache(dsg_repository_factory):
 
 def test_create_sync_state_only_cache(dsg_repository_factory):
     """Test creating state where only cache has the file."""
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
