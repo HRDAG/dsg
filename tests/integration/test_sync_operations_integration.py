@@ -19,22 +19,8 @@ from rich.console import Console
 
 from dsg.core.lifecycle import sync_repository
 from dsg.system.exceptions import SyncError
-from tests.fixtures.bb_repo_factory import (
-    local_file_exists,
-    remote_file_exists,
-    local_file_content_matches,
-    remote_file_content_matches,
-    read_remote_file,
-    cache_manifest_updated,
-    create_init_like_state,
-    create_clone_like_state,
-    create_mixed_state,
-    modify_local_file,
-    create_local_file,
-    create_remote_file,
-    regenerate_remote_manifest,
-    regenerate_cache_from_current_local,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 def get_valid_data_dir_path(config, relative_subpath: str = "") -> str:
@@ -85,6 +71,7 @@ class TestManifestLevelSyncIntegration:
 
     def test_init_like_sync_integration(self, dsg_repository_factory):
         """Test init-like sync: L != C but C == R (bulk upload)"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -96,11 +83,11 @@ class TestManifestLevelSyncIntegration:
         test_content = "id,value,category\n1,100,init_like_test\n2,200,sync_test\n"
         
         # Setup: Create init-like state (local has changes, remote/cache identical)
-        create_init_like_state(setup, test_file, test_content)
+        factory.create_init_like_state(setup, test_file, test_content)
         
         # Verify initial state: file exists locally but not remotely
-        assert local_file_exists(setup, test_file)
-        assert not remote_file_exists(setup, test_file)
+        assert factory.local_file_exists(setup, test_file)
+        assert not factory.remote_file_exists(setup, test_file)
         
         # Execute: Real sync operation
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -108,12 +95,13 @@ class TestManifestLevelSyncIntegration:
         # Verify: Files uploaded to remote, operation succeeded
         assert result["success"]
         assert result["operation"] == "sync"
-        assert remote_file_exists(setup, test_file)
-        assert remote_file_content_matches(setup, test_file, "init_like_test")
-        assert cache_manifest_updated(setup)
+        assert factory.remote_file_exists(setup, test_file)
+        assert factory.remote_file_content_matches(setup, test_file, "init_like_test")
+        assert factory.cache_manifest_updated(setup)
 
     def test_clone_like_sync_integration(self, dsg_repository_factory):
         """Test clone-like sync: L == C but C != R (bulk download)"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -125,11 +113,11 @@ class TestManifestLevelSyncIntegration:
         test_content = "id,name,category\n1,RemoteData,clone_like_test\n2,MoreData,sync_test\n"
         
         # Setup: Create clone-like state (remote has changes, local/cache identical)
-        create_clone_like_state(setup, test_file, test_content)
+        factory.create_clone_like_state(setup, test_file, test_content)
         
         # Verify initial state: file exists remotely but not locally
-        assert remote_file_exists(setup, test_file)
-        assert not local_file_exists(setup, test_file)
+        assert factory.remote_file_exists(setup, test_file)
+        assert not factory.local_file_exists(setup, test_file)
         
         # Execute: Real sync operation
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -137,12 +125,13 @@ class TestManifestLevelSyncIntegration:
         # Verify: Files downloaded locally, operation succeeded
         assert result["success"]
         assert result["operation"] == "sync"
-        assert local_file_exists(setup, test_file)
-        assert local_file_content_matches(setup, test_file, "clone_like_test")
-        assert cache_manifest_updated(setup)
+        assert factory.local_file_exists(setup, test_file)
+        assert factory.local_file_content_matches(setup, test_file, "clone_like_test")
+        assert factory.cache_manifest_updated(setup)
 
     def test_mixed_sync_integration(self, dsg_repository_factory):
         """Test mixed sync: Complex state requiring file-by-file analysis"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -152,13 +141,13 @@ class TestManifestLevelSyncIntegration:
         console = Console()
         
         # Setup: Multiple files in different sync states
-        create_mixed_state(setup)
+        factory.create_mixed_state(setup)
         
         # Verify initial state
-        assert local_file_exists(setup, "task1/import/input/local_only.txt")
-        assert not remote_file_exists(setup, "task1/import/input/local_only.txt")
-        assert remote_file_exists(setup, "task1/analysis/output/remote_only.txt")
-        assert not local_file_exists(setup, "task1/analysis/output/remote_only.txt")
+        assert factory.local_file_exists(setup, "task1/import/input/local_only.txt")
+        assert not factory.remote_file_exists(setup, "task1/import/input/local_only.txt")
+        assert factory.remote_file_exists(setup, "task1/analysis/output/remote_only.txt")
+        assert not factory.local_file_exists(setup, "task1/analysis/output/remote_only.txt")
         
         # Execute: Real sync operation
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -168,18 +157,18 @@ class TestManifestLevelSyncIntegration:
         assert result["operation"] == "sync"
         
         # Local-only file should be uploaded
-        assert remote_file_exists(setup, "task1/import/input/local_only.txt")
-        assert remote_file_content_matches(setup, "task1/import/input/local_only.txt", "Local only content")
+        assert factory.remote_file_exists(setup, "task1/import/input/local_only.txt")
+        assert factory.remote_file_content_matches(setup, "task1/import/input/local_only.txt", "Local only content")
         
         # Remote-only file should be downloaded
-        assert local_file_exists(setup, "task1/analysis/output/remote_only.txt")
-        assert local_file_content_matches(setup, "task1/analysis/output/remote_only.txt", "Remote only content")
+        assert factory.local_file_exists(setup, "task1/analysis/output/remote_only.txt")
+        assert factory.local_file_content_matches(setup, "task1/analysis/output/remote_only.txt", "Remote only content")
         
         # Modified file should be uploaded
-        assert remote_file_exists(setup, "task1/import/hand/shared_file.txt")
-        assert remote_file_content_matches(setup, "task1/import/hand/shared_file.txt", "Modified local content")
+        assert factory.remote_file_exists(setup, "task1/import/hand/shared_file.txt")
+        assert factory.remote_file_content_matches(setup, "task1/import/hand/shared_file.txt", "Modified local content")
         
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
 
 class TestRealFileTransferIntegration:
@@ -187,6 +176,7 @@ class TestRealFileTransferIntegration:
 
     def test_sync_csv_files_localhost_backend(self, dsg_repository_factory):
         """Test sync with real CSV files using localhost backend"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -203,22 +193,23 @@ class TestRealFileTransferIntegration:
 6,Frank Wilson,analyst,85.7,2024-01-20
 7,Grace Chen,manager,92.3,2024-01-21
 """
-        modify_local_file(setup["local_path"], csv_file, new_csv_content)
+        factory.modify_local_file(setup, csv_file, new_csv_content)
         
         # Execute sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify CSV transferred correctly
         assert result["success"]
-        assert remote_file_exists(setup, csv_file)
-        remote_content = read_remote_file(setup, csv_file)
+        assert factory.remote_file_exists(setup, csv_file)
+        remote_content = factory.read_remote_file(setup, csv_file)
         assert "Frank Wilson" in remote_content
         assert "99.5" in remote_content
         assert "Grace Chen" in remote_content
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_sync_binary_files(self, dsg_repository_factory):
         """Test sync with binary files (HDF5, Parquet)"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -230,21 +221,22 @@ class TestRealFileTransferIntegration:
         
         # Create mock binary file content that looks like HDF5
         binary_content = b'\x89HDF\r\n\x1a\n' + b'Mock HDF5 binary content for testing ' * 50
-        create_local_file(setup["local_path"], binary_file, binary_content, binary=True)
+        factory.create_local_file(setup, binary_file, binary_content, binary=True)
         
         # Execute sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify binary file transferred correctly
         assert result["success"]
-        assert remote_file_exists(setup, binary_file)
-        remote_binary = read_remote_file(setup, binary_file, binary=True)
+        assert factory.remote_file_exists(setup, binary_file)
+        remote_binary = factory.read_remote_file(setup, binary_file, binary=True)
         assert remote_binary == binary_content
         assert len(remote_binary) > 1000  # Verify substantial content
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_sync_multiple_file_types(self, dsg_repository_factory):
         """Test sync with multiple file types in one operation"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -264,7 +256,7 @@ class TestRealFileTransferIntegration:
         }
         
         for file_path, content in files.items():
-            create_local_file(setup["local_path"], file_path, content)
+            factory.create_local_file(setup, file_path, content)
         
         # Execute sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -272,10 +264,10 @@ class TestRealFileTransferIntegration:
         # Verify all files transferred
         assert result["success"]
         for file_path, expected_content in files.items():
-            assert remote_file_exists(setup, file_path)
-            assert remote_file_content_matches(setup, file_path, expected_content.split('\n')[0])
+            assert factory.remote_file_exists(setup, file_path)
+            assert factory.remote_file_content_matches(setup, file_path, expected_content.split('\n')[0])
         
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
 
 class TestMultiUserWorkflowIntegration:
@@ -283,6 +275,7 @@ class TestMultiUserWorkflowIntegration:
 
     def test_collaborative_sync_workflow(self, dsg_repository_factory):
         """Test realistic multi-user collaboration scenario"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -336,7 +329,7 @@ if (!interactive()) {
   process_analysis()
 }
 """
-        modify_local_file(setup["local_path"], shared_file, user_a_changes)
+        factory.modify_local_file(setup, shared_file, user_a_changes)
         result_a = sync_repository(setup["local_config"], console, dry_run=False)
         assert result_a["success"]
         
@@ -382,21 +375,22 @@ if (!interactive()) {
   process_analysis()
 }
 """
-        modify_local_file(setup["local_path"], shared_file, user_b_old_content)
-        regenerate_cache_from_current_local(setup["local_config"], setup["last_sync_path"])  # Simulate User B's cache state
+        factory.modify_local_file(setup, shared_file, user_b_old_content)
+        factory.regenerate_cache_from_current_local(setup)  # Simulate User B's cache state
         
         # User B syncs (should download User A's changes)
         result_b = sync_repository(setup["local_config"], console, dry_run=False)
         assert result_b["success"]
         
         # Verify User B got User A's changes
-        assert local_file_exists(setup, shared_file)
-        assert local_file_content_matches(setup, shared_file, "Updated by User A")
-        assert local_file_content_matches(setup, shared_file, "Enhanced analysis")
-        assert cache_manifest_updated(setup)
+        assert factory.local_file_exists(setup, shared_file)
+        assert factory.local_file_content_matches(setup, shared_file, "Updated by User A")
+        assert factory.local_file_content_matches(setup, shared_file, "Enhanced analysis")
+        assert factory.cache_manifest_updated(setup)
 
     def test_simple_conflict_detection(self, dsg_repository_factory):
         """Test that sync detects conflicts correctly"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -408,28 +402,28 @@ if (!interactive()) {
         
         # Create file in all three locations with different content
         # This will create a conflict state that should block sync
-        create_local_file(setup["local_path"], conflict_file, "LOCAL,version\n1,local_data\n")
-        create_remote_file(setup["remote_path"], conflict_file, "REMOTE,version\n1,remote_data\n", setup["remote_config"])
-        regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+        factory.create_local_file(setup, conflict_file, "LOCAL,version\n1,local_data\n")
+        factory.create_remote_file(setup, conflict_file, "REMOTE,version\n1,remote_data\n")
+        factory.regenerate_remote_manifest(setup)
         
         # Create different cache content (this creates sLCR__all_ne state)
-        modify_local_file(setup["local_path"], conflict_file, "CACHE,version\n1,cache_data\n")
-        regenerate_cache_from_current_local(setup["local_config"], setup["last_sync_path"])
+        factory.modify_local_file(setup, conflict_file, "CACHE,version\n1,cache_data\n")
+        factory.regenerate_cache_from_current_local(setup)
         
         # Now modify local again to create the conflict
-        modify_local_file(setup["local_path"], conflict_file, "LOCAL,version\n1,final_local_data\n")
+        factory.modify_local_file(setup, conflict_file, "LOCAL,version\n1,final_local_data\n")
         
         # Execute sync - should detect conflict and raise SyncError
         with pytest.raises(SyncError, match="conflicts"):
             sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify that files exist locally and remotely (conflict was detected, not resolved)
-        assert local_file_exists(setup, conflict_file)
-        assert remote_file_exists(setup, conflict_file)
+        assert factory.local_file_exists(setup, conflict_file)
+        assert factory.remote_file_exists(setup, conflict_file)
         
         # Verify different content exists in local vs remote (conflict state preserved)
         local_content = (setup["local_path"] / conflict_file).read_text()
-        remote_content = read_remote_file(setup, conflict_file)
+        remote_content = factory.read_remote_file(setup, conflict_file)
         assert "final_local_data" in local_content  # Local changes preserved
         assert "remote_data" in remote_content      # Remote changes preserved
 
@@ -439,6 +433,7 @@ class TestSyncEdgeCases:
 
     def test_shapeshifter_file_to_symlink_sync(self, dsg_repository_factory):
         """Test sync when file changes from regular file to symlink (and back)"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -450,13 +445,13 @@ class TestSyncEdgeCases:
         
         # Phase 1: Create regular file locally
         original_content = "This is a regular file with some content\nLine 2\nLine 3\n"
-        create_local_file(setup["local_path"], shapeshifter_path, original_content)
+        factory.create_local_file(setup, shapeshifter_path, original_content)
         
         # Sync to remote (file → file)
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result1["success"]
-        assert remote_file_exists(setup, shapeshifter_path)
-        remote_content = read_remote_file(setup, shapeshifter_path)
+        assert factory.remote_file_exists(setup, shapeshifter_path)
+        remote_content = factory.read_remote_file(setup, shapeshifter_path)
         assert "regular file" in remote_content
         
         # Phase 2: Replace local file with symlink pointing to existing file
@@ -488,10 +483,11 @@ class TestSyncEdgeCases:
         assert remote_file_path.is_file()
         final_content = remote_file_path.read_text()
         assert "different content" in final_content
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_symlink_target_shapeshifter_sync(self, dsg_repository_factory):
         """Test sync when symlink target changes from file to directory"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -526,10 +522,11 @@ class TestSyncEdgeCases:
         # Verify remote symlink now points to directory
         assert remote_symlink.is_symlink()
         assert remote_symlink.readlink() == Path(".")
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_doppelganger_same_user_different_machines(self, dsg_repository_factory):
         """Test sync when same user ID operates from multiple machines"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -540,7 +537,7 @@ class TestSyncEdgeCases:
         
         # Simulate Machine A (original setup)
         machine_a_file = "task1/import/input/machine_a_work.txt"
-        create_local_file(setup["local_path"], machine_a_file, "Work from Machine A\nTimestamp: Monday 9am\n")
+        factory.create_local_file(setup, machine_a_file, "Work from Machine A\nTimestamp: Monday 9am\n")
         result_a1 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result_a1["success"]
         
@@ -607,22 +604,25 @@ class TestSyncEdgeCases:
         
         # Machine B creates their own work
         machine_b_file = "task1/import/input/machine_b_work.txt"
-        create_local_file(machine_b_path, machine_b_file, "Work from Machine B\nTimestamp: Tuesday 3pm\n")
+        # machine_b_path is a direct path for this simulation, not a setup dict
+        machine_b_file_path = machine_b_path / machine_b_file
+        machine_b_file_path.parent.mkdir(parents=True, exist_ok=True)
+        machine_b_file_path.write_text("Work from Machine B\nTimestamp: Tuesday 3pm\n")
         
         # Machine B syncs (should upload B's work)
         result_b1 = sync_repository(machine_b_config, console, dry_run=False)
         assert result_b1["success"]
         
         # Verify remote has both files
-        assert remote_file_exists(setup, machine_a_file)
-        assert remote_file_exists(setup, machine_b_file)
+        assert factory.remote_file_exists(setup, machine_a_file)
+        assert factory.remote_file_exists(setup, machine_b_file)
         
         # Machine A syncs again (should get Machine B's work)
         result_a2 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result_a2["success"]
         
         # Verify Machine A got Machine B's file
-        assert local_file_exists(setup, machine_b_file)
+        assert factory.local_file_exists(setup, machine_b_file)
         machine_b_content_on_a = (setup["local_path"] / machine_b_file).read_text()
         assert "Machine B" in machine_b_content_on_a
         
@@ -630,17 +630,19 @@ class TestSyncEdgeCases:
         shared_file = "task1/import/input/shared_conflict.txt"
         
         # Machine A creates file
-        create_local_file(setup["local_path"], shared_file, "Machine A version: Started project\n")
+        factory.create_local_file(setup, shared_file, "Machine A version: Started project\n")
         result_a3 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result_a3["success"]
         
         # Machine B gets the file, then modifies it
         result_b2 = sync_repository(machine_b_config, console, dry_run=False)
         assert result_b2["success"]
-        modify_local_file(machine_b_path, shared_file, "Machine B version: Made changes to project\n")
+        # machine_b_path is a direct path for this simulation, not a setup dict
+        machine_b_shared_file_path = machine_b_path / shared_file
+        machine_b_shared_file_path.write_text("Machine B version: Made changes to project\n")
         
         # Machine A also modifies the same file (classic doppelganger scenario)
-        modify_local_file(setup["local_path"], shared_file, "Machine A version: Made DIFFERENT changes\n")
+        factory.modify_local_file(setup, shared_file, "Machine A version: Made DIFFERENT changes\n")
         
         # Machine B syncs first
         result_b3 = sync_repository(machine_b_config, console, dry_run=False)
@@ -653,14 +655,15 @@ class TestSyncEdgeCases:
             sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify the conflict state exists
-        remote_content = read_remote_file(setup, shared_file)
+        remote_content = factory.read_remote_file(setup, shared_file)
         local_a_content = (setup["local_path"] / shared_file).read_text()
         assert "Machine B version" in remote_content  # B won the race
         assert "Machine A version" in local_a_content  # A has different content
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_perfect_storm_multiple_failures_critical_moment(self, dsg_repository_factory):
         """Test sync under multiple simultaneous failure conditions"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -676,16 +679,16 @@ class TestSyncEdgeCases:
         for i in range(5000):
             large_content += f"{i},critical_data_{i},{i * 2.5},2024-06-{i % 28 + 1:02d}T{i % 24:02d}:00:00\n"
         
-        create_local_file(setup["local_path"], critical_file, large_content)
+        factory.create_local_file(setup, critical_file, large_content)
         
         # Multiple users working on same project
         user_a_file = "task1/import/input/user_a_analysis.py"
         user_b_file = "task1/import/input/user_b_analysis.R"
         shared_file = "task1/import/hand/shared_config.yaml"
         
-        create_local_file(setup["local_path"], user_a_file, "# User A's analysis\nimport pandas as pd\ndf = pd.read_csv('critical_dataset.csv')\n")
-        create_local_file(setup["local_path"], user_b_file, "# User B's analysis\nlibrary(readr)\ndata <- read_csv('critical_dataset.csv')\n")
-        create_local_file(setup["local_path"], shared_file, "database:\n  host: localhost\n  critical: true\n")
+        factory.create_local_file(setup, user_a_file, "# User A's analysis\nimport pandas as pd\ndf = pd.read_csv('critical_dataset.csv')\n")
+        factory.create_local_file(setup, user_b_file, "# User B's analysis\nlibrary(readr)\ndata <- read_csv('critical_dataset.csv')\n")
+        factory.create_local_file(setup, shared_file, "database:\n  host: localhost\n  critical: true\n")
         
         # Initial sync works fine
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
@@ -710,24 +713,24 @@ class TestSyncEdgeCases:
             
             # Issue 3: Multiple users modify files simultaneously
             # Simulate rapid changes while sync is happening
-            modify_local_file(setup["local_path"], user_a_file, "# User A's URGENT analysis\nimport pandas as pd\ndf = pd.read_csv('critical_dataset.csv')\nprint('URGENT: Need this NOW!')\n")
-            modify_local_file(setup["local_path"], shared_file, "database:\n  host: localhost\n  critical: true\n  urgent_mode: true\n  deadline: '2024-06-13T23:59:59'\n")
+            factory.modify_local_file(setup, user_a_file, "# User A's URGENT analysis\nimport pandas as pd\ndf = pd.read_csv('critical_dataset.csv')\nprint('URGENT: Need this NOW!')\n")
+            factory.modify_local_file(setup, shared_file, "database:\n  host: localhost\n  critical: true\n  urgent_mode: true\n  deadline: '2024-06-13T23:59:59'\n")
             
             # Issue 4: Backend becomes slow (we'll just test that sync still works)
             # In a real scenario, this would be network delays, but we can't easily simulate that
             
             # Issue 5: File type changes during the storm (shapeshifter scenario)
             shapeshifter_file = "task1/import/input/storm_shapeshifter.txt"
-            create_local_file(setup["local_path"], shapeshifter_file, "Original file during storm\n")
+            factory.create_local_file(setup, shapeshifter_file, "Original file during storm\n")
             
             # First sync - should handle the chaos gracefully
             result2 = sync_repository(setup["local_config"], console, dry_run=False)
             assert result2["success"]
             
             # Verify critical files made it through
-            assert remote_file_exists(setup, critical_file)
-            assert remote_file_exists(setup, user_a_file)
-            assert remote_file_exists(setup, shared_file)
+            assert factory.remote_file_exists(setup, critical_file)
+            assert factory.remote_file_exists(setup, user_a_file)
+            assert factory.remote_file_exists(setup, shared_file)
             
             # More chaos: shapeshifter changes mid-storm
             local_shapeshifter = setup["local_path"] / shapeshifter_file
@@ -735,18 +738,18 @@ class TestSyncEdgeCases:
             local_shapeshifter.symlink_to("critical_dataset.csv")  # Point to the critical file
             
             # Even more changes during crisis
-            modify_local_file(setup["local_path"], user_b_file, "# User B's EMERGENCY analysis\nlibrary(readr)\ndata <- read_csv('critical_dataset.csv')\nprint('EMERGENCY: System going down!')\n")
+            factory.modify_local_file(setup, user_b_file, "# User B's EMERGENCY analysis\nlibrary(readr)\ndata <- read_csv('critical_dataset.csv')\nprint('EMERGENCY: System going down!')\n")
             
             # Crisis sync - system under maximum stress
             result3 = sync_repository(setup["local_config"], console, dry_run=False)
             assert result3["success"]
             
             # Verify system handled the perfect storm
-            assert remote_file_exists(setup, critical_file)
-            assert remote_file_exists(setup, user_a_file) 
-            assert remote_file_exists(setup, user_b_file)
-            assert remote_file_exists(setup, shared_file)
-            assert remote_file_exists(setup, shapeshifter_file)
+            assert factory.remote_file_exists(setup, critical_file)
+            assert factory.remote_file_exists(setup, user_a_file) 
+            assert factory.remote_file_exists(setup, user_b_file)
+            assert factory.remote_file_exists(setup, shared_file)
+            assert factory.remote_file_exists(setup, shapeshifter_file)
             
             # Verify shapeshifter transformation survived the storm
             remote_shapeshifter = setup["remote_path"] / shapeshifter_file
@@ -754,17 +757,17 @@ class TestSyncEdgeCases:
             assert remote_shapeshifter.readlink() == Path("critical_dataset.csv")
             
             # Verify content integrity through the storm
-            remote_critical_content = read_remote_file(setup, critical_file)
+            remote_critical_content = factory.read_remote_file(setup, critical_file)
             assert "critical_data_4999" in remote_critical_content  # Last entry survived
             
-            remote_urgent_content = read_remote_file(setup, user_a_file)
+            remote_urgent_content = factory.read_remote_file(setup, user_a_file)
             assert "URGENT" in remote_urgent_content
             
-            remote_config_content = read_remote_file(setup, shared_file)
+            remote_config_content = factory.read_remote_file(setup, shared_file)
             assert "urgent_mode: true" in remote_config_content
             assert "deadline:" in remote_config_content
             
-            assert cache_manifest_updated(setup)
+            assert factory.cache_manifest_updated(setup)
             
         finally:
             # Cleanup: Remove temp files to free space
@@ -777,6 +780,7 @@ class TestSyncEdgeCases:
 
     def test_sync_with_empty_repository(self, dsg_repository_factory):
         """Test sync when repositories are empty or nearly empty"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -788,18 +792,19 @@ class TestSyncEdgeCases:
         
         # Create minimal file in valid data_dir
         test_file = get_valid_data_dir_path(config, "minimal_test.txt")
-        create_local_file(setup["local_path"], test_file, "minimal test content")
+        factory.create_local_file(setup, test_file, "minimal test content")
         
         # Execute sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify sync works even with minimal content
         assert result["success"]
-        assert remote_file_exists(setup, test_file)
-        assert cache_manifest_updated(setup)
+        assert factory.remote_file_exists(setup, test_file)
+        assert factory.cache_manifest_updated(setup)
 
     def test_sync_large_file_content(self, dsg_repository_factory):
         """Test sync with larger file content"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -815,21 +820,22 @@ class TestSyncEdgeCases:
         for i in range(1000):
             large_content += f"{i},sample_data_{i},{i * 1.5},2024-01-{i % 28 + 1:02d}\n"
         
-        create_local_file(setup["local_path"], large_file, large_content)
+        factory.create_local_file(setup, large_file, large_content)
         
         # Execute sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify large file synced correctly
         assert result["success"]
-        assert remote_file_exists(setup, large_file)
-        remote_content = read_remote_file(setup, large_file)
+        assert factory.remote_file_exists(setup, large_file)
+        remote_content = factory.read_remote_file(setup, large_file)
         assert len(remote_content) > 10000  # Verify substantial size
         assert "sample_data_999" in remote_content  # Verify complete content
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_vanishing_act_files_disappear_reappear(self, dsg_repository_factory):
         """Test sync when files vanish and reappear during operations"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -846,14 +852,14 @@ class TestSyncEdgeCases:
         vanishing_content = "id,magic_data,timestamp\n1,appears,2024-06-13T10:00:00\n2,vanishes,2024-06-13T10:01:00\n"
         permanent_content = "id,stable_data\n1,always_here\n2,reliable\n"
         
-        create_local_file(setup["local_path"], vanishing_file, vanishing_content)
-        create_local_file(setup["local_path"], permanent_file, permanent_content)
+        factory.create_local_file(setup, vanishing_file, vanishing_content)
+        factory.create_local_file(setup, permanent_file, permanent_content)
         
         # Initial sync - both files should be uploaded
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result1["success"]
-        assert remote_file_exists(setup, vanishing_file)
-        assert remote_file_exists(setup, permanent_file)
+        assert factory.remote_file_exists(setup, vanishing_file)
+        assert factory.remote_file_exists(setup, permanent_file)
         
         # Phase 2: File vanishes locally (simulating deletion, filesystem corruption, etc.)
         local_vanishing_path = setup["local_path"] / vanishing_file
@@ -864,20 +870,20 @@ class TestSyncEdgeCases:
         assert result2["success"]
         
         # DSG propagates local deletions to remote (sync state sxLCR__C_eq_R -> delete from remote)
-        assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted from remote"
-        assert remote_file_exists(setup, permanent_file), "Permanent file should still exist"
+        assert not factory.remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted from remote"
+        assert factory.remote_file_exists(setup, permanent_file), "Permanent file should still exist"
         
         # Phase 3: File reappears with different content (simulating recovery, user restoration, etc.)
         reappeared_content = "id,magic_data,timestamp,status\n1,reappeared,2024-06-13T11:00:00,restored\n3,new_after_recovery,2024-06-13T11:01:00,fresh\n"
-        create_local_file(setup["local_path"], vanishing_file, reappeared_content)
+        factory.create_local_file(setup, vanishing_file, reappeared_content)
         
         # Sync after file reappears - should upload the new version
         result3 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result3["success"]
         
         # Verify the reappeared file has new content on remote
-        assert remote_file_exists(setup, vanishing_file)
-        remote_vanishing_content = read_remote_file(setup, vanishing_file)
+        assert factory.remote_file_exists(setup, vanishing_file)
+        remote_vanishing_content = factory.read_remote_file(setup, vanishing_file)
         assert "reappeared" in remote_vanishing_content
         assert "new_after_recovery" in remote_vanishing_content
         assert "restored" in remote_vanishing_content
@@ -889,20 +895,20 @@ class TestSyncEdgeCases:
         
         # Create new file to ensure sync still works
         survivor_file = "task1/import/input/post_disaster.txt"
-        create_local_file(setup["local_path"], survivor_file, "Survived the vanishing act\n")
+        factory.create_local_file(setup, survivor_file, "Survived the vanishing act\n")
         
         # Sync after mass vanishing - should propagate all deletions
         result4 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result4["success"]
         
         # All vanished files should be deleted from remote, survivor should be uploaded
-        assert not remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted"
-        assert not remote_file_exists(setup, permanent_file), "Permanent file should be deleted" 
-        assert remote_file_exists(setup, survivor_file), "Survivor file should be uploaded"
+        assert not factory.remote_file_exists(setup, vanishing_file), "Vanishing file should be deleted"
+        assert not factory.remote_file_exists(setup, permanent_file), "Permanent file should be deleted" 
+        assert factory.remote_file_exists(setup, survivor_file), "Survivor file should be uploaded"
         
         # New file should sync successfully despite other files vanishing
-        assert remote_file_exists(setup, survivor_file)
-        survivor_content = read_remote_file(setup, survivor_file)
+        assert factory.remote_file_exists(setup, survivor_file)
+        survivor_content = factory.read_remote_file(setup, survivor_file)
         assert "Survived the vanishing act" in survivor_content
         
         # Phase 5: Files reappear from backup/recovery
@@ -910,30 +916,31 @@ class TestSyncEdgeCases:
         restored_vanishing = "id,magic_data,timestamp,status,backup_info\n1,restored_from_backup,2024-06-13T12:00:00,recovered,backup_v1\n"
         restored_permanent = "id,stable_data,backup_info\n1,restored_stable,backup_v1\n2,also_restored,backup_v1\n"
         
-        create_local_file(setup["local_path"], vanishing_file, restored_vanishing)
-        create_local_file(setup["local_path"], permanent_file, restored_permanent)
+        factory.create_local_file(setup, vanishing_file, restored_vanishing)
+        factory.create_local_file(setup, permanent_file, restored_permanent)
         
         # Final sync after restoration
         result5 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result5["success"]
         
         # Verify all restored files synced with backup content
-        assert remote_file_exists(setup, vanishing_file)
-        assert remote_file_exists(setup, permanent_file) 
-        assert remote_file_exists(setup, survivor_file)
+        assert factory.remote_file_exists(setup, vanishing_file)
+        assert factory.remote_file_exists(setup, permanent_file) 
+        assert factory.remote_file_exists(setup, survivor_file)
         
-        final_vanishing_content = read_remote_file(setup, vanishing_file)
+        final_vanishing_content = factory.read_remote_file(setup, vanishing_file)
         assert "restored_from_backup" in final_vanishing_content
         assert "backup_v1" in final_vanishing_content
         
-        final_permanent_content = read_remote_file(setup, permanent_file)
+        final_permanent_content = factory.read_remote_file(setup, permanent_file)
         assert "restored_stable" in final_permanent_content
         assert "backup_v1" in final_permanent_content
         
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
 
     def test_time_traveler_clock_timing_issues(self, dsg_repository_factory):
         """Test sync when clock/timing issues cause temporal confusion"""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -950,12 +957,12 @@ class TestSyncEdgeCases:
         now = datetime.datetime.now()
         time_content = f"id,event,timestamp\n1,created,{now.isoformat()}\n2,initial_data,{now.isoformat()}\n"
         
-        create_local_file(setup["local_path"], time_sensitive_file, time_content)
+        factory.create_local_file(setup, time_sensitive_file, time_content)
         
         # Initial sync
         result1 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result1["success"]
-        assert remote_file_exists(setup, time_sensitive_file)
+        assert factory.remote_file_exists(setup, time_sensitive_file)
         
         # Phase 2: Simulate clock going backwards (system clock adjustment)
         # Modify file with earlier timestamp but different content
@@ -964,7 +971,7 @@ class TestSyncEdgeCases:
         
         # Manually set file modification time to the past
         local_file_path = setup["local_path"] / time_sensitive_file
-        modify_local_file(setup["local_path"], time_sensitive_file, past_content)
+        factory.modify_local_file(setup, time_sensitive_file, past_content)
         
         # Simulate setting file mtime to past (time travel scenario)
         import os
@@ -976,7 +983,7 @@ class TestSyncEdgeCases:
         assert result2["success"]
         
         # Verify content updated despite confusing timestamps
-        remote_content = read_remote_file(setup, time_sensitive_file)
+        remote_content = factory.read_remote_file(setup, time_sensitive_file)
         assert "time_traveled_back" in remote_content
         assert "from_the_past" in remote_content
         
@@ -984,7 +991,7 @@ class TestSyncEdgeCases:
         future_time = now + datetime.timedelta(days=1)
         future_content = f"id,event,timestamp\n1,from_future,{future_time.isoformat()}\n4,big_time_jump,{future_time.isoformat()}\n"
         
-        modify_local_file(setup["local_path"], time_sensitive_file, future_content)
+        factory.modify_local_file(setup, time_sensitive_file, future_content)
         
         # Set file mtime to future
         future_timestamp = future_time.timestamp()
@@ -995,7 +1002,7 @@ class TestSyncEdgeCases:
         assert result3["success"]
         
         # Verify future content synced
-        remote_content = read_remote_file(setup, time_sensitive_file)
+        remote_content = factory.read_remote_file(setup, time_sensitive_file)
         assert "from_future" in remote_content
         assert "big_time_jump" in remote_content
         
@@ -1006,12 +1013,12 @@ class TestSyncEdgeCases:
         # Machine A thinks it's earlier
         machine_a_time = now - datetime.timedelta(minutes=30)
         machine_a_content = f"Machine A time: {machine_a_time.isoformat()}\nClock skew: -30 minutes\n"
-        create_local_file(setup["local_path"], machine_a_file, machine_a_content)
+        factory.create_local_file(setup, machine_a_file, machine_a_content)
         
         # Machine B thinks it's later  
         machine_b_time = now + datetime.timedelta(minutes=45)
         machine_b_content = f"Machine B time: {machine_b_time.isoformat()}\nClock skew: +45 minutes\n"
-        create_local_file(setup["local_path"], machine_b_file, machine_b_content)
+        factory.create_local_file(setup, machine_b_file, machine_b_content)
         
         # Set different mtimes to simulate different system clocks
         machine_a_path = setup["local_path"] / machine_a_file
@@ -1024,11 +1031,11 @@ class TestSyncEdgeCases:
         assert result4["success"]
         
         # Both machines' files should sync successfully
-        assert remote_file_exists(setup, machine_a_file)
-        assert remote_file_exists(setup, machine_b_file)
+        assert factory.remote_file_exists(setup, machine_a_file)
+        assert factory.remote_file_exists(setup, machine_b_file)
         
-        machine_a_remote = read_remote_file(setup, machine_a_file)
-        machine_b_remote = read_remote_file(setup, machine_b_file)
+        machine_a_remote = factory.read_remote_file(setup, machine_a_file)
+        machine_b_remote = factory.read_remote_file(setup, machine_b_file)
         assert "Clock skew: -30 minutes" in machine_a_remote
         assert "Clock skew: +45 minutes" in machine_b_remote
         
@@ -1047,15 +1054,15 @@ EST: {est_time.isoformat()}
 Note: All represent the same moment in time!
 """
         
-        create_local_file(setup["local_path"], timezone_file, timezone_content)
+        factory.create_local_file(setup, timezone_file, timezone_content)
         
         # Final sync with timezone complexity
         result5 = sync_repository(setup["local_config"], console, dry_run=False)
         assert result5["success"]
         
         # Verify timezone file synced
-        assert remote_file_exists(setup, timezone_file)
-        timezone_remote = read_remote_file(setup, timezone_file)
+        assert factory.remote_file_exists(setup, timezone_file)
+        timezone_remote = factory.read_remote_file(setup, timezone_file)
         assert "Timezone Chaos" in timezone_remote
         assert "same moment in time" in timezone_remote
         
@@ -1066,7 +1073,7 @@ Note: All represent the same moment in time!
         for i in range(5):
             rapid_time = now + datetime.timedelta(seconds=i)
             rapid_content = f"Rapid change #{i}\nTimestamp: {rapid_time.isoformat()}\nIteration: {i}\n"
-            create_local_file(setup["local_path"], rapid_fire_file, rapid_content)
+            factory.create_local_file(setup, rapid_fire_file, rapid_content)
             
             # Brief pause to ensure different mtimes
             import time
@@ -1077,9 +1084,9 @@ Note: All represent the same moment in time!
         assert result6["success"]
         
         # Verify final rapid change made it through
-        assert remote_file_exists(setup, rapid_fire_file)
-        rapid_remote = read_remote_file(setup, rapid_fire_file)
+        assert factory.remote_file_exists(setup, rapid_fire_file)
+        rapid_remote = factory.read_remote_file(setup, rapid_fire_file)
         assert "Rapid change #4" in rapid_remote  # Last change should win
         assert "Iteration: 4" in rapid_remote
         
-        assert cache_manifest_updated(setup)
+        assert factory.cache_manifest_updated(setup)
