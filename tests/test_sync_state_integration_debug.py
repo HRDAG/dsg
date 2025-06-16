@@ -18,18 +18,15 @@ from dsg.data.manifest import Manifest
 from dsg.data.manifest_merger import ManifestMerger, SyncState
 from dsg.core.scanner import scan_directory
 from dsg.core.operations import get_sync_status
-from tests.fixtures.bb_repo_factory import (
-    create_local_file,
-    create_remote_file,
-    modify_local_file,
-    regenerate_cache_from_current_local,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 def test_debug_integration_step_by_step(dsg_repository_factory):
     """
     Debug: Compare our working unit approach vs get_sync_status() step by step.
     """
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -50,9 +47,9 @@ def test_debug_integration_step_by_step(dsg_repository_factory):
     print(f"\n=== DEBUG: Setting up {target_file} ===")
     
     # Step 1: Create identical files (should be all_eq)
-    create_local_file(local_path, target_file, original_content)
-    create_remote_file(remote_path, target_file, original_content, remote_config)
-    regenerate_cache_from_current_local(local_config, last_sync_path)
+    factory.create_local_file(setup, target_file, original_content)
+    factory.create_remote_file(setup, target_file, original_content)
+    factory.regenerate_cache_from_current_local(setup)
     
     print("DEBUG: Created files, checking all_eq state...")
     
@@ -96,7 +93,7 @@ def test_debug_integration_step_by_step(dsg_repository_factory):
     
     # Step 2: Modify local file (should become local_changed)
     changed_content = "id,name,value\n1,Alice,150\n2,Bob,250\n3,Charlie,300\n"
-    modify_local_file(local_path, target_file, changed_content)
+    factory.modify_local_file(setup, target_file, changed_content)
     
     print("DEBUG: Modified local file, checking local_changed state...")
     
