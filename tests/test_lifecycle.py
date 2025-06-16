@@ -305,16 +305,27 @@ class TestInitRepository:
         assert init_result.normalization_result is not None
         assert len(init_result.files_included) == 1
     
+    @patch('dsg.core.lifecycle.sync_manifests')
     @patch('dsg.core.lifecycle.create_backend')
     @patch('dsg.core.lifecycle.create_local_metadata')
     @patch('dsg.core.lifecycle.loguru.logger')
-    def test_init_repository_without_normalization(self, mock_logger, mock_local_meta, mock_backend):
+    def test_init_repository_without_normalization(self, mock_logger, mock_local_meta, mock_backend, mock_sync_manifests):
         """Test repository initialization with normalization disabled"""
         from dsg.core.lifecycle import InitResult
         mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
         mock_local_meta.return_value = mock_init_result
         mock_backend_instance = MagicMock()
         mock_backend.return_value = mock_backend_instance
+        
+        # Mock sync_manifests for unified approach
+        mock_sync_manifests.return_value = {
+            'operation_type': 'init',
+            'status': 'success',
+            'upload_files': [],
+            'download_files': [],
+            'delete_local': [],
+            'delete_remote': []
+        }
         
         mock_config = MagicMock()
         mock_config.project.repo_name = "test-repo"
@@ -329,6 +340,9 @@ class TestInitRepository:
             "test@example.com", 
             normalize=False
         )
+        
+        # Verify sync_manifests was called with init approach
+        mock_sync_manifests.assert_called_once()
         
         assert init_result.snapshot_hash == "test_hash" 
         assert init_result.normalization_result is None
@@ -371,12 +385,23 @@ class TestInitRepository:
         
         # This should now work after the fix (config.project.name instead of config.project.repo_name)
         with patch('dsg.core.lifecycle.create_backend') as mock_backend, \
-             patch('dsg.core.lifecycle.create_local_metadata') as mock_local_meta:
+             patch('dsg.core.lifecycle.create_local_metadata') as mock_local_meta, \
+             patch('dsg.core.lifecycle.sync_manifests') as mock_sync_manifests:
             from dsg.core.lifecycle import InitResult
             mock_init_result = InitResult(snapshot_hash="test_hash", normalization_result=None)
             mock_local_meta.return_value = mock_init_result
             mock_backend_instance = MagicMock()
             mock_backend.return_value = mock_backend_instance
+            
+            # Mock sync_manifests for unified approach
+            mock_sync_manifests.return_value = {
+                'operation_type': 'init',
+                'status': 'success',
+                'upload_files': [],
+                'download_files': [],
+                'delete_local': [],
+                'delete_remote': []
+            }
             
             init_result = init_repository(config)
             
@@ -384,7 +409,7 @@ class TestInitRepository:
             assert init_result.snapshot_hash == "test_hash"
             assert init_result.normalization_result is None
             mock_backend.assert_called_once_with(config)
-            mock_backend_instance.init_repository.assert_called_once_with("test_hash", force=False)
+            mock_sync_manifests.assert_called_once()
     
     @patch('dsg.core.lifecycle.create_backend')
     @patch('dsg.core.lifecycle.create_local_metadata')
@@ -404,10 +429,11 @@ class TestInitRepository:
         with pytest.raises(Exception, match="Backend failed"):
             init_repository(mock_config)
     
+    @patch('dsg.core.lifecycle.sync_manifests')
     @patch('dsg.core.lifecycle.create_backend')
     @patch('dsg.core.lifecycle.create_local_metadata')
     @patch('dsg.core.lifecycle.loguru.logger')
-    def test_init_repository_creates_remote_dsg_structure(self, mock_logger, mock_local_meta, mock_backend):
+    def test_init_repository_creates_remote_dsg_structure(self, mock_logger, mock_local_meta, mock_backend, mock_sync_manifests):
         """Test that init_repository ensures remote .dsg directory structure is created
         
         This test demonstrates the bug: ZFS backend init should create remote .dsg directory
@@ -423,6 +449,16 @@ class TestInitRepository:
         mock_backend_instance = MagicMock()
         mock_backend.return_value = mock_backend_instance
         
+        # Mock sync_manifests for unified approach
+        mock_sync_manifests.return_value = {
+            'operation_type': 'init',
+            'status': 'success',
+            'upload_files': [],
+            'download_files': [],
+            'delete_local': [],
+            'delete_remote': []
+        }
+        
         # Create realistic config for ZFS backend
         mock_config = MagicMock()
         mock_config.project.name = "zfs-test-repo"
@@ -434,8 +470,8 @@ class TestInitRepository:
         # Run init_repository
         init_result = init_repository(mock_config, force=True)
         
-        # Verify backend.init_repository was called
-        mock_backend_instance.init_repository.assert_called_once_with("test_snapshot_hash", force=True)
+        # Verify sync_manifests was called (unified approach)
+        mock_sync_manifests.assert_called_once()
         
         # BUG DEMONSTRATION: The current ZFS backend implementation doesn't create remote .dsg
         # After the fix, we should also verify that the backend creates remote .dsg structure:

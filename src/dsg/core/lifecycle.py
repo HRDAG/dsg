@@ -1558,13 +1558,30 @@ def create_local_metadata(
     
     # Add all files from the manifest to the result
     for file_path, entry in manifest.entries.items():
-        # Get file size from the entry if available
-        file_size = getattr(entry, 'size', 0) if hasattr(entry, 'size') else 0
-        init_result.add_file(
-            path=file_path,
-            file_hash=entry.hash,
-            size=file_size
-        )
+        # Handle different entry types (FileRef vs LinkRef)
+        if hasattr(entry, 'hash') and hasattr(entry, 'filesize'):
+            # Regular file
+            init_result.add_file(
+                path=file_path,
+                file_hash=entry.hash,
+                size=entry.filesize
+            )
+        elif hasattr(entry, 'reference'):
+            # Symlink - use reference as "hash" and 0 as size
+            init_result.add_file(
+                path=file_path,
+                file_hash=f"symlink:{entry.reference}",
+                size=0
+            )
+        else:
+            # Fallback for other entry types
+            file_size = getattr(entry, 'size', 0) if hasattr(entry, 'size') else 0
+            file_hash = getattr(entry, 'hash', 'unknown') if hasattr(entry, 'hash') else 'unknown'
+            init_result.add_file(
+                path=file_path,
+                file_hash=file_hash,
+                size=file_size
+            )
     
     logger.info(f"Successfully created local metadata with snapshot s1 and {len(init_result.files_included)} files")
     return init_result
@@ -1634,7 +1651,13 @@ def init_repository(config: Config, normalize: bool = True, force: bool = False)
     for file_path in sync_result.get('upload_files', []):
         if file_path in local_manifest.entries:
             entry = local_manifest.entries[file_path]
-            init_result.add_file(file_path, entry.hash, entry.filesize)
+            # Handle different entry types (FileRef vs LinkRef)
+            if hasattr(entry, 'hash') and hasattr(entry, 'filesize'):
+                # Regular file
+                init_result.add_file(file_path, entry.hash, entry.filesize)
+            elif hasattr(entry, 'reference'):
+                # Symlink - use reference as "hash" and 0 as size
+                init_result.add_file(file_path, f"symlink:{entry.reference}", 0)
     
     # 6. Add normalization result to init_result
     init_result.normalization_result = normalization_result
@@ -1818,8 +1841,19 @@ def clone_repository(config: Config, source_url: str, dest_path: Path,
     backend = create_backend(config)
     try:
         remote_manifest_data = backend.read_file(".dsg/last-sync.json")
-        remote_manifest = Manifest.from_json_bytes(remote_manifest_data)
-        logger.debug(f"Retrieved remote manifest with {len(remote_manifest.entries)} files")
+        
+        # Write to temporary file and use from_json to ensure proper parsing
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.json', delete=False) as temp_file:
+            temp_file.write(remote_manifest_data)
+            temp_path = Path(temp_file.name)
+        
+        try:
+            remote_manifest = Manifest.from_json(temp_path)
+            logger.debug(f"Retrieved remote manifest with {len(remote_manifest.entries)} files")
+        finally:
+            temp_path.unlink()  # Clean up temp file
+            
     except FileNotFoundError:
         raise ValueError(f"Source repository has no manifest file at {source_url}")
     except Exception as e:
