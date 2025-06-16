@@ -17,12 +17,8 @@ create the expected states before we test the integration level.
 from dsg.data.manifest import Manifest
 from dsg.data.manifest_merger import ManifestMerger, SyncState
 from dsg.core.scanner import scan_directory
-from tests.fixtures.bb_repo_factory import (
-    create_local_file,
-    create_remote_file,
-    modify_local_file,
-    regenerate_cache_from_current_local,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 def test_sync_state_creation_unit(dsg_repository_factory):
@@ -32,6 +28,7 @@ def test_sync_state_creation_unit(dsg_repository_factory):
     This test directly verifies the state creation logic without going
     through get_sync_status() to isolate the problem.
     """
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -50,9 +47,9 @@ def test_sync_state_creation_unit(dsg_repository_factory):
     original_content = "id,name,value\n1,Alice,100\n2,Bob,200\n"
     
     # Create identical files in all three locations
-    create_local_file(local_path, target_file, original_content)
-    create_remote_file(remote_path, target_file, original_content, remote_config)
-    regenerate_cache_from_current_local(local_config, last_sync_path)
+    factory.create_local_file(setup, target_file, original_content)
+    factory.create_remote_file(setup, target_file, original_content)
+    factory.regenerate_cache_from_current_local(setup)
     
     # Step 2: Verify we have "all equal" state
     local_scan = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
@@ -67,7 +64,7 @@ def test_sync_state_creation_unit(dsg_repository_factory):
     
     # Step 3: Now modify local file to create "local changed" state
     changed_content = "id,name,value\n1,Alice,150\n2,Bob,250\n3,Charlie,300\n"
-    modify_local_file(local_path, target_file, changed_content)
+    factory.modify_local_file(setup, target_file, changed_content)
     
     # Step 4: Re-scan and verify we now have "local changed" state
     local_scan_after = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
@@ -105,6 +102,7 @@ def test_file_modification_creates_different_hash(dsg_repository_factory):
     
     This is a more basic test to ensure our file modification is working.
     """
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -118,7 +116,7 @@ def test_file_modification_creates_different_hash(dsg_repository_factory):
     
     # Create initial file
     original_content = "id,value\n1,100\n2,200\n"
-    create_local_file(local_path, target_file, original_content)
+    factory.create_local_file(setup, target_file, original_content)
     
     # Scan and get hash
     local_scan1 = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
@@ -126,7 +124,7 @@ def test_file_modification_creates_different_hash(dsg_repository_factory):
     
     # Modify file
     changed_content = "id,value\n1,150\n2,250\n3,300\n"
-    modify_local_file(local_path, target_file, changed_content)
+    factory.modify_local_file(setup, target_file, changed_content)
     
     # Scan again and get new hash
     local_scan2 = scan_directory(local_config, compute_hashes=True, include_dsg_files=False)
