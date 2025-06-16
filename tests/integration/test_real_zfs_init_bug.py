@@ -76,15 +76,18 @@ class TestRealZFSInitBug:
         (input_dir / "real_test_data.txt").write_text("Real ZFS test data")
         (input_dir / "real_test_data.csv").write_text("id,value\n1,real_test\n2,zfs_data")
         
-        # Create DSG config pointing to real ZFS
+        # Create DSG config pointing to real ZFS with unique name
+        import uuid
+        unique_name = f"real-zfs-test-{uuid.uuid4().hex[:8]}"
+        
         ssh_config = SSHRepositoryConfig(
             host="localhost",
             path=Path("/var/tmp/test"),
-            name="real-zfs-test",
+            name=unique_name,
             type="zfs"
         )
         project_config = ProjectConfig(
-            name="real-zfs-test",
+            name=unique_name,
             transport="ssh", 
             ssh=ssh_config,
             data_dirs={"input", "output"},
@@ -119,8 +122,8 @@ class TestRealZFSInitBug:
             print("✓ Local .dsg structure created correctly")
             
             # Verify ZFS dataset was created
-            zfs_dataset = "dsgtest/real-zfs-test"
-            zfs_mount = "/var/tmp/test/real-zfs-test"
+            zfs_dataset = f"dsgtest/{unique_name}"
+            zfs_mount = f"/var/tmp/test/{unique_name}"
             
             # Check that ZFS dataset exists
             result = ce.run_sudo(["zfs", "list", zfs_dataset], check=False)
@@ -178,15 +181,18 @@ class TestRealZFSInitBug:
         input_dir.mkdir()
         (input_dir / "sync_test.txt").write_text("Initial sync test data")
         
-        # Create DSG config
+        # Create DSG config with unique name
+        import uuid
+        unique_name = f"real-zfs-test-sync-{uuid.uuid4().hex[:8]}"
+        
         ssh_config = SSHRepositoryConfig(
             host="localhost",
             path=Path("/var/tmp/test"),
-            name="real-zfs-test",  # Reuse same dataset name
+            name=unique_name,
             type="zfs"
         )
         project_config = ProjectConfig(
-            name="real-zfs-test",
+            name=unique_name,
             transport="ssh",
             ssh=ssh_config,
             data_dirs={"input"},

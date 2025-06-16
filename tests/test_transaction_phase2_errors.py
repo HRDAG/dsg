@@ -91,7 +91,7 @@ class TestTransactionErrorHandling:
         from dsg.storage.remote import ZFSFilesystem
         
         mock_zfs_ops = Mock()
-        mock_zfs_ops.commit_atomic_sync.side_effect = Exception("ZFS promote failed")
+        mock_zfs_ops.commit.side_effect = Exception("ZFS promote failed")
         
         zfs_fs = ZFSFilesystem(mock_zfs_ops)
         zfs_fs.transaction_id = "test-tx-123"

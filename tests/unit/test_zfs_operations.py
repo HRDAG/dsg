@@ -64,7 +64,7 @@ class TestInitPattern:
                 assert calls[1][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo-init-tx-abc123", "dsgtest/test-repo-init-tx-abc123"]
                 
                 # Check ownership commands
-                assert calls[2][0][0] == ["chown", "testuser:testuser", "/var/tmp/test/test-repo-init-tx-abc123"]
+                assert calls[2][0][0] == ["chown", "testuser:svn", "/var/tmp/test/test-repo-init-tx-abc123"]
                 assert calls[3][0][0] == ["chmod", "755", "/var/tmp/test/test-repo-init-tx-abc123"]
                 
                 assert result_path == "/var/tmp/test/test-repo-init-tx-abc123"
@@ -80,7 +80,7 @@ class TestInitPattern:
             
             # Verify atomic rename and snapshot creation
             calls = mock_run.call_args_list
-            assert len(calls) == 3
+            assert len(calls) == 5
             
             # Check rename command
             assert calls[0][0][0] == ["zfs", "rename", "dsgtest/test-repo-init-tx-abc123", "dsgtest/test-repo"]
@@ -88,8 +88,12 @@ class TestInitPattern:
             # Check mountpoint update
             assert calls[1][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo", "dsgtest/test-repo"]
             
+            # Check ownership and permissions (calls 2 and 3)
+            assert "chown" in calls[2][0][0][0]
+            assert "chmod" in calls[3][0][0][0]
+            
             # Check initial snapshot creation
-            assert calls[2][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@init-snapshot"]
+            assert calls[4][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@init-snapshot"]
 
 
 class TestSyncPattern:
@@ -123,7 +127,7 @@ class TestSyncPattern:
                 assert calls[2][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo-sync-tx-def456", "dsgtest/test-repo-sync-tx-def456"]
                 
                 # Check ownership and permissions
-                assert calls[3][0][0] == ["chown", "testuser:testuser", "/var/tmp/test/test-repo-sync-tx-def456"]
+                assert calls[3][0][0] == ["chown", "testuser:svn", "/var/tmp/test/test-repo-sync-tx-def456"]
                 assert calls[4][0][0] == ["chmod", "755", "/var/tmp/test/test-repo-sync-tx-def456"]
                 
                 assert result_path == "/var/tmp/test/test-repo-sync-tx-def456"
@@ -139,7 +143,7 @@ class TestSyncPattern:
             
             # Verify promote sequence
             calls = mock_run.call_args_list
-            assert len(calls) == 6
+            assert len(calls) == 9
             
             # Check pre-sync snapshot
             assert calls[0][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@pre-sync-tx-def456"]
@@ -151,12 +155,17 @@ class TestSyncPattern:
             assert calls[2][0][0] == ["zfs", "rename", "dsgtest/test-repo", "dsgtest/test-repo-old-tx-def456"]
             assert calls[3][0][0] == ["zfs", "rename", "dsgtest/test-repo-sync-tx-def456", "dsgtest/test-repo"]
             
-            # Check cleanup (with check=False)
-            assert calls[4][0][0] == ["zfs", "destroy", "dsgtest/test-repo@sync-temp-tx-def456"]
-            assert calls[4][1]["check"] == False
+            # Check mountpoint update and ownership (calls 4, 5, 6)
+            assert calls[4][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo", "dsgtest/test-repo"]
+            assert "chown" in calls[5][0][0][0]
+            assert "chmod" in calls[6][0][0][0]
             
-            assert calls[5][0][0] == ["zfs", "destroy", "-r", "dsgtest/test-repo-old-tx-def456"]
-            assert calls[5][1]["check"] == False
+            # Check cleanup (with check=False)
+            assert calls[7][0][0] == ["zfs", "destroy", "dsgtest/test-repo@sync-temp-tx-def456"]
+            assert calls[7][1]["check"] == False
+            
+            assert calls[8][0][0] == ["zfs", "destroy", "-r", "dsgtest/test-repo-old-tx-def456"]
+            assert calls[8][1]["check"] == False
     
     def test_sync_deferred_cleanup_handling(self, zfs_ops):
         """Test that cleanup failures don't block sync commit."""

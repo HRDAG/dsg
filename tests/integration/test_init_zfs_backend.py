@@ -219,63 +219,71 @@ class TestZFSInitBugDemonstration:
         
         This test will FAIL demonstrating that missing remote .dsg breaks sync workflow.
         """
-        # Similar setup as above...
-        project_root = tmp_path / "local_project"
-        remote_base = tmp_path / "remote_zfs_mount" 
-        project_root.mkdir()
-        remote_base.mkdir()
+        # Create test ZFS dataset  
+        dataset_name, remote_repo_path = create_test_zfs_dataset()
         
-        # Create test file
-        input_dir = project_root / "input"
-        input_dir.mkdir()
-        (input_dir / "test.txt").write_text("sync test data")
-        
-        # Create config (abbreviated for this test)
-        ssh_config = SSHRepositoryConfig(
-            host="localhost", path=remote_base, name="sync-test-repo", type="zfs"
-        )
-        project_config = ProjectConfig(
-            name="sync-test-repo", transport="ssh", ssh=ssh_config,
-            data_dirs={"input"}, ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
-        )
-        config = Config(
-            user=UserConfig(user_name="Test User", user_id="test@example.com"),
-            project=project_config,
-            project_root=project_root
-        )
-        
-        # Mock ZFS operations
-        with patch('dsg.storage.backends.ZFSOperations') as mock_zfs_class:
-            mock_zfs_ops = MagicMock()
-            mock_zfs_class.return_value = mock_zfs_ops
-            mock_zfs_ops.mount_path = str(remote_base / "sync-test-repo")
-            mock_zfs_ops._validate_zfs_access.return_value = True
+        try:
+            project_root = tmp_path / "local_project"
+            project_root.mkdir()
             
-            with patch('dsg.storage.backends.LocalhostTransport'):
-                import os
-                original_cwd = os.getcwd()
-                try:
-                    os.chdir(project_root)
-                    
-                    # Run init
-                    init_result = init_repository(config, force=True)
-                    assert init_result.snapshot_hash is not None
-                    
-                    # BUG DEMONSTRATION: Subsequent sync should work but will fail due to missing remote .dsg
-                    # This simulates the real-world workflow described in the bug report
-                    from dsg.core.lifecycle import sync_repository
-                    
-                    # This should work after init, but will fail due to missing remote .dsg structure
-                    with pytest.raises(Exception) as exc_info:
-                        sync_repository(config)
-                    
-                    # The exception should be related to missing .dsg structure
-                    error_msg = str(exc_info.value).lower()
-                    assert any(keyword in error_msg for keyword in ['.dsg', 'missing', 'not found']), \
-                        f"BUG: Sync failed due to missing remote .dsg structure: {error_msg}"
-                    
-                finally:
-                    os.chdir(original_cwd)
+            # Create test file
+            input_dir = project_root / "input"
+            input_dir.mkdir()
+            (input_dir / "test.txt").write_text("sync test data")
+            
+            # Create config using real ZFS location
+            remote_base = Path("/var/tmp/test")
+            repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
+            
+            ssh_config = SSHRepositoryConfig(
+                host="localhost", path=remote_base, name=repo_name, type="zfs"
+            )
+            project_config = ProjectConfig(
+                name=repo_name, transport="ssh", ssh=ssh_config,
+                data_dirs={"input"}, ignore=IgnoreSettings(names=[], paths=[], suffixes=[])
+            )
+            config = Config(
+                user=UserConfig(user_name="Test User", user_id="test@example.com"),
+                project=project_config,
+                project_root=project_root
+            )
+        
+            # Mock ZFS operations
+            with patch('dsg.storage.backends.ZFSOperations') as mock_zfs_class:
+                mock_zfs_ops = MagicMock()
+                mock_zfs_class.return_value = mock_zfs_ops
+                mock_zfs_ops.mount_path = remote_repo_path
+                mock_zfs_ops._validate_zfs_access.return_value = True
+                
+                with patch('dsg.storage.backends.LocalhostTransport'):
+                    import os
+                    original_cwd = os.getcwd()
+                    try:
+                        os.chdir(project_root)
+                        
+                        # Run init
+                        init_result = init_repository(config, force=True)
+                        assert init_result.snapshot_hash is not None
+                        
+                        # BUG DEMONSTRATION: Subsequent sync should work but will fail due to missing remote .dsg
+                        # This simulates the real-world workflow described in the bug report
+                        from dsg.core.lifecycle import sync_repository
+                        
+                        # This should work after init, but will fail due to missing remote .dsg structure
+                        with pytest.raises(Exception) as exc_info:
+                            sync_repository(config)
+                        
+                        # The exception should be related to missing .dsg structure
+                        error_msg = str(exc_info.value).lower()
+                        assert any(keyword in error_msg for keyword in ['.dsg', 'missing', 'not found']), \
+                            f"BUG: Sync failed due to missing remote .dsg structure: {error_msg}"
+                        
+                    finally:
+                        os.chdir(original_cwd)
+                        
+        finally:
+            # Clean up the test ZFS dataset
+            cleanup_test_zfs_dataset(dataset_name)
 
 
 @zfs_required
