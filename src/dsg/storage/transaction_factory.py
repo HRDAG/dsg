@@ -132,7 +132,7 @@ def create_remote_filesystem(config: 'Config'):
     if config.project.transport == "ssh":
         ssh_config = config.project.ssh
         if not ssh_config:
-            raise ValueError("SSH configuration required but not found")
+            raise ValueError("SSH configuration required but not found. Add ssh section to .dsgconfig.yml with host, path, and type fields.")
         backend_type = ssh_config.type
         
         # Use SSH config for backend parameters
@@ -147,7 +147,7 @@ def create_remote_filesystem(config: 'Config'):
         dataset_path = config.project.name
         
     else:
-        raise ValueError(f"Transport type '{config.project.transport}' not supported")
+        _raise_transport_not_supported_error(config.project.transport)
     
     if backend_type == "zfs":
         # Extract ZFS configuration details
@@ -177,7 +177,7 @@ def create_remote_filesystem(config: 'Config'):
         return XFSFilesystem(repo_path)
     
     else:
-        raise NotImplementedError(f"Backend type '{backend_type}' not yet implemented")
+        _raise_backend_not_implemented_error(backend_type)
 
 
 def create_transport(config: 'Config'):
@@ -196,8 +196,7 @@ def create_transport(config: 'Config'):
     if config.project.transport == "ssh":
         ssh_config = config.project.ssh
         if not ssh_config:
-            raise ValueError("SSH configuration required but not found")
-        
+            raise ValueError("SSH configuration required but not found. Add ssh section to .dsgconfig.yml with host, path, and type fields.")
         # Check if this is effectively localhost
         if is_local_host(ssh_config.host):
             # Use LocalhostTransport for better performance
@@ -219,7 +218,7 @@ def create_transport(config: 'Config'):
         return LocalhostTransport(temp_dir)
     
     else:
-        raise ValueError(f"Transport type '{config.project.transport}' not supported")
+        _raise_transport_not_supported_error(config.project.transport)
 
 
 def calculate_sync_plan(status, config=None) -> dict[str, list[str]]:
@@ -291,3 +290,45 @@ def calculate_sync_plan(status, config=None) -> dict[str, list[str]]:
         'upload_archive': upload_archive,
         'download_archive': download_archive
     }
+
+def _raise_transport_not_supported_error(transport_type: str) -> None:
+    """Raise helpful error for unsupported transport types."""
+    if transport_type in ["rclone", "ipfs"]:
+        raise NotImplementedError(
+            f"Transport '{transport_type}' is planned but not yet implemented.\n\n"
+            f"Currently supported transports:\n"
+            f"  • ssh     - SSH to remote server (recommended)\n"
+            f"  • localhost - Local filesystem (development/testing)\n\n"
+            f"To use SSH transport, configure your .dsgconfig.yml:\n"
+            f"  transport: ssh\n"
+            f"  ssh:\n"
+            f"    host: your-server.com\n"
+            f"    path: /path/to/remote/repo\n"
+            f"    type: zfs  # or xfs\n\n"
+            f"rclone and ipfs support are coming in future releases."
+        )
+    else:
+        raise ValueError(
+            f"Transport type '{transport_type}' not recognized.\n\n"
+            f"Supported transports:\n"
+            f"  • ssh      - SSH to remote server\n"
+            f"  • localhost - Local filesystem\n\n"
+            f"Planned transports:\n"
+            f"  • rclone   - rclone remote (coming soon)\n"
+            f"  • ipfs     - IPFS distributed storage (coming soon)\n\n"
+            f"Check your .dsgconfig.yml transport setting."
+        )
+
+
+def _raise_backend_not_implemented_error(backend_type: str) -> None:
+    """Raise helpful error for unsupported backend types."""
+    raise NotImplementedError(
+        f"Backend type '{backend_type}' not yet implemented.\n\n"
+        f"Currently supported backends:\n"
+        f"  • zfs - ZFS filesystem with atomic snapshots (recommended)\n"
+        f"  • xfs - Standard POSIX filesystem\n\n"
+        f"To configure a supported backend, update your .dsgconfig.yml:\n"
+        f"  ssh:\n"
+        f"    type: zfs  # or xfs\n\n"
+        f"Additional backends planned for future releases."
+    )

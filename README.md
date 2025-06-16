@@ -133,6 +133,34 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    ```
    <!--- CLI help output end --->
 
+
+## Current Capabilities
+
+### ✅ Currently Supported
+
+**Transports:**
+- **SSH** - Remote server access via SSH (recommended for production)
+- **localhost** - Local filesystem operations (development/testing)
+
+**Backends:**
+- **ZFS** - ZFS filesystem with atomic snapshots (recommended for production)
+- **XFS** - Standard POSIX filesystem (development/testing)
+
+**Operations:**
+- `init` - Initialize new repositories (SSH + ZFS/XFS)
+- `clone` - Clone existing repositories 
+- `status` - Compare local files with last sync
+- `sync` - Synchronize changes with remote repository
+- Repository validation and file tracking
+
+### 🚧 Planned Features (Coming Soon)
+
+**Transports:**
+- **rclone** - Support for rclone remotes (S3, GCS, etc.)
+- **ipfs** - IPFS distributed storage
+
+**Note:** While `rclone` and `ipfs` options appear in CLI help, they will show helpful error messages directing you to supported alternatives until implementation is complete.
+
 ### For End Users at HRDAG
 
 Not implemented yet! hang on.
