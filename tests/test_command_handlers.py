@@ -264,14 +264,32 @@ class TestActionCommandHandlers:
     
     def test_clone_command_placeholder_functionality(self):
         """Test that clone command placeholder works correctly."""
+        from unittest.mock import patch
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        result = action_commands.clone(
-            console, config, dest_path="/test/dest", resume=True,
-            dry_run=False, force=False, normalize=False,
-            verbose=False, quiet=False
-        )
+        # Mock the config structure properly
+        config.project = Mock()
+        config.project.transport = "ssh"
+        config.project.ssh = Mock()
+        config.project.ssh.host = "test-host"
+        config.project.ssh.path = "/test/path"
+        
+        # Mock the clone_repository function to avoid actual cloning
+        with patch('dsg.cli.commands.actions.clone_repository') as mock_clone:
+            mock_clone.return_value = {
+                'operation': 'clone',
+                'status': 'success',
+                'files_downloaded': 5,
+                'dest_path': '/test/dest',
+                'resume': True
+            }
+            
+            result = action_commands.clone(
+                console, config, dest_path="/test/dest", resume=True,
+                dry_run=False, force=False, normalize=False,
+                verbose=False, quiet=False
+            )
         
         # Verify placeholder structure
         assert 'operation' in result

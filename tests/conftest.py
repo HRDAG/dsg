@@ -24,6 +24,20 @@ from dsg.config.manager import (
 from tests.fixtures.repository_factory import dsg_repository_factory
 
 
+# Configure pytest to avoid assertion rewriting warnings
+def pytest_configure(config):
+    """Configure pytest settings to avoid warnings."""
+    # The bb_repo_factory module is imported by multiple test modules,
+    # causing assertion rewriting warnings. Disable the warnings since
+    # this module doesn't need assertion rewriting (it's just data/fixtures).
+    import warnings
+    warnings.filterwarnings(
+        "ignore", 
+        message="Module already imported so cannot be rewritten: tests.fixtures.bb_repo_factory",
+        category=pytest.PytestAssertRewriteWarning
+    )
+
+
 @pytest.fixture
 def dsg_project_config_text():
     """Standard project config YAML text template."""

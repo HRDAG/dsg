@@ -37,13 +37,13 @@ def check_zfs_available() -> tuple[bool, str]:
             return False, "ZFS command not found"
         
         # Check if test pool exists
-        result = subprocess.run(['sudo', 'zfs', 'list', 'zsd/test'], 
+        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
                               capture_output=True, text=True)
         if result.returncode != 0:
-            return False, "ZFS test pool 'zsd/test' not available"
+            return False, "ZFS test pool 'dsgtest' not available"
         
         # Check if we can create datasets (test permissions)
-        test_dataset = f"zsd/test/pytest-{uuid.uuid4().hex[:8]}"
+        test_dataset = f"dsgtest/pytest-{uuid.uuid4().hex[:8]}"
         try:
             result = subprocess.run(['sudo', 'zfs', 'create', test_dataset], 
                                   capture_output=True, text=True)
@@ -73,8 +73,8 @@ def create_test_zfs_dataset() -> tuple[str, str]:
         Tuple of (dataset_name, mount_path)
     """
     test_id = uuid.uuid4().hex[:8]
-    dataset_name = f"zsd/test/pytest-{test_id}"
-    mount_path = f"/var/repos/zsd/test/pytest-{test_id}"
+    dataset_name = f"dsgtest/pytest-{test_id}"
+    mount_path = f"/var/tmp/test/pytest-{test_id}"
     
     # Create the dataset
     result = subprocess.run(['sudo', 'zfs', 'create', dataset_name], 
@@ -122,11 +122,11 @@ class TestZFSInitBugDemonstration:
             (input_dir / "data2.csv").write_text("id,value\n1,test")
             
             # Create DSG config for ZFS backend pointing to real ZFS
-            # For ZFS dataset zsd/test/pytest-xxx, we need:
-            # ssh.path = /var/repos/zsd (points to pool) 
-            # ssh.name = test/pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/repos/zsd")
-            repo_name = f"test/{Path(remote_repo_path).name}"  # e.g., "test/pytest-abc123"
+            # For ZFS dataset dsgtest/pytest-xxx, we need:
+            # ssh.path = /var/tmp/test (points to pool) 
+            # ssh.name = pytest-xxx (dataset path within pool)
+            remote_base = Path("/var/tmp/test")
+            repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
             
             ssh_config = SSHRepositoryConfig(
                 host="localhost",
@@ -282,11 +282,11 @@ class TestZFSBackendDirectly:
             (local_dsg / "archive").mkdir()
             
             # Create LocalhostBackend pointing to real ZFS location
-            # For ZFS dataset zsd/test/pytest-xxx, we need:
-            # repo_path = /var/repos/zsd (points to pool)
-            # repo_name = test/pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/repos/zsd")
-            repo_name = f"test/{Path(remote_repo_path).name}"
+            # For ZFS dataset dsgtest/pytest-xxx, we need:
+            # repo_path = /var/tmp/test (points to pool)
+            # repo_name = pytest-xxx (dataset path within pool)
+            remote_base = Path("/var/tmp/test")
+            repo_name = Path(remote_repo_path).name
             backend = LocalhostBackend(remote_base, repo_name)
             
             # Change to project directory

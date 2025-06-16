@@ -129,9 +129,15 @@ def clone(
     
     # Use the new unified clone implementation
     from pathlib import Path
+    # Determine source URL from config
+    if config.project.transport == "ssh" and config.project.ssh:
+        source_url = f"ssh://{config.project.ssh.host}{config.project.ssh.path}"
+    else:
+        raise ValueError(f"Unsupported transport type: {config.project.transport}")
+    
     result = clone_repository(
         config=config,
-        source_url=config.storage.host,  # Use configured storage host as source
+        source_url=source_url,
         dest_path=Path(dest_path) if dest_path else config.project_root,
         resume=resume,
         console=console

@@ -9,13 +9,13 @@
 """
 Real ZFS integration test demonstrating the remote .dsg bug.
 
-This test uses the actual ZFS pool at /var/repos/zsd/test to demonstrate
+This test uses the actual ZFS pool at /var/tmp/test to demonstrate
 that `dsg init --force` creates local .dsg but fails to create remote .dsg.
 
 REQUIREMENTS:
-- ZFS pool 'zsd' exists at /var/repos/zsd
+- ZFS pool 'dsgtest' exists at /var/tmp/test
 - User has sudo access for ZFS operations
-- /var/repos/zsd/test is available for testing
+- /var/tmp/test is available for testing
 """
 
 import pytest
@@ -34,8 +34,8 @@ class TestRealZFSInitBug:
     @pytest.fixture
     def cleanup_zfs_test_dataset(self):
         """Cleanup fixture to ensure test dataset is removed before and after test."""
-        test_dataset = "zsd/real-zfs-test"
-        test_mount = "/var/repos/zsd/real-zfs-test"
+        test_dataset = "dsgtest/real-zfs-test"
+        test_mount = "/var/tmp/test/real-zfs-test"
         
         def cleanup():
             try:
@@ -79,7 +79,7 @@ class TestRealZFSInitBug:
         # Create DSG config pointing to real ZFS
         ssh_config = SSHRepositoryConfig(
             host="localhost",
-            path=Path("/var/repos/zsd"),
+            path=Path("/var/tmp/test"),
             name="real-zfs-test",
             type="zfs"
         )
@@ -119,8 +119,8 @@ class TestRealZFSInitBug:
             print("✓ Local .dsg structure created correctly")
             
             # Verify ZFS dataset was created
-            zfs_dataset = "zsd/real-zfs-test"
-            zfs_mount = "/var/repos/zsd/real-zfs-test"
+            zfs_dataset = "dsgtest/real-zfs-test"
+            zfs_mount = "/var/tmp/test/real-zfs-test"
             
             # Check that ZFS dataset exists
             result = ce.run_sudo(["zfs", "list", zfs_dataset], check=False)
@@ -181,7 +181,7 @@ class TestRealZFSInitBug:
         # Create DSG config
         ssh_config = SSHRepositoryConfig(
             host="localhost",
-            path=Path("/var/repos/zsd"),
+            path=Path("/var/tmp/test"),
             name="real-zfs-test",  # Reuse same dataset name
             type="zfs"
         )

@@ -44,10 +44,10 @@ def check_zfs_available() -> tuple[bool, str]:
             return False, "ZFS command not found"
         
         # Check if test pool exists
-        result = subprocess.run(['sudo', 'zfs', 'list', 'zsd/test'], 
+        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
                               capture_output=True, text=True)
         if result.returncode != 0:
-            return False, "ZFS test pool 'zsd/test' not available"
+            return False, "ZFS test pool 'dsgtest' not available"
         
         # Check if we can create datasets (test permissions)
         test_dataset = f"zsd/test/pytest-{uuid.uuid4().hex[:8]}"
@@ -154,11 +154,11 @@ class TestZFSRemoteDsgRegression:
             test_files = create_test_files(project_root)  # noqa: F841
             
             # Create ZFS backend configuration pointing to real ZFS
-            # For ZFS dataset zsd/test/pytest-xxx:
-            # - ssh.path = /var/repos/zsd (ZFS pool mount point)
-            # - repo name = test/pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/repos/zsd")
-            repo_name = f"test/{Path(remote_repo_path).name}"  # e.g., "test/pytest-abc123"
+            # For ZFS dataset dsgtest/pytest-xxx:
+            # - ssh.path = /var/tmp/test (ZFS pool mount point)
+            # - repo name = pytest-xxx (dataset path within pool)
+            remote_base = Path("/var/tmp/test")
+            repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
             
             ssh_config = SSHRepositoryConfig(
                 host="localhost",
@@ -283,8 +283,8 @@ class TestZFSRemoteDsgRegression:
             project_root.mkdir()
             create_test_files(project_root)
             
-            remote_base = Path("/var/repos/zsd")
-            repo_name = f"test/{Path(remote_repo_path).name}"
+            remote_base = Path("/var/tmp/test")
+            repo_name = Path(remote_repo_path).name
             
             ssh_config = SSHRepositoryConfig(
                 host="localhost",

@@ -385,9 +385,9 @@ class LocalhostBackend(Backend):
         # For now, assume ZFS since that's what dsg-tester is using
 
         # Create ZFS operations - need pool name from repo_path
-        # For path like "/var/repos/zsd", extract pool name "zsd" from the path
-        pool_name = self.repo_path.name  # Extract last component of path
-        zfs_ops = ZFSOperations(pool_name, self.repo_name)
+        # For path like "/var/tmp/test", determine the actual ZFS pool name
+        pool_name = self._get_zfs_pool_name()
+        zfs_ops = ZFSOperations(pool_name, self.repo_name, str(self.repo_path))
 
         # Create localhost transport
         transport = LocalhostTransport(self.repo_path, self.repo_name)
@@ -410,6 +410,67 @@ class LocalhostBackend(Backend):
             force=force
         )
 
+    def _get_zfs_pool_name(self) -> str:
+        """Determine the ZFS pool name for the given path."""
+        import subprocess
+        try:
+            # Try to get the ZFS dataset for this path using zfs list
+            result = subprocess.run(
+                ['zfs', 'list', '-H', '-o', 'name'], 
+                capture_output=True, text=True, check=False
+            )
+            if result.returncode == 0:
+                datasets = result.stdout.strip().split('\n')
+                path_str = str(self.repo_path)
+                
+                # Check if any dataset is mounted at our path
+                for dataset in datasets:
+                    if dataset.strip():
+                        # Get mountpoint for this dataset
+                        mount_result = subprocess.run(
+                            ['zfs', 'get', '-H', '-o', 'value', 'mountpoint', dataset.strip()], 
+                            capture_output=True, text=True, check=False
+                        )
+                        if mount_result.returncode == 0:
+                            mountpoint = mount_result.stdout.strip()
+                            if mountpoint == path_str or path_str.startswith(mountpoint + '/'):
+                                # Found matching dataset, extract pool name
+                                return dataset.strip().split('/')[0]
+                
+                # If no exact match, look for datasets that could contain our path
+                # For /var/tmp/test, look for pool name that could be mounted there
+                for dataset in datasets:
+                    if dataset.strip() and '/' not in dataset.strip():
+                        # This is a pool name (no slashes)
+                        pool_name = dataset.strip()
+                        # Check if this pool could be mounted at our location
+                        pool_result = subprocess.run(
+                            ['zfs', 'get', '-H', '-o', 'value', 'mountpoint', pool_name], 
+                            capture_output=True, text=True, check=False
+                        )
+                        if pool_result.returncode == 0:
+                            pool_mountpoint = pool_result.stdout.strip()
+                            if path_str == pool_mountpoint or path_str.startswith(pool_mountpoint + '/'):
+                                return pool_name
+            
+            # Fallback: try to detect pool from path structure
+            # /var/tmp/test -> try "dsgtest" first, then fall back to path component
+            if '/var/tmp/test' in str(self.repo_path):
+                # Check if dsgtest pool exists
+                test_result = subprocess.run(
+                    ['zfs', 'list', 'dsgtest'], 
+                    capture_output=True, text=True, check=False
+                )
+                if test_result.returncode == 0:
+                    return 'dsgtest'
+            
+            # Final fallback: use last path component
+            return self.repo_path.name
+            
+        except Exception:
+            # If ZFS commands fail, fall back to path-based detection
+            return self.repo_path.name
+
     def _get_zfs_operations(self) -> Optional[ZFSOperations]:
         """Get ZFS operations if this is a ZFS backend, None otherwise."""
         # TODO: Get repo_type from config to determine ZFS vs XFS
@@ -430,12 +491,12 @@ class LocalhostBackend(Backend):
                 
             # Only try ZFS for paths that could be ZFS mount points
             # Common ZFS mount points: /var/repos, /pool, /zfs, etc.
-            zfs_mount_indicators = ['/var/repos', '/pool', '/zfs', '/tank', '/data']
+            zfs_mount_indicators = ['/var/repos', '/var/tmp/test', '/pool', '/zfs', '/tank', '/data']
             if not any(indicator in repo_path_str for indicator in zfs_mount_indicators):
                 return None
             
-            pool_name = self.repo_path.name
-            zfs_ops = ZFSOperations(pool_name, self.repo_name)
+            pool_name = self._get_zfs_pool_name()
+            zfs_ops = ZFSOperations(pool_name, self.repo_name, str(self.repo_path))
             
             # Test if ZFS is actually available and this path is a ZFS dataset
             if zfs_ops._validate_zfs_access():

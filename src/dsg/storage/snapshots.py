@@ -80,8 +80,6 @@ class ZFSOperations(SnapshotOperations):
         # Fix ownership and permissions on the mount point
         # Get current user for ownership
         current_user = pwd.getpwuid(os.getuid()).pw_name
-        pwd.getpwuid(os.getuid()).pw_gid
-        pwd.getpwuid(os.getuid()).pw_name  # Use same name for group fallback
 
         # Set ownership to current user
         # TODO: CRITICAL - Sudo usage needs context awareness
@@ -172,25 +170,21 @@ class ZFSOperations(SnapshotOperations):
         """Check if this backend supports atomic sync operations."""
         return self._validate_zfs_access()
 
-    def begin_atomic_sync(self, snapshot_id: str) -> str:
-        """Begin atomic sync operation by creating a ZFS clone.
-        
-        Creates a ZFS clone of the current repository state that can be worked on
-        atomically. All sync operations should be performed on the clone until
-        commit_atomic_sync() is called.
+    def _begin_sync_transaction(self, transaction_id: str) -> str:
+        """Sync pattern: create snapshot and clone.
         
         Args:
-            snapshot_id: Unique identifier for this sync operation
+            transaction_id: Unique identifier for this sync operation
             
         Returns:
-            Clone name/path for sync operations
+            Clone mount path for sync operations
             
         Raises:
             ValueError: If ZFS operations fail or clone already exists
         """
-        clone_name = f"{self.dataset_name}@sync-temp-{snapshot_id}"
-        clone_dataset = f"{self.dataset_name}-sync-{snapshot_id}"
-        clone_mount_path = f"{self.mount_path}-sync-{snapshot_id}"
+        clone_name = f"{self.dataset_name}@sync-temp-{transaction_id}"
+        clone_dataset = f"{self.dataset_name}-sync-{transaction_id}"
+        clone_mount_path = f"{self.mount_path}-sync-{transaction_id}"
         
         try:
             # Step 1: Create snapshot of current state
@@ -205,27 +199,31 @@ class ZFSOperations(SnapshotOperations):
             mountpoint_cmd = ["zfs", "set", f"mountpoint={clone_mount_path}", clone_dataset]
             ce.run_sudo(mountpoint_cmd)
             
+            # Step 4: Fix ownership and permissions on the clone mount point
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            chown_cmd = ["chown", f"{current_user}:{current_user}", clone_mount_path]
+            ce.run_sudo(chown_cmd)
+            chmod_cmd = ["chmod", "755", clone_mount_path]
+            ce.run_sudo(chmod_cmd)
+            
             return clone_mount_path
             
         except Exception as e:
             # Cleanup on failure
-            self._cleanup_atomic_sync(snapshot_id)
-            raise ValueError(f"Failed to begin atomic sync: {e}")
+            self._cleanup_atomic_sync(transaction_id)
+            raise ValueError(f"Failed to begin sync transaction: {e}")
 
-    def commit_atomic_sync(self, snapshot_id: str) -> None:
-        """Commit atomic sync operation by promoting the clone to become the new repository state.
-        
-        This operation is atomic - either the entire sync succeeds or it's rolled back.
-        The original repository state is preserved as a snapshot for rollback.
+    def _commit_sync_transaction(self, transaction_id: str) -> None:
+        """Sync commit: promote clone with cleanup management.
         
         Args:
-            snapshot_id: Unique identifier for this sync operation
+            transaction_id: Unique identifier for this sync operation
             
         Raises:
             ValueError: If ZFS promote operation fails
         """
-        clone_dataset = f"{self.dataset_name}-sync-{snapshot_id}"
-        original_snapshot = f"{self.dataset_name}@pre-sync-{snapshot_id}"
+        clone_dataset = f"{self.dataset_name}-sync-{transaction_id}"
+        original_snapshot = f"{self.dataset_name}@pre-sync-{transaction_id}"
         
         try:
             # Step 1: Create snapshot of original state for rollback
@@ -243,7 +241,7 @@ class ZFSOperations(SnapshotOperations):
             
             # After promote, the clone dataset now contains our changes and original is dependent
             # We need to rename the datasets to restore the original naming scheme
-            temp_name = f"{self.dataset_name}-old-{snapshot_id}"
+            temp_name = f"{self.dataset_name}-old-{transaction_id}"
             rename_old_cmd = ["zfs", "rename", self.dataset_name, temp_name]
             ce.run_sudo(rename_old_cmd)
             
@@ -251,7 +249,7 @@ class ZFSOperations(SnapshotOperations):
             ce.run_sudo(rename_new_cmd)
             
             # Step 4: Clean up temporary snapshot and old dataset
-            cleanup_snapshot_cmd = ["zfs", "destroy", f"{self.dataset_name}@sync-temp-{snapshot_id}"]
+            cleanup_snapshot_cmd = ["zfs", "destroy", f"{self.dataset_name}@sync-temp-{transaction_id}"]
             ce.run_sudo(cleanup_snapshot_cmd, check=False)  # May not exist after promote
             
             cleanup_old_cmd = ["zfs", "destroy", "-r", temp_name]
@@ -259,8 +257,8 @@ class ZFSOperations(SnapshotOperations):
             
         except Exception as e:
             # Attempt rollback
-            self.rollback_atomic_sync(snapshot_id)
-            raise ValueError(f"Failed to commit atomic sync: {e}")
+            self.rollback_atomic_sync(transaction_id)
+            raise ValueError(f"Failed to commit sync transaction: {e}")
 
     def rollback_atomic_sync(self, snapshot_id: str) -> None:
         """Rollback atomic sync operation by destroying the clone and restoring original state.
@@ -300,3 +298,98 @@ class ZFSOperations(SnapshotOperations):
         # Best-effort cleanup
         ce.run_sudo(["zfs", "destroy", "-r", clone_dataset], check=False)
         ce.run_sudo(["zfs", "destroy", clone_snapshot], check=False)
+
+    def _detect_operation_type(self) -> str:
+        """Detect whether this is an init or sync operation."""
+        list_cmd = ["zfs", "list", self.dataset_name]
+        result = ce.run_sudo(list_cmd, check=False)
+        return "sync" if result.returncode == 0 else "init"
+
+    def _begin_init_transaction(self, transaction_id: str) -> str:
+        """Init pattern: create temp dataset for later rename."""
+        temp_dataset = f"{self.dataset_name}-init-{transaction_id}"
+        temp_mount_path = f"{self.mount_path}-init-{transaction_id}"
+        
+        # Create temporary dataset
+        create_cmd = ["zfs", "create", temp_dataset]
+        ce.run_sudo(create_cmd)
+        
+        # Set mountpoint
+        mountpoint_cmd = ["zfs", "set", f"mountpoint={temp_mount_path}", temp_dataset]
+        ce.run_sudo(mountpoint_cmd)
+        
+        # Fix ownership
+        current_user = pwd.getpwuid(os.getuid()).pw_name
+        chown_cmd = ["chown", f"{current_user}:{current_user}", temp_mount_path]
+        ce.run_sudo(chown_cmd)
+        chmod_cmd = ["chmod", "755", temp_mount_path]
+        ce.run_sudo(chmod_cmd)
+        
+        return temp_mount_path
+
+    def _commit_init_transaction(self, transaction_id: str) -> None:
+        """Init commit: rename temp dataset to main."""
+        temp_dataset = f"{self.dataset_name}-init-{transaction_id}"
+        
+        # Atomic rename: temp becomes main
+        rename_cmd = ["zfs", "rename", temp_dataset, self.dataset_name]
+        ce.run_sudo(rename_cmd)
+        
+        # Update mountpoint
+        mountpoint_cmd = ["zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
+        ce.run_sudo(mountpoint_cmd)
+        
+        # Create initial snapshot
+        snapshot_cmd = ["zfs", "snapshot", f"{self.dataset_name}@init-snapshot"]
+        ce.run_sudo(snapshot_cmd)
+
+    def begin(self, transaction_id: str) -> str:
+        """Begin transaction, auto-detecting init vs sync pattern."""
+        operation_type = self._detect_operation_type()
+        
+        if operation_type == "init":
+            return self._begin_init_transaction(transaction_id)
+        else:
+            return self._begin_sync_transaction(transaction_id)
+
+    def commit(self, transaction_id: str) -> None:
+        """Commit transaction using appropriate pattern."""
+        operation_type = self._detect_operation_type()  # Could cache from begin
+        
+        if operation_type == "init":
+            self._commit_init_transaction(transaction_id)
+        else:
+            self._commit_sync_transaction(transaction_id)
+
+    def rollback(self, transaction_id: str) -> None:
+        """Rollback transaction (same logic for both patterns)."""
+        try:
+            self._cleanup_atomic_sync(transaction_id)
+            
+            # If a pre-sync snapshot exists, we can restore from it
+            original_snapshot = f"{self.dataset_name}@pre-sync-{transaction_id}"
+            list_cmd = ["zfs", "list", "-t", "snapshot", original_snapshot]
+            result = ce.run_sudo(list_cmd, check=False)
+            
+            if result.returncode == 0:
+                # Snapshot exists, rollback to it
+                rollback_cmd = ["zfs", "rollback", original_snapshot]
+                ce.run_sudo(rollback_cmd)
+                
+                # Clean up the rollback snapshot
+                cleanup_cmd = ["zfs", "destroy", original_snapshot]
+                ce.run_sudo(cleanup_cmd, check=False)
+                
+        except Exception as e:
+            # Log error but don't raise - rollback should be best-effort
+            import loguru
+            loguru.logger.warning(f"Failed to rollback transaction {transaction_id}: {e}")
+
+    # Backward compatibility methods
+    def begin_atomic_sync(self, snapshot_id: str) -> str:
+        """Backward compatibility wrapper for _begin_sync_transaction."""
+        return self._begin_sync_transaction(snapshot_id)
+
+    def commit_atomic_sync(self, snapshot_id: str) -> None:
+        """Backward compatibility wrapper for _commit_sync_transaction."""
+        return self._commit_sync_transaction(snapshot_id)

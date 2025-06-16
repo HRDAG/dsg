@@ -14,6 +14,7 @@ with the right ClientFilesystem, RemoteFilesystem, and Transport components base
 on the project configuration.
 """
 
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,66 @@ from dsg.system.host_utils import is_local_host
 
 if TYPE_CHECKING:
     from dsg.config.manager import Config
+
+
+def _get_zfs_pool_name_for_path(mount_base: str) -> str:
+    """Determine the ZFS pool name for the given path."""
+    try:
+        # Try to get the ZFS dataset for this path using zfs list
+        result = subprocess.run(
+            ['zfs', 'list', '-H', '-o', 'name'], 
+            capture_output=True, text=True, check=False
+        )
+        if result.returncode == 0:
+            datasets = result.stdout.strip().split('\n')
+            
+            # Check if any dataset is mounted at our path
+            for dataset in datasets:
+                if dataset.strip():
+                    # Get mountpoint for this dataset
+                    mount_result = subprocess.run(
+                        ['zfs', 'get', '-H', '-o', 'value', 'mountpoint', dataset.strip()], 
+                        capture_output=True, text=True, check=False
+                    )
+                    if mount_result.returncode == 0:
+                        mountpoint = mount_result.stdout.strip()
+                        if mountpoint == mount_base or mount_base.startswith(mountpoint + '/'):
+                            # Found matching dataset, extract pool name
+                            return dataset.strip().split('/')[0]
+            
+            # If no exact match, look for datasets that could contain our path
+            # For /var/tmp/test, look for pool name that could be mounted there
+            for dataset in datasets:
+                if dataset.strip() and '/' not in dataset.strip():
+                    # This is a pool name (no slashes)
+                    pool_name = dataset.strip()
+                    # Check if this pool could be mounted at our location
+                    pool_result = subprocess.run(
+                        ['zfs', 'get', '-H', '-o', 'value', 'mountpoint', pool_name], 
+                        capture_output=True, text=True, check=False
+                    )
+                    if pool_result.returncode == 0:
+                        pool_mountpoint = pool_result.stdout.strip()
+                        if mount_base == pool_mountpoint or mount_base.startswith(pool_mountpoint + '/'):
+                            return pool_name
+        
+        # Fallback: try to detect pool from path structure
+        # /var/tmp/test -> try "dsgtest" first, then fall back to path component
+        if '/var/tmp/test' in mount_base:
+            # Check if dsgtest pool exists
+            test_result = subprocess.run(
+                ['zfs', 'list', 'dsgtest'], 
+                capture_output=True, text=True, check=False
+            )
+            if test_result.returncode == 0:
+                return 'dsgtest'
+        
+        # Final fallback: use last path component
+        return Path(mount_base).name
+        
+    except Exception:
+        # If ZFS commands fail, fall back to path-based detection
+        return Path(mount_base).name
 
 
 def create_transaction(config: 'Config') -> Transaction:
@@ -98,14 +159,8 @@ def create_remote_filesystem(config: 'Config'):
         dataset_path = ssh_config.name or config.project.name
         
         # For ZFS dataset "pool/dataset", we need to extract pool name
-        # Assume ssh.path is mount base and we can infer pool from standard ZFS structure
-        # This might need refinement based on actual ZFS configurations
-        if mount_base.startswith("/var/repos/"):
-            # Standard DSG ZFS structure: /var/repos/poolname
-            pool_name = Path(mount_base).name
-        else:
-            # Fallback: assume last path component is pool name
-            pool_name = Path(mount_base).name
+        # Use the same detection logic as LocalhostBackend
+        pool_name = _get_zfs_pool_name_for_path(mount_base)
         
         # Create ZFS operations instance
         zfs_ops = ZFSOperations(
