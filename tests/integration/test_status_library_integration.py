@@ -16,14 +16,8 @@ without going through the CLI layer.
 
 from dsg.core.operations import get_sync_status, SyncStatusResult
 from dsg.data.manifest_merger import SyncState
-from tests.fixtures.bb_repo_factory import (
-    modify_local_file,
-    create_local_file,
-    regenerate_cache_from_current_local,
-    modify_remote_file,
-    create_remote_file,
-    regenerate_remote_manifest,
-)
+# All state manipulation functions are now methods on RepositoryFactory
+# Access via the global _factory instance
 
 
 def create_simple_sync_state(
@@ -34,11 +28,7 @@ def create_simple_sync_state(
     """
     Create a specific sync state using the known working approach.
     """
-    local_path = setup["local_path"]
-    remote_path = setup["remote_path"]
-    local_config = setup["local_config"]
-    remote_config = setup["remote_config"]
-    last_sync_path = setup["last_sync_path"]
+    from tests.fixtures.repository_factory import _factory as factory
     
     # Content variations
     original_content = "id,value\n1,100\n2,200\n"
@@ -47,26 +37,26 @@ def create_simple_sync_state(
     
     if state == SyncState.sLCR__all_eq:
         # Step 1: Create identical files in all three locations
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
-        regenerate_cache_from_current_local(local_config, last_sync_path)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
+        factory.regenerate_cache_from_current_local(setup)
         
     elif state == SyncState.sLCR__C_eq_R_ne_L:
         # Step 1: Create matching files everywhere
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
-        regenerate_cache_from_current_local(local_config, last_sync_path)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
+        factory.regenerate_cache_from_current_local(setup)
         # Step 2: Modify only local
-        modify_local_file(local_path, target_file, local_content)
+        factory.modify_local_file(setup, target_file, local_content)
         
     elif state == SyncState.sLCR__L_eq_C_ne_R:
         # Step 1: Create matching files everywhere
-        create_local_file(local_path, target_file, original_content)
-        create_remote_file(remote_path, target_file, original_content, remote_config)
-        regenerate_cache_from_current_local(local_config, last_sync_path)
+        factory.create_local_file(setup, target_file, original_content)
+        factory.create_remote_file(setup, target_file, original_content)
+        factory.regenerate_cache_from_current_local(setup)
         # Step 2: Modify only remote
-        modify_remote_file(remote_path, target_file, remote_content)
-        regenerate_remote_manifest(remote_path)
+        factory.modify_remote_file(setup, target_file, remote_content)
+        factory.regenerate_remote_manifest(setup)
         
     else:
         raise NotImplementedError(f"State {state} not implemented yet")
@@ -76,6 +66,7 @@ def test_get_sync_status_all_eq(dsg_repository_factory):
     """
     Test get_sync_status() for the all-equal sync state.
     """
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -118,6 +109,7 @@ def test_get_sync_status_library_functionality(dsg_repository_factory):
     This test validates the library interface and basic operation without
     needing to create specific sync states.
     """
+    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
