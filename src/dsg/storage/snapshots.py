@@ -201,7 +201,11 @@ class ZFSOperations(SnapshotOperations):
             
             # Step 4: Fix ownership and permissions on the clone mount point
             current_user = pwd.getpwuid(os.getuid()).pw_name
-            chown_cmd = ["chown", f"{current_user}:{current_user}", clone_mount_path]
+            # Get the actual primary group name
+            import grp
+            current_gid = os.getgid()
+            group_name = grp.getgrgid(current_gid).gr_name
+            chown_cmd = ["chown", f"{current_user}:{group_name}", clone_mount_path]
             ce.run_sudo(chown_cmd)
             chmod_cmd = ["chmod", "755", clone_mount_path]
             ce.run_sudo(chmod_cmd)
@@ -247,6 +251,28 @@ class ZFSOperations(SnapshotOperations):
             
             rename_new_cmd = ["zfs", "rename", clone_dataset, self.dataset_name]
             ce.run_sudo(rename_new_cmd)
+            
+            # Step 3.5: Reset mountpoint to correct location (after rename)
+            mountpoint_cmd = ["zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
+            ce.run_sudo(mountpoint_cmd)
+            
+            # Step 3.6: Fix ownership on the final dataset (after rename)
+            # Need to wait for ZFS to update the mountpoint after rename
+            import time
+            import grp
+            time.sleep(0.1)  # Brief pause for ZFS to sync mountpoints
+            
+            current_user = pwd.getpwuid(os.getuid()).pw_name
+            # Get the actual primary group name
+            current_gid = os.getgid()
+            group_name = grp.getgrgid(current_gid).gr_name
+            
+            # Verify the mount path exists before trying to chown
+            if os.path.exists(self.mount_path):
+                chown_cmd = ["chown", f"{current_user}:{group_name}", self.mount_path]
+                ce.run_sudo(chown_cmd)
+                chmod_cmd = ["chmod", "755", self.mount_path]
+                ce.run_sudo(chmod_cmd)
             
             # Step 4: Clean up temporary snapshot and old dataset
             cleanup_snapshot_cmd = ["zfs", "destroy", f"{self.dataset_name}@sync-temp-{transaction_id}"]
@@ -320,7 +346,11 @@ class ZFSOperations(SnapshotOperations):
         
         # Fix ownership
         current_user = pwd.getpwuid(os.getuid()).pw_name
-        chown_cmd = ["chown", f"{current_user}:{current_user}", temp_mount_path]
+        # Get the actual primary group name
+        import grp
+        current_gid = os.getgid()
+        group_name = grp.getgrgid(current_gid).gr_name
+        chown_cmd = ["chown", f"{current_user}:{group_name}", temp_mount_path]
         ce.run_sudo(chown_cmd)
         chmod_cmd = ["chmod", "755", temp_mount_path]
         ce.run_sudo(chmod_cmd)
@@ -338,6 +368,17 @@ class ZFSOperations(SnapshotOperations):
         # Update mountpoint
         mountpoint_cmd = ["zfs", "set", f"mountpoint={self.mount_path}", self.dataset_name]
         ce.run_sudo(mountpoint_cmd)
+        
+        # Fix ownership on the final dataset
+        current_user = pwd.getpwuid(os.getuid()).pw_name
+        # Get the actual primary group name
+        import grp
+        current_gid = os.getgid()
+        group_name = grp.getgrgid(current_gid).gr_name
+        chown_cmd = ["chown", f"{current_user}:{group_name}", self.mount_path]
+        ce.run_sudo(chown_cmd)
+        chmod_cmd = ["chmod", "755", self.mount_path]
+        ce.run_sudo(chmod_cmd)
         
         # Create initial snapshot
         snapshot_cmd = ["zfs", "snapshot", f"{self.dataset_name}@init-snapshot"]

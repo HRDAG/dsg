@@ -7,111 +7,177 @@
 # tests/test_transaction_integration.py
 
 """
-Integration tests for Transaction coordinator with real filesystem operations.
+Integration tests for Transaction coordinator with real ZFS operations.
 
-These tests use the existing fixture infrastructure to test the complete
-Transaction coordinator with real ClientFilesystem, RemoteFilesystem, and
-Transport implementations.
+These tests use real ZFS datasets from the dsgtest pool to test the complete
+Transaction coordinator with real filesystem operations instead of mocks.
 """
 
 import pytest
 import tempfile
+import subprocess
+import uuid
+import os
+import pwd
+import grp
 from pathlib import Path
-from unittest.mock import Mock
 
 from dsg.core.transaction_coordinator import Transaction
-from dsg.storage import ClientFilesystem, LocalhostTransport, ZFSOperations
+from dsg.storage import ClientFilesystem, LocalhostTransport
+from dsg.storage.snapshots import ZFSOperations  
 from dsg.storage.remote import ZFSFilesystem
 
 # Import the bb_repo fixture
 pytest_plugins = ["tests.fixtures.bb_repo_factory"]
 
 
+def check_zfs_available() -> tuple[bool, str]:
+    """Check if ZFS testing infrastructure is available."""
+    try:
+        # Check if zfs command exists and dsgtest pool is available
+        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
+                              capture_output=True, text=True)
+        if result.returncode != 0:
+            return False, "ZFS test pool 'dsgtest' not available"
+        return True, "ZFS available"
+    except Exception as e:
+        return False, f"ZFS check failed: {e}"
+
+
+def create_test_zfs_dataset_for_transaction() -> tuple[str, str, str]:
+    """Create a ZFS dataset for transaction testing with proper ownership.
+    
+    Returns:
+        Tuple of (dataset_name, mount_path, pool_name)
+    """
+    test_id = uuid.uuid4().hex[:8]
+    dataset_name = f"dsgtest/tx-test-{test_id}"
+    mount_path = f"/var/tmp/test/tx-test-{test_id}"
+    pool_name = "dsgtest"
+    
+    # Create the dataset
+    subprocess.run(['sudo', 'zfs', 'create', dataset_name], 
+                  capture_output=True, text=True, check=True)
+    
+    # Fix ownership and permissions
+    current_user = pwd.getpwuid(os.getuid()).pw_name
+    current_gid = os.getgid()
+    group_name = grp.getgrgid(current_gid).gr_name
+    
+    subprocess.run(['sudo', 'chown', f'{current_user}:{group_name}', mount_path], 
+                  capture_output=True, text=True)
+    subprocess.run(['sudo', 'chmod', '755', mount_path], 
+                  capture_output=True, text=True)
+    
+    return dataset_name, mount_path, pool_name
+
+
+def cleanup_test_zfs_dataset(dataset_name: str):
+    """Clean up a test ZFS dataset."""
+    try:
+        subprocess.run(['sudo', 'zfs', 'destroy', '-r', dataset_name], 
+                      capture_output=True, text=True)
+    except Exception:
+        pass  # Best effort cleanup
+
+
+# Global ZFS availability check
+ZFS_AVAILABLE, ZFS_SKIP_REASON = check_zfs_available()
+zfs_required = pytest.mark.skipif(not ZFS_AVAILABLE, reason=ZFS_SKIP_REASON)
+
+
+@zfs_required
 class TestTransactionIntegration:
-    """Integration tests using real filesystem operations"""
+    """Integration tests using real ZFS operations"""
     
-    def test_transaction_with_real_components(self, dsg_repository_factory):
-        """Test Transaction coordinator with real ClientFilesystem and LocalhostTransport"""
-        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
+    def test_transaction_with_real_zfs_components(self, dsg_repository_factory):
+        """Test Transaction coordinator with real ZFS operations"""
+        # Create source repository
+        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="TX")
         repo_path = factory_result["repo_path"]
         
-        # Create real components
-        client_fs = ClientFilesystem(repo_path)
+        # Create real ZFS dataset for remote operations
+        dataset_name, mount_path, pool_name = create_test_zfs_dataset_for_transaction()
         
-        # Mock ZFS operations for this test (since we don't have real ZFS)
-        mock_zfs_ops = Mock(spec=ZFSOperations)
-        mock_zfs_ops.begin_atomic_sync.return_value = str(repo_path / "zfs-clone")
-        mock_zfs_ops.commit_atomic_sync.return_value = None
-        mock_zfs_ops.rollback_atomic_sync.return_value = None
-        
-        # Create ZFS clone directory manually for test
-        zfs_clone_dir = repo_path / "zfs-clone"
-        zfs_clone_dir.mkdir()
-        
-        # Copy some files to the clone to simulate ZFS clone
-        for file_path in repo_path.rglob("*.csv"):
-            clone_file = zfs_clone_dir / file_path.relative_to(repo_path)
-            clone_file.parent.mkdir(parents=True, exist_ok=True)
-            clone_file.write_bytes(file_path.read_bytes())
-        
-        remote_fs = ZFSFilesystem(mock_zfs_ops)
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            transport = LocalhostTransport(Path(temp_dir))
+        try:
+            # Create real components
+            client_fs = ClientFilesystem(repo_path)
             
-            # Find actual files that exist
-            csv_files = list(repo_path.rglob("*.csv"))
-            if not csv_files:
-                pytest.skip("No CSV files found in repository")
+            # Create real ZFS operations pointing to the test dataset
+            zfs_ops = ZFSOperations(pool_name, dataset_name.split('/')[-1], str(Path(mount_path).parent))
+            remote_fs = ZFSFilesystem(zfs_ops)
             
-            # Test successful transaction with real file
-            sync_plan = {
-                'upload_files': [str(csv_files[0].relative_to(repo_path))],
-                'download_files': [],
-                'delete_local': [],
-                'delete_remote': []
-            }
-            
-            with Transaction(client_fs, remote_fs, transport) as tx:
-                tx.sync_files(sync_plan)
-            
-            # Verify the transaction completed
-            mock_zfs_ops.begin_atomic_sync.assert_called_once()
-            mock_zfs_ops.commit_atomic_sync.assert_called_once()
-            assert not mock_zfs_ops.rollback_atomic_sync.called
-    
-    def test_transaction_rollback_on_failure(self, dsg_repository_factory):
-        """Test that Transaction properly rolls back on failure"""
-        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="BB")
-        repo_path = factory_result["repo_path"]
-        
-        client_fs = ClientFilesystem(repo_path)
-        
-        # Mock ZFS operations
-        mock_zfs_ops = Mock(spec=ZFSOperations)
-        mock_zfs_ops.begin_atomic_sync.return_value = str(repo_path / "zfs-clone")
-        
-        remote_fs = ZFSFilesystem(mock_zfs_ops)
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            transport = LocalhostTransport(Path(temp_dir))
-            
-            sync_plan = {
-                'upload_files': ['nonexistent-file.txt'],
-                'download_files': [],
-                'delete_local': [],
-                'delete_remote': []
-            }
-            
-            # Should fail because file doesn't exist
-            with pytest.raises(Exception):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                transport = LocalhostTransport(Path(temp_dir))
+                
+                # Find actual files that exist
+                csv_files = list(repo_path.rglob("*.csv"))
+                if not csv_files:
+                    pytest.skip("No CSV files found in repository")
+                
+                # Test successful transaction with real ZFS operations
+                sync_plan = {
+                    'upload_files': [str(csv_files[0].relative_to(repo_path))],
+                    'download_files': [],
+                    'delete_local': [],
+                    'delete_remote': []
+                }
+                
                 with Transaction(client_fs, remote_fs, transport) as tx:
                     tx.sync_files(sync_plan)
+                
+                # Verify the file was actually copied to the ZFS dataset
+                uploaded_file = Path(mount_path) / csv_files[0].relative_to(repo_path)
+                assert uploaded_file.exists(), f"File should be uploaded to ZFS dataset: {uploaded_file}"
+                
+                # Verify content matches
+                assert uploaded_file.read_bytes() == csv_files[0].read_bytes()
+                
+        finally:
+            cleanup_test_zfs_dataset(dataset_name)
+    
+    def test_transaction_rollback_on_failure(self, dsg_repository_factory):
+        """Test that Transaction properly rolls back on failure with real ZFS"""
+        # Create source repository
+        factory_result = dsg_repository_factory(style="realistic", with_dsg_dir=True, repo_name="TX-FAIL")
+        repo_path = factory_result["repo_path"]
+        
+        # Create real ZFS dataset for remote operations
+        dataset_name, mount_path, pool_name = create_test_zfs_dataset_for_transaction()
+        
+        try:
+            client_fs = ClientFilesystem(repo_path)
             
-            # Verify rollback was called
-            mock_zfs_ops.begin_atomic_sync.assert_called_once()
-            mock_zfs_ops.rollback_atomic_sync.assert_called_once()
-            assert not mock_zfs_ops.commit_atomic_sync.called
+            # Create real ZFS operations
+            zfs_ops = ZFSOperations(pool_name, dataset_name.split('/')[-1], str(Path(mount_path).parent))
+            remote_fs = ZFSFilesystem(zfs_ops)
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                transport = LocalhostTransport(Path(temp_dir))
+                
+                sync_plan = {
+                    'upload_files': ['non-existent-file.txt'],  # This will cause an error
+                    'download_files': [],
+                    'delete_local': [],
+                    'delete_remote': []
+                }
+                
+                # Test that transaction rolls back on failure
+                with pytest.raises(Exception):
+                    with Transaction(client_fs, remote_fs, transport) as tx:
+                        tx.sync_files(sync_plan)
+                
+                # Verify that no temporary ZFS datasets remain (proper cleanup)
+                result = subprocess.run(['sudo', 'zfs', 'list', '-t', 'all'], 
+                                      capture_output=True, text=True)
+                # SAFETY: Only look at dsgtest pool to prevent accidental destruction of other pools
+                dsgtest_lines = [line for line in result.stdout.split('\n') if 'dsgtest' in line]
+                temp_datasets = [line for line in dsgtest_lines 
+                               if f'tx-test-' in line and 'sync-tx-' in line]
+                assert len(temp_datasets) == 0, "Temporary ZFS datasets should be cleaned up on rollback"
+                
+        finally:
+            cleanup_test_zfs_dataset(dataset_name)
     
     def test_client_filesystem_staging(self, tmp_path):
         """Test ClientFilesystem staging operations work correctly"""
@@ -215,42 +281,50 @@ class TestTransactionIntegration:
         transport.end_session()
 
 
+@zfs_required  
 class TestTransactionWithRealisticData:
-    """Integration tests using the comprehensive bb_repo fixtures"""
+    """Integration tests using the comprehensive bb_repo fixtures with real ZFS"""
     
     def test_transaction_with_bb_repo(self, dsg_repository_factory):
-        """Test Transaction with realistic repository structure"""
+        """Test Transaction with realistic repository structure and real ZFS"""
         factory_result = dsg_repository_factory(style="realistic", with_config=True, repo_name="BB", backend_type="xfs")
         repo_path = factory_result["repo_path"]
         
-        # Create components
-        client_fs = ClientFilesystem(repo_path)
+        # Create real ZFS dataset for remote operations
+        dataset_name, mount_path, pool_name = create_test_zfs_dataset_for_transaction()
         
-        # Mock remote filesystem for test
-        mock_zfs_ops = Mock(spec=ZFSOperations)
-        mock_zfs_ops.begin_atomic_sync.return_value = str(repo_path / "zfs-clone")
-        remote_fs = ZFSFilesystem(mock_zfs_ops)
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            transport = LocalhostTransport(Path(temp_dir))
+        try:
+            # Create components
+            client_fs = ClientFilesystem(repo_path)
             
-            # Find some real files to sync
-            csv_files = list(repo_path.rglob("*.csv"))[:2]  # First 2 CSV files
+            # Create real ZFS operations
+            zfs_ops = ZFSOperations(pool_name, dataset_name.split('/')[-1], str(Path(mount_path).parent))
+            remote_fs = ZFSFilesystem(zfs_ops)
             
-            sync_plan = {
-                'upload_files': [str(f.relative_to(repo_path)) for f in csv_files],
-                'download_files': [],
-                'delete_local': [],
-                'delete_remote': []
-            }
-            
-            # This should work with real file content
-            with Transaction(client_fs, remote_fs, transport) as tx:
-                tx.sync_files(sync_plan)
-            
-            # Verify transaction completed successfully
-            mock_zfs_ops.begin_atomic_sync.assert_called_once()
-            mock_zfs_ops.commit_transaction_id = mock_zfs_ops.commit_atomic_sync.call_args[0][0]
-            mock_zfs_ops.commit_atomic_sync.assert_called_once_with(
-                mock_zfs_ops.commit_transaction_id
-            )
+            with tempfile.TemporaryDirectory() as temp_dir:
+                transport = LocalhostTransport(Path(temp_dir))
+                
+                # Find some real files to sync
+                csv_files = list(repo_path.rglob("*.csv"))[:2]  # First 2 CSV files
+                if not csv_files:
+                    pytest.skip("No CSV files found in BB repository")
+                
+                sync_plan = {
+                    'upload_files': [str(f.relative_to(repo_path)) for f in csv_files],
+                    'download_files': [],
+                    'delete_local': [],
+                    'delete_remote': []
+                }
+                
+                # This should work with real file content and real ZFS
+                with Transaction(client_fs, remote_fs, transport) as tx:
+                    tx.sync_files(sync_plan)
+                
+                # Verify files were actually copied to ZFS dataset
+                for csv_file in csv_files:
+                    remote_file = Path(mount_path) / csv_file.relative_to(repo_path)
+                    assert remote_file.exists(), f"File should be uploaded to ZFS: {remote_file}"
+                    assert remote_file.read_bytes() == csv_file.read_bytes(), "Content should match"
+                
+        finally:
+            cleanup_test_zfs_dataset(dataset_name)
