@@ -16,13 +16,8 @@ to avoid the complex setup issues.
 from rich.console import Console
 
 from dsg.core.lifecycle import sync_repository
-from tests.fixtures.bb_repo_factory import (
-    local_file_exists,
-    remote_file_exists,
-    create_local_file,
-    create_remote_file,
-    regenerate_remote_manifest,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 class TestSimpleSyncUpload:
@@ -30,6 +25,7 @@ class TestSimpleSyncUpload:
 
     def test_simple_local_only_upload(self, dsg_repository_factory):
         """Test uploading a simple local-only file."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -41,18 +37,18 @@ class TestSimpleSyncUpload:
         # Create a local-only file
         test_file = "task1/import/input/simple_local.txt"
         test_content = "Simple local content"
-        create_local_file(setup["local_path"], test_file, test_content)
+        factory.create_local_file(setup, test_file, test_content)
         
         # Verify initial state
-        assert local_file_exists(setup, test_file)
-        assert not remote_file_exists(setup, test_file)
+        assert factory.local_file_exists(setup, test_file)
+        assert not factory.remote_file_exists(setup, test_file)
         
         # Sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify upload worked
         assert result["success"]
-        assert remote_file_exists(setup, test_file)
+        assert factory.remote_file_exists(setup, test_file)
         
         # Verify content matches
         remote_content = (setup["remote_path"] / test_file).read_text()
@@ -60,6 +56,7 @@ class TestSimpleSyncUpload:
 
     def test_simple_remote_only_download(self, dsg_repository_factory):
         """Test downloading a simple remote-only file."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -71,19 +68,19 @@ class TestSimpleSyncUpload:
         # Create a remote-only file
         test_file = "task1/analysis/output/simple_remote.txt"
         test_content = "Simple remote content"
-        create_remote_file(setup["remote_path"], test_file, test_content, setup["remote_config"])
-        regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+        factory.create_remote_file(setup, test_file, test_content)
+        factory.regenerate_remote_manifest(setup)
         
         # Verify initial state  
-        assert remote_file_exists(setup, test_file)
-        assert not local_file_exists(setup, test_file)
+        assert factory.remote_file_exists(setup, test_file)
+        assert not factory.local_file_exists(setup, test_file)
         
         # Sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
         
         # Verify download worked
         assert result["success"]
-        assert local_file_exists(setup, test_file)
+        assert factory.local_file_exists(setup, test_file)
         
         # Verify content matches
         local_content = (setup["local_path"] / test_file).read_text()
@@ -91,6 +88,7 @@ class TestSimpleSyncUpload:
 
     def test_both_upload_and_download(self, dsg_repository_factory):
         """Test both upload and download in same sync."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -102,19 +100,19 @@ class TestSimpleSyncUpload:
         # Create local-only file
         local_file = "task1/import/input/for_upload.txt"
         local_content = "Content to upload"
-        create_local_file(setup["local_path"], local_file, local_content)
+        factory.create_local_file(setup, local_file, local_content)
         
         # Create remote-only file
         remote_file = "task1/analysis/output/for_download.txt"
         remote_content = "Content to download"
-        create_remote_file(setup["remote_path"], remote_file, remote_content, setup["remote_config"])
-        regenerate_remote_manifest(setup["remote_config"], setup["remote_path"] / ".dsg" / "last-sync.json")
+        factory.create_remote_file(setup, remote_file, remote_content)
+        factory.regenerate_remote_manifest(setup)
         
         # Verify initial state
-        assert local_file_exists(setup, local_file)
-        assert not remote_file_exists(setup, local_file)
-        assert remote_file_exists(setup, remote_file)
-        assert not local_file_exists(setup, remote_file)
+        assert factory.local_file_exists(setup, local_file)
+        assert not factory.remote_file_exists(setup, local_file)
+        assert factory.remote_file_exists(setup, remote_file)
+        assert not factory.local_file_exists(setup, remote_file)
         
         # Sync
         result = sync_repository(setup["local_config"], console, dry_run=False)
@@ -123,11 +121,11 @@ class TestSimpleSyncUpload:
         assert result["success"]
         
         # Check upload
-        assert remote_file_exists(setup, local_file)
+        assert factory.remote_file_exists(setup, local_file)
         remote_content_check = (setup["remote_path"] / local_file).read_text()
         assert remote_content_check == local_content
         
         # Check download
-        assert local_file_exists(setup, remote_file)
+        assert factory.local_file_exists(setup, remote_file)
         local_content_check = (setup["local_path"] / remote_file).read_text()
         assert local_content_check == remote_content
