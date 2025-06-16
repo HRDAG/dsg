@@ -17,11 +17,8 @@ from pathlib import Path
 from rich.console import Console
 
 from dsg.core.lifecycle import sync_repository
-from tests.fixtures.bb_repo_factory import (
-    local_file_exists,
-    remote_file_exists,
-    create_mixed_state,
-)
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 class TestDetailedSyncDebug:
@@ -29,6 +26,7 @@ class TestDetailedSyncDebug:
 
     def test_mixed_state_with_detailed_logging(self, dsg_repository_factory):
         """Test mixed state with detailed logging of file operations."""
+        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
@@ -38,14 +36,14 @@ class TestDetailedSyncDebug:
         console = Console()
         
         # Create mixed state
-        files_created = create_mixed_state(setup)
+        files_created = factory.create_mixed_state(setup)
         print(f"\\nDEBUG: Files created: {files_created}")
         
         # Verify initial state
-        assert local_file_exists(setup, "task1/import/input/local_only.txt")
-        assert not remote_file_exists(setup, "task1/import/input/local_only.txt")
-        assert remote_file_exists(setup, "task1/analysis/output/remote_only.txt")
-        assert not local_file_exists(setup, "task1/analysis/output/remote_only.txt")
+        assert factory.local_file_exists(setup, "task1/import/input/local_only.txt")
+        assert not factory.remote_file_exists(setup, "task1/import/input/local_only.txt")
+        assert factory.remote_file_exists(setup, "task1/analysis/output/remote_only.txt")
+        assert not factory.local_file_exists(setup, "task1/analysis/output/remote_only.txt")
         
         # Patch the file operations to add logging
         original_copy_file = None
@@ -100,10 +98,10 @@ class TestDetailedSyncDebug:
         
         # Check final state
         print("\\nDEBUG: Final file state:")
-        print(f"  local_only.txt exists remotely: {remote_file_exists(setup, 'task1/import/input/local_only.txt')}")
-        print(f"  remote_only.txt exists locally: {local_file_exists(setup, 'task1/analysis/output/remote_only.txt')}")
-        print(f"  shared_file.txt exists locally: {local_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
-        print(f"  shared_file.txt exists remotely: {remote_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
+        print(f"  local_only.txt exists remotely: {factory.remote_file_exists(setup, 'task1/import/input/local_only.txt')}")
+        print(f"  remote_only.txt exists locally: {factory.local_file_exists(setup, 'task1/analysis/output/remote_only.txt')}")
+        print(f"  shared_file.txt exists locally: {factory.local_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
+        print(f"  shared_file.txt exists remotely: {factory.remote_file_exists(setup, 'task1/import/hand/shared_file.txt')}")
         
         # These are the expected behaviors
         assert result["success"]
