@@ -28,7 +28,7 @@ from dsg.storage.snapshots import ZFSOperations
 from dsg.storage.remote import ZFSFilesystem
 
 # Import the bb_repo fixture
-pytest_plugins = ["tests.fixtures.bb_repo_factory"]
+# dsg_repository_factory fixture available via conftest.py
 
 
 def check_zfs_available() -> tuple[bool, str]:

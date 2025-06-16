@@ -27,9 +27,9 @@ from tests.fixtures.repository_factory import dsg_repository_factory
 # Configure pytest to avoid assertion rewriting warnings
 def pytest_configure(config):
     """Configure pytest settings to avoid warnings."""
-    # The bb_repo_factory module is imported by multiple test modules,
+    # Legacy bb_repo_factory module may still be imported by some test modules,
     # causing assertion rewriting warnings. Disable the warnings since
-    # this module doesn't need assertion rewriting (it's just data/fixtures).
+    # fixture modules don't need assertion rewriting.
     import warnings
     warnings.filterwarnings(
         "ignore", 

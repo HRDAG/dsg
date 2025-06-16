@@ -15,7 +15,7 @@ The smallest possible test: verify sync blocks when validation warnings exist.
 import pytest
 
 # Import fixtures - pytest will automatically discover them
-pytest_plugins = ["tests.fixtures.bb_repo_factory"]
+# dsg_repository_factory fixture available via conftest.py
 
 
 def test_sync_blocks_on_validation_warnings(dsg_repository_factory):

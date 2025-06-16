@@ -31,8 +31,8 @@ from rich.console import Console
 from dsg.core.lifecycle import sync_repository
 from dsg.core.operations import get_sync_status
 
-# All state manipulation functions are now methods on dsg_repository_factory
-# No need to import individual functions from bb_repo_factory
+# All state manipulation functions are now methods on RepositoryFactory 
+# Access via the global _factory instance
 
 
 def create_text_encoding_examples() -> dict[str, bytes]:
