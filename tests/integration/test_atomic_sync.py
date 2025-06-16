@@ -65,7 +65,7 @@ class TestZFSAtomicOperations:
         
         assert result == expected_clone_path
         
-        # Verify ZFS commands were called
+        # Verify ZFS commands were called (Phase 1 added chown/chmod calls)
         expected_calls = [
             ["zfs", "snapshot", f"{mock_zfs_ops.dataset_name}@sync-temp-{snapshot_id}"],
             ["zfs", "clone", f"{mock_zfs_ops.dataset_name}@sync-temp-{snapshot_id}", 
@@ -75,7 +75,11 @@ class TestZFSAtomicOperations:
         ]
         
         actual_calls = [call[0][0] for call in mock_zfs_ops._mock_sudo.call_args_list]
-        assert len(actual_calls) == len(expected_calls)
+        assert len(actual_calls) == 5  # 3 ZFS calls + 2 ownership/permission calls
+        
+        # Verify the core ZFS calls are present
+        for expected_call in expected_calls:
+            assert expected_call in actual_calls
 
     def test_begin_atomic_sync_failure_cleanup(self, mock_zfs_ops):
         """Test that begin_atomic_sync cleans up on failure."""
@@ -92,7 +96,7 @@ class TestZFSAtomicOperations:
         
         mock_zfs_ops._mock_sudo.side_effect = side_effect
         
-        with pytest.raises(ValueError, match="Failed to begin atomic sync"):
+        with pytest.raises(ValueError, match="Failed to begin sync transaction"):
             mock_zfs_ops.begin_atomic_sync(snapshot_id)
         
         # Verify cleanup was attempted (destroy commands called)
@@ -122,7 +126,7 @@ class TestZFSAtomicOperations:
         mock_zfs_ops._mock_sudo.side_effect = Exception("Promote failed")
         
         with patch.object(mock_zfs_ops, 'rollback_atomic_sync') as mock_rollback:
-            with pytest.raises(ValueError, match="Failed to commit atomic sync"):
+            with pytest.raises(ValueError, match="Failed to commit sync transaction"):
                 mock_zfs_ops.commit_atomic_sync(snapshot_id)
             
             mock_rollback.assert_called_once_with(snapshot_id)

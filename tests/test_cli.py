@@ -463,22 +463,18 @@ ignore:
             
             # 4. Verify success
             assert result.exit_code == 0, f"Clone command failed with output:\n{result.stdout}"
-            # The clone command is currently a placeholder implementation
-            assert "Clone operation completed (placeholder)" in result.stdout
+            # The clone command now uses real implementation
+            assert "Clone completed" in result.stdout
             
-            # Note: The following file verification is commented out because
-            # the clone command is currently a placeholder implementation.
-            # When real clone functionality is implemented, these assertions should be uncommented:
-            #
-            # # 5. Verify files were cloned
-            # assert (dest_project / ".dsg").exists()
-            # assert (dest_project / ".dsg" / "last-sync.json").exists()
-            # assert (dest_project / "input" / "data1.txt").exists()
-            # assert (dest_project / "input" / "data2.csv").exists()
-            # 
-            # # 6. Verify file contents match
-            # assert (dest_project / "input" / "data1.txt").read_text() == "Source data content 1"
-            # assert (dest_project / "input" / "data2.csv").read_text() == "id,value\n1,test\n2,data"
+            # 5. Verify files were cloned
+            assert (dest_project / ".dsg").exists()
+            assert (dest_project / ".dsg" / "last-sync.json").exists()
+            assert (dest_project / "input" / "data1.txt").exists()
+            assert (dest_project / "input" / "data2.csv").exists()
+            
+            # 6. Verify file contents match
+            assert (dest_project / "input" / "data1.txt").read_text() == "Source data content 1"
+            assert (dest_project / "input" / "data2.csv").read_text() == "id,value\n1,test\n2,data"
 
 
 def test_clone_command_errors():

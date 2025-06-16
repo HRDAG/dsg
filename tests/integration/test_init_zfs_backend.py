@@ -67,11 +67,16 @@ zfs_required = pytest.mark.skipif(not ZFS_AVAILABLE, reason=ZFS_SKIP_REASON)
 
 
 def create_test_zfs_dataset() -> tuple[str, str]:
-    """Create a unique ZFS dataset for testing.
+    """Create a unique ZFS dataset for testing with proper ownership.
     
     Returns:
         Tuple of (dataset_name, mount_path)
     """
+    import os
+    import pwd
+    
+    print("🔧 DEBUG: Using UPDATED create_test_zfs_dataset with ownership fix")
+    
     test_id = uuid.uuid4().hex[:8]
     dataset_name = f"dsgtest/pytest-{test_id}"
     mount_path = f"/var/tmp/test/pytest-{test_id}"
@@ -81,6 +86,25 @@ def create_test_zfs_dataset() -> tuple[str, str]:
                           capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Failed to create ZFS dataset {dataset_name}: {result.stderr}")
+    
+    # Fix ownership and permissions for test user
+    current_user = pwd.getpwuid(os.getuid()).pw_name
+    # Get the actual primary group name
+    import grp
+    current_gid = os.getgid()
+    group_name = grp.getgrgid(current_gid).gr_name
+    
+    # Change ownership to current user with correct group
+    result = subprocess.run(['sudo', 'chown', f'{current_user}:{group_name}', mount_path], 
+                          capture_output=True, text=True)
+    if result.returncode != 0:
+        # Fall back to user-only ownership if group assignment fails
+        subprocess.run(['sudo', 'chown', current_user, mount_path], 
+                      capture_output=True, text=True)
+    
+    # Set proper permissions (755: owner=rwx, group=rx, other=rx)
+    subprocess.run(['sudo', 'chmod', '755', mount_path], 
+                  capture_output=True, text=True)
     
     return dataset_name, mount_path
 
