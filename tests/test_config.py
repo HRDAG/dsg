@@ -32,9 +32,10 @@ from dsg.config.manager import (
 def test_config_load_success(dsg_repository_factory):
     from tests.conftest import load_config_with_paths
     
-    # Create repository with config and user config
+    # Create repository with repository-format config and user config
     repo_result = dsg_repository_factory(
         style="minimal",
+        config_format="repository",
         with_config=True,
         with_user_config=True,
         repo_name="test-project",
@@ -50,9 +51,15 @@ def test_config_load_success(dsg_repository_factory):
     assert cfg.user.user_id == "joe@example.org"
     # Default fields are now optional in user config
     assert cfg.project is not None
-    assert cfg.project.transport == "ssh"
+    # Repository format: verify repository configuration
+    assert cfg.project.repository is not None
+    assert cfg.project.repository.type == "zfs"
+    assert cfg.project.repository.host == "localhost"
+    assert cfg.project.repository.pool == "dsgtest"
+    assert cfg.project.repository.mountpoint == "/var/tmp/test"
+    # Transport auto-derived from repository
+    assert cfg.project.get_transport() == "local"
     assert cfg.project.name == repo_result["repo_name"]
-    assert cfg.project.ssh.type == "zfs"
     assert isinstance(cfg.project_root, Path)
     assert cfg.project_root == repo_result["repo_path"]
 
@@ -184,11 +191,13 @@ def test_config_load_project_only(dsg_repository_factory, monkeypatch):
     """Test that Config.load() requires both project and user config."""
     from unittest.mock import patch
     
-    # Create basic repository with config only (no user config)
+    # Create basic repository with repository-format config only (no user config)
     repo_result = dsg_repository_factory(
         style="empty",
+        config_format="repository",
         with_config=True,
-        repo_name="test-project"
+        repo_name="test-project",
+        backend_type="zfs"
     )
     
     # Mock the user config loading to raise FileNotFoundError
@@ -295,9 +304,10 @@ def test_config_with_user_config(dsg_repository_factory):
     """Test loading Config with both project and user config."""
     from tests.conftest import load_config_with_paths
     
-    # Create repository with both project and user config
+    # Create repository with both repository-format config and user config
     repo_result = dsg_repository_factory(
         style="minimal",
+        config_format="repository",
         with_config=True,
         with_user_config=True,
         repo_name="test-project",
@@ -320,11 +330,13 @@ def test_config_without_user_config(dsg_repository_factory, monkeypatch):
     """Test that Config.load() requires user config in new design."""
     from unittest.mock import patch
     
-    # Create basic repository with project config only
+    # Create basic repository with repository-format config only
     repo_result = dsg_repository_factory(
         style="empty",
+        config_format="repository",
         with_config=True,
-        repo_name="test-project"
+        repo_name="test-project",
+        backend_type="zfs"
     )
     
     # Mock the user config loading to raise FileNotFoundError

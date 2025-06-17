@@ -51,6 +51,7 @@ class TestCloneRepositoryBasic:
         source = dsg_repository_factory(
             style="minimal",  # Use minimal instead of realistic to avoid complex symlinks
             setup="single",   # Use single setup instead of with_remote
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True, 
             with_dsg_dir=True,
@@ -116,6 +117,7 @@ class TestCloneRepositoryBasic:
         source = dsg_repository_factory(
             style="empty",
             setup="with_remote", 
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -167,6 +169,7 @@ class TestCloneRepositoryBackends:
         source = dsg_repository_factory(
             style="realistic",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS to avoid ZFS pool issues in tests
             with_config=True,
             with_dsg_dir=True,
@@ -222,6 +225,7 @@ class TestCloneRepositoryErrorScenarios:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=False,  # No .dsg directory
@@ -255,6 +259,7 @@ class TestCloneRepositoryErrorScenarios:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -296,6 +301,7 @@ class TestCloneRepositoryTransactionIntegration:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -348,6 +354,7 @@ class TestCloneRepositoryTransactionIntegration:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,

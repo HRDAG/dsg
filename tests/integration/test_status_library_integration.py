@@ -70,6 +70,7 @@ def test_get_sync_status_all_eq(dsg_repository_factory):
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
+        config_format="repository",  # Use repository format
         repo_name="BB",
         backend_type="xfs"
     )
@@ -113,6 +114,7 @@ def test_get_sync_status_library_functionality(dsg_repository_factory):
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
+        config_format="repository",  # Use repository format
         repo_name="BB",
         backend_type="xfs"
     )

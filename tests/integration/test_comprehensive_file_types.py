@@ -147,6 +147,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -181,6 +182,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -215,6 +217,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -247,6 +250,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -286,6 +290,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -314,6 +319,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -362,6 +368,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -398,6 +405,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -444,6 +452,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -491,6 +500,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -531,6 +541,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
@@ -579,6 +590,7 @@ class TestComprehensiveFileTypes:
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 
+            config_format="repository",  # Use repository format
             repo_name="BB",
             backend_type="xfs"
         )
