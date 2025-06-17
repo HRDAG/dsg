@@ -24,7 +24,14 @@ from dsg.storage.remote import ZFSFilesystem, XFSFilesystem
 from dsg.storage.io_transports import LocalhostTransport, SSHTransport
 from dsg.storage.snapshots import ZFSOperations
 from dsg.system.host_utils import is_local_host
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
+
+# Try to import test configuration, but provide fallbacks for package installations
+try:
+    from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
+except ImportError:
+    # Fallback values when tests module is not available (e.g., in packaged installations)
+    ZFS_TEST_POOL = "dsgtest"
+    ZFS_TEST_MOUNT_BASE = "/tmp/dsg-test"
 
 if TYPE_CHECKING:
     from dsg.config.manager import Config
@@ -130,7 +137,24 @@ def create_remote_filesystem(config: 'Config'):
         ValueError: If backend type not recognized
         NotImplementedError: If backend type not yet implemented
     """
-    if config.project.transport == "ssh":
+    # Check if using new repository format
+    if config.project.repository is not None:
+        # Repository-centric configuration (new format)
+        repository = config.project.repository
+        backend_type = repository.type
+        
+        if backend_type == "zfs":
+            mount_base = repository.mountpoint
+            dataset_path = config.project.name
+            pool_name = repository.pool  # Explicit pool - fixes Issue #24!
+        elif backend_type == "xfs":
+            mount_base = repository.mountpoint
+            dataset_path = config.project.name
+        else:
+            raise NotImplementedError(f"Repository type '{backend_type}' not yet supported in transaction factory")
+    
+    elif config.project.transport == "ssh":
+        # Legacy transport-centric configuration
         ssh_config = config.project.ssh
         if not ssh_config:
             raise ValueError("SSH configuration required but not found. Add ssh section to .dsgconfig.yml with host, path, and type fields.")
@@ -151,17 +175,25 @@ def create_remote_filesystem(config: 'Config'):
         _raise_transport_not_supported_error(config.project.transport)
     
     if backend_type == "zfs":
-        # Extract ZFS configuration details
-        # For ZFS, ssh.path typically points to pool mount base (e.g., /var/repos/zsd)
-        # and ssh.name is the dataset path within pool (e.g., test-repo or full/path/to/repo)
-        
-        # Parse pool and dataset from path and name
-        mount_base = str(ssh_config.path)
-        dataset_path = ssh_config.name or config.project.name
-        
-        # For ZFS dataset "pool/dataset", we need to extract pool name
-        # Use the same detection logic as LocalhostBackend
-        pool_name = _get_zfs_pool_name_for_path(mount_base)
+        # Create ZFS operations based on configuration format
+        if config.project.repository is not None:
+            # Repository format: explicit pool configuration (fixes Issue #24!)
+            repository = config.project.repository
+            pool_name = repository.pool  # Explicit pool from config
+            mount_base = repository.mountpoint
+            dataset_path = config.project.name
+        else:
+            # Legacy format: extract from SSH config with auto-detection
+            # For ZFS, ssh.path typically points to pool mount base (e.g., /var/repos/zsd)
+            # and ssh.name is the dataset path within pool (e.g., test-repo or full/path/to/repo)
+            
+            # Parse pool and dataset from path and name
+            mount_base = str(ssh_config.path)
+            dataset_path = ssh_config.name or config.project.name
+            
+            # For ZFS dataset "pool/dataset", we need to extract pool name
+            # Use the same detection logic as LocalhostBackend
+            pool_name = _get_zfs_pool_name_for_path(mount_base)
         
         # Create ZFS operations instance
         zfs_ops = ZFSOperations(

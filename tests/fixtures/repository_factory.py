@@ -102,8 +102,8 @@ class RepositoryFactory:
         """Validate repository creation parameters."""
         # Valid values for each parameter type
         valid_styles = {"empty", "minimal", "realistic", "complex"}
-        valid_config_formats = {"legacy", "modern"}
-        valid_backend_types = {"local", "ssh", "zfs", "xfs"}
+        valid_config_formats = {"legacy", "modern", "repository"}
+        valid_backend_types = {"local", "ssh", "zfs", "xfs", "ipfs", "rclone"}
         valid_setups = {"single", "clone_integration", "local_remote_pair", "with_remote"}
         
         # Check each parameter if provided
@@ -302,6 +302,18 @@ class RepositoryFactory:
                     }
                 }
             }
+        elif spec.config_format == "repository":
+            # Repository format: repository-centric configuration
+            config_dict = {
+                "name": spec.repo_name,
+                "repository": self._create_repository_config(spec, base_path, remote_ssh_path),
+                "data_dirs": ["input", "output", "hand", "src"] if spec.style == "realistic" else ["input", "output", "frozen"],
+                "ignore": {
+                    "names": [".DS_Store", "__pycache__", ".ipynb_checkpoints"],
+                    "suffixes": [".pyc", ".log", ".tmp", ".temp", ".swp", "~"],
+                    "paths": []
+                }
+            }
         else:
             # Modern format: flat structure
             config_dict = {
@@ -353,6 +365,55 @@ default_project_path: /var/repos/dgs
             "user_config_dir": user_dir
         }
     
+    def _create_repository_config(self, spec: RepositorySpec, base_path: Path, remote_ssh_path: Optional[Path]) -> Dict[str, Any]:
+        """Create repository configuration based on backend type."""
+        if spec.backend_type == "zfs":
+            if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
+                # Remote ZFS
+                return {
+                    "type": "zfs",
+                    "host": "zfs-server.example.com",
+                    "pool": "dsgdata", 
+                    "mountpoint": "/pool/repositories"
+                }
+            else:
+                # Local ZFS
+                return {
+                    "type": "zfs",
+                    "host": "localhost",
+                    "pool": "dsgtest",
+                    "mountpoint": "/var/tmp/test"
+                }
+        elif spec.backend_type == "xfs":
+            if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
+                # Remote XFS
+                return {
+                    "type": "xfs",
+                    "host": "xfs-server.example.com",
+                    "mountpoint": "/data/repositories"
+                }
+            else:
+                # Local XFS
+                return {
+                    "type": "xfs",
+                    "host": "localhost",
+                    "mountpoint": str(base_path / "repo")
+                }
+        elif spec.backend_type == "ipfs":
+            return {
+                "type": "ipfs",
+                "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+                "encrypted": True
+            }
+        elif spec.backend_type == "rclone":
+            return {
+                "type": "rclone",
+                "remote": "s3:dsg-test-bucket",
+                "path": "/repositories"
+            }
+        else:
+            raise ValueError(f"Unsupported backend type for repository format: {spec.backend_type}")
+
     def _create_dsg_structure(self, repo_path: Path, spec: RepositorySpec):
         """Create .dsg directory structure."""
         from tests.fixtures.test_utilities import create_dsg_structure
