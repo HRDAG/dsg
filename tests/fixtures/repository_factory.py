@@ -29,6 +29,9 @@ from dsg.config.manager import (
     Config, ProjectConfig, UserConfig, SSHRepositoryConfig, 
     IgnoreSettings, SSHUserConfig
 )
+from dsg.config.repositories import (
+    Repository, ZFSRepository, XFSRepository, IPFSRepository, RcloneRepository
+)
 from dsg.data.manifest import Manifest
 from dsg.core.scanner import scan_directory
 from dsg.storage.backends import LocalhostBackend
@@ -369,12 +372,12 @@ default_project_path: /var/repos/dgs
         """Create repository configuration based on backend type."""
         if spec.backend_type == "zfs":
             if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
-                # Remote ZFS
+                # Remote ZFS - use localhost for test isolation (avoids SSH)
                 return {
                     "type": "zfs",
-                    "host": "zfs-server.example.com",
-                    "pool": "dsgdata", 
-                    "mountpoint": "/pool/repositories"
+                    "host": "localhost",
+                    "pool": "dsgtest_remote", 
+                    "mountpoint": str(base_path / "remote_zfs")
                 }
             else:
                 # Local ZFS
@@ -386,11 +389,11 @@ default_project_path: /var/repos/dgs
                 }
         elif spec.backend_type == "xfs":
             if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
-                # Remote XFS
+                # Remote XFS - use localhost for test isolation (avoids SSH)
                 return {
                     "type": "xfs",
-                    "host": "xfs-server.example.com",
-                    "mountpoint": "/data/repositories"
+                    "host": "localhost",
+                    "mountpoint": str(base_path / "remote_repo")
                 }
             else:
                 # Local XFS
@@ -517,7 +520,8 @@ default_project_path: /var/repos/dgs
     def _create_local_remote_pair(self, base_path: Path, spec: RepositorySpec) -> Dict[str, Any]:
         """Create local and remote repository pair."""
         local_path = base_path / "local" / spec.repo_name
-        remote_path = base_path / "remote" / spec.repo_name
+        # Use remote_repo to match the repository configuration mountpoint
+        remote_path = base_path / "remote_repo" / spec.repo_name
         
         local_path.mkdir(parents=True)
         
@@ -545,8 +549,8 @@ default_project_path: /var/repos/dgs
             "remote_path": remote_path,
             "local_backend": local_backend,
             "remote_backend": remote_backend,
-            "local_config": self._create_config_object(local_path, spec),
-            "remote_config": self._create_config_object(remote_path, spec),
+            "local_config": self._create_config_object(local_path, spec, base_path, remote_path),
+            "remote_config": self._create_config_object(remote_path, spec, base_path, remote_path),
             "local_manifest": local_manifest,
             "remote_manifest": remote_manifest,
             "cache_manifest": local_manifest,  # Initially identical
@@ -596,7 +600,7 @@ default_project_path: /var/repos/dgs
             return None
         
         try:
-            config = self._create_config_object(repo_path, spec)
+            config = self._create_config_object(repo_path, spec, repo_path.parent, None)
             scan_result = scan_directory(config, compute_hashes=True, include_dsg_files=False)
             
             # Save manifest
@@ -608,7 +612,7 @@ default_project_path: /var/repos/dgs
             # If config creation fails, return None
             return None
     
-    def _create_config_object(self, repo_path: Path, spec: RepositorySpec) -> Config:
+    def _create_config_object(self, repo_path: Path, spec: RepositorySpec, base_path: Path, remote_ssh_path: Optional[Path] = None) -> Config:
         """Create Config object for a repository."""
         # Read the actual config file to get correct SSH settings
         config_path = repo_path / ".dsgconfig.yml"
@@ -645,14 +649,25 @@ default_project_path: /var/repos/dgs
             )
             data_dirs = {"input", "output", "frozen"}
         
-        # Create project config
-        project = ProjectConfig(
-            name=spec.repo_name,
-            transport="ssh",
-            ssh=ssh_config,
-            data_dirs=data_dirs,
-            ignore=ignore_settings
-        )
+        # Create project config based on requested format
+        if spec.config_format == "repository":
+            # NEW: Create repository format config
+            repository = self._create_repository_object(spec, base_path, remote_ssh_path)
+            project = ProjectConfig(
+                name=spec.repo_name,
+                repository=repository,  # Use repository format
+                data_dirs=data_dirs,
+                ignore=ignore_settings
+            )
+        else:
+            # LEGACY: Create transport format config  
+            project = ProjectConfig(
+                name=spec.repo_name,
+                transport="ssh",        # Use legacy format
+                ssh=ssh_config,
+                data_dirs=data_dirs,
+                ignore=ignore_settings
+            )
         
         # Create user config  
         user_ssh = SSHUserConfig()
@@ -662,11 +677,75 @@ default_project_path: /var/repos/dgs
             ssh=user_ssh
         )
         
-        return Config(
+        config = Config(
             user=user,
             project=project,
             project_root=repo_path
         )
+        
+        # Validation: Ensure config format matches spec
+        if spec.config_format == "repository":
+            if config.project.repository is None:
+                raise ValueError(f"Repository format config failed: project.repository is None for {spec.config_format}")
+            if config.project.transport is not None:
+                raise ValueError(f"Repository format config failed: project.transport should be None but got {config.project.transport}")
+        else:
+            if config.project.repository is not None:
+                raise ValueError(f"Legacy format config failed: project.repository should be None but got {config.project.repository}")
+            if config.project.transport is None:
+                raise ValueError(f"Legacy format config failed: project.transport is None for {spec.config_format}")
+        
+        return config
+    
+    def _create_repository_object(self, spec: RepositorySpec, base_path: Path, remote_ssh_path: Optional[Path]) -> Repository:
+        """Create Repository object based on backend type and setup."""
+        if spec.backend_type == "xfs":
+            if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
+                # Remote XFS - use localhost for test isolation (avoids SSH)
+                mountpoint = str(base_path / "remote_repo")
+            else:
+                # Local XFS
+                mountpoint = str(base_path / "repo")
+            
+            return XFSRepository(
+                type="xfs",
+                host="localhost",
+                mountpoint=mountpoint
+            )
+        
+        elif spec.backend_type == "zfs":
+            if spec.setup == "with_remote" or (remote_ssh_path is not None and spec.setup == "local_remote_pair"):
+                # Remote ZFS - use localhost for test isolation (avoids SSH)
+                pool = "dsgtest_remote"
+                mountpoint = str(base_path / "remote_zfs")
+            else:
+                # Local ZFS
+                pool = "dsgtest"
+                mountpoint = "/var/tmp/test"
+            
+            return ZFSRepository(
+                type="zfs",
+                host="localhost",
+                pool=pool,
+                mountpoint=mountpoint
+            )
+        
+        elif spec.backend_type == "ipfs":
+            return IPFSRepository(
+                type="ipfs",
+                did="did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+                encrypted=True
+            )
+        
+        elif spec.backend_type == "rclone":
+            return RcloneRepository(
+                type="rclone",
+                remote="test-remote:",
+                path="/dsg-repos"
+            )
+        
+        else:
+            raise ValueError(f"Unknown backend type: {spec.backend_type}")
     
     def _create_debug_info(self, base_path: Path, spec: RepositorySpec, result: Dict[str, Any]):
         """Create debug info file when KEEP_TEST_DIR is set."""
