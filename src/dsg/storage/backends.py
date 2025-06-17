@@ -186,55 +186,6 @@ class Backend(ABC, FileOperations):
         """
         raise NotImplementedError("init_repository() not implemented")
 
-    def supports_atomic_sync(self) -> bool:
-        """Check if this backend supports atomic sync operations.
-        
-        Returns:
-            True if atomic sync is supported, False otherwise
-        """
-        return False
-
-    def begin_atomic_sync(self, snapshot_id: str) -> Optional[str]:
-        """Begin atomic sync operation if supported.
-        
-        Args:
-            snapshot_id: Unique identifier for this sync operation
-            
-        Returns:
-            Working path for sync operations if atomic sync is supported, None otherwise
-            
-        Raises:
-            NotImplementedError: If atomic sync is not supported
-        """
-        if not self.supports_atomic_sync():
-            return None
-        raise NotImplementedError("begin_atomic_sync() not implemented")
-
-    def commit_atomic_sync(self, snapshot_id: str) -> None:
-        """Commit atomic sync operation if supported.
-        
-        Args:
-            snapshot_id: Unique identifier for this sync operation
-            
-        Raises:
-            NotImplementedError: If atomic sync is not supported
-        """
-        if not self.supports_atomic_sync():
-            return
-        raise NotImplementedError("commit_atomic_sync() not implemented")
-
-    def rollback_atomic_sync(self, snapshot_id: str) -> None:
-        """Rollback atomic sync operation if supported.
-        
-        Args:
-            snapshot_id: Unique identifier for this sync operation
-            
-        Raises:
-            NotImplementedError: If atomic sync is not supported
-        """
-        if not self.supports_atomic_sync():
-            return
-        raise NotImplementedError("rollback_atomic_sync() not implemented")
 
     # TODO: Add snapshot operation methods
     # @abstractmethod
@@ -507,38 +458,6 @@ class LocalhostBackend(Backend):
         except Exception:
             return None
 
-    def supports_atomic_sync(self) -> bool:
-        """Check if this backend supports atomic sync operations."""
-        zfs_ops = self._get_zfs_operations()
-        return zfs_ops is not None and zfs_ops.supports_atomic_sync()
-
-    def begin_atomic_sync(self, snapshot_id: str) -> Optional[str]:
-        """Begin atomic sync operation if ZFS is available."""
-        if not self.supports_atomic_sync():
-            return None
-        
-        zfs_ops = self._get_zfs_operations()
-        if zfs_ops:
-            return zfs_ops.begin_atomic_sync(snapshot_id)
-        return None
-
-    def commit_atomic_sync(self, snapshot_id: str) -> None:
-        """Commit atomic sync operation if ZFS is available."""
-        if not self.supports_atomic_sync():
-            return
-        
-        zfs_ops = self._get_zfs_operations()
-        if zfs_ops:
-            zfs_ops.commit_atomic_sync(snapshot_id)
-
-    def rollback_atomic_sync(self, snapshot_id: str) -> None:
-        """Rollback atomic sync operation if ZFS is available."""
-        if not self.supports_atomic_sync():
-            return
-        
-        zfs_ops = self._get_zfs_operations()
-        if zfs_ops:
-            zfs_ops.rollback_atomic_sync(snapshot_id)
 
 
 class SSHBackend(Backend):

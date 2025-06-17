@@ -298,33 +298,6 @@ class TestUnifiedInterface:
                 assert calls[2][1]["check"] == False
 
 
-class TestBackwardCompatibility:
-    
-    @pytest.fixture
-    def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
-    
-    def test_begin_atomic_sync_wrapper(self, zfs_ops):
-        """Test backward compatibility wrapper for begin_atomic_sync."""
-        snapshot_id = "snap-123"
-        
-        with patch.object(zfs_ops, '_begin_sync_transaction', return_value="/test/path") as mock_begin:
-            
-            result = zfs_ops.begin_atomic_sync(snapshot_id)
-            
-            mock_begin.assert_called_once_with(snapshot_id)
-            assert result == "/test/path"
-    
-    def test_commit_atomic_sync_wrapper(self, zfs_ops):
-        """Test backward compatibility wrapper for commit_atomic_sync."""
-        snapshot_id = "snap-123"
-        
-        with patch.object(zfs_ops, '_commit_sync_transaction') as mock_commit:
-            
-            zfs_ops.commit_atomic_sync(snapshot_id)
-            
-            mock_commit.assert_called_once_with(snapshot_id)
-
 
 class TestErrorHandling:
     

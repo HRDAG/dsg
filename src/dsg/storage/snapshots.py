@@ -30,9 +30,6 @@ class XFSOperations(SnapshotOperations):
         """TODO: Implement XFS hardlink snapshots"""
         raise NotImplementedError("XFS hardlink snapshots not yet implemented")
 
-    def supports_atomic_sync(self) -> bool:
-        """XFS does not support atomic sync operations."""
-        return False
 
 
 class ZFSOperations(SnapshotOperations):
@@ -166,9 +163,6 @@ class ZFSOperations(SnapshotOperations):
         except ValueError:
             return False
 
-    def supports_atomic_sync(self) -> bool:
-        """Check if this backend supports atomic sync operations."""
-        return self._validate_zfs_access()
 
     def _begin_sync_transaction(self, transaction_id: str) -> str:
         """Sync pattern: create snapshot and clone.
@@ -283,38 +277,9 @@ class ZFSOperations(SnapshotOperations):
             
         except Exception as e:
             # Attempt rollback
-            self.rollback_atomic_sync(transaction_id)
+            self.rollback(transaction_id)
             raise ValueError(f"Failed to commit sync transaction: {e}")
 
-    def rollback_atomic_sync(self, snapshot_id: str) -> None:
-        """Rollback atomic sync operation by destroying the clone and restoring original state.
-        
-        This provides complete rollback capability if any part of the sync operation fails.
-        
-        Args:
-            snapshot_id: Unique identifier for this sync operation
-        """
-        try:
-            self._cleanup_atomic_sync(snapshot_id)
-            
-            # If a pre-sync snapshot exists, we can restore from it
-            original_snapshot = f"{self.dataset_name}@pre-sync-{snapshot_id}"
-            list_cmd = ["zfs", "list", "-t", "snapshot", original_snapshot]
-            result = ce.run_sudo(list_cmd, check=False)
-            
-            if result.returncode == 0:
-                # Snapshot exists, rollback to it
-                rollback_cmd = ["zfs", "rollback", original_snapshot]
-                ce.run_sudo(rollback_cmd)
-                
-                # Clean up the rollback snapshot
-                cleanup_cmd = ["zfs", "destroy", original_snapshot]
-                ce.run_sudo(cleanup_cmd, check=False)
-                
-        except Exception as e:
-            # Log error but don't raise - rollback should be best-effort
-            import loguru
-            loguru.logger.warning(f"Failed to rollback atomic sync {snapshot_id}: {e}")
 
     def _cleanup_atomic_sync(self, snapshot_id: str) -> None:
         """Clean up temporary ZFS artifacts from atomic sync operation."""
@@ -427,10 +392,3 @@ class ZFSOperations(SnapshotOperations):
             loguru.logger.warning(f"Failed to rollback transaction {transaction_id}: {e}")
 
     # Backward compatibility methods
-    def begin_atomic_sync(self, snapshot_id: str) -> str:
-        """Backward compatibility wrapper for _begin_sync_transaction."""
-        return self._begin_sync_transaction(snapshot_id)
-
-    def commit_atomic_sync(self, snapshot_id: str) -> None:
-        """Backward compatibility wrapper for _commit_sync_transaction."""
-        return self._commit_sync_transaction(snapshot_id)
