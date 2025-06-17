@@ -35,7 +35,9 @@ from dsg.storage.backends import LocalhostBackend
 
 
 # Use KEEP_TEST_DIR to preserve test directories for inspection
-KEEP_TEST_DIR = os.environ.get("KEEP_TEST_DIR", "").lower() in ("1", "true", "yes")
+def _should_keep_test_dir():
+    """Check if test directories should be preserved."""
+    return os.environ.get("KEEP_TEST_DIR", "").lower() in ("1", "true", "yes")
 
 
 @dataclass
@@ -49,7 +51,7 @@ class RepositorySpec:
     with_binary_files: bool = False
     with_symlinks: bool = False
     config_format: Literal["legacy", "modern"] = "modern"
-    backend_type: Literal["local", "ssh", "zfs"] = "local"
+    backend_type: Literal["local", "ssh", "zfs", "xfs"] = "local"
     setup: Literal["single", "clone_integration", "local_remote_pair", "with_remote"] = "single"
     ssh_name: Optional[str] = None
     repo_name: str = "test-repo"
@@ -63,6 +65,8 @@ class RepositoryFactory:
     
     def create_repository(self, **kwargs) -> Dict[str, Any]:
         """Create a repository based on the provided specification."""
+        # Validate parameters before creating RepositorySpec
+        self._validate_kwargs(kwargs)
         spec = RepositorySpec(**kwargs)
         
         # Create base directory
@@ -71,7 +75,7 @@ class RepositoryFactory:
         self.cleanup_paths.append(base_dir)
         
         # Register cleanup
-        if not KEEP_TEST_DIR:
+        if not _should_keep_test_dir():
             atexit.register(lambda: self._cleanup_path(base_dir))
         
         # Create repository structure based on setup type
@@ -92,6 +96,27 @@ class RepositoryFactory:
             shutil.rmtree(path, ignore_errors=True)
         except Exception:
             pass
+    
+    def _validate_kwargs(self, kwargs: Dict[str, Any]):
+        """Validate repository creation parameters."""
+        # Valid values for each parameter type
+        valid_styles = {"empty", "minimal", "realistic", "complex"}
+        valid_config_formats = {"legacy", "modern"}
+        valid_backend_types = {"local", "ssh", "zfs", "xfs"}
+        valid_setups = {"single", "clone_integration", "local_remote_pair", "with_remote"}
+        
+        # Check each parameter if provided
+        if "style" in kwargs and kwargs["style"] not in valid_styles:
+            raise TypeError(f"create_repository() got an unexpected keyword argument 'style' with value '{kwargs['style']}'. Valid options: {valid_styles}")
+        
+        if "config_format" in kwargs and kwargs["config_format"] not in valid_config_formats:
+            raise TypeError(f"create_repository() got an unexpected keyword argument 'config_format' with value '{kwargs['config_format']}'. Valid options: {valid_config_formats}")
+        
+        if "backend_type" in kwargs and kwargs["backend_type"] not in valid_backend_types:
+            raise TypeError(f"create_repository() got an unexpected keyword argument 'backend_type' with value '{kwargs['backend_type']}'. Valid options: {valid_backend_types}")
+        
+        if "setup" in kwargs and kwargs["setup"] not in valid_setups:
+            raise ValueError(f"Unknown setup type: {kwargs['setup']}. Valid options: {valid_setups}")
     
     def _create_single_repository(self, base_path: Path, spec: RepositorySpec) -> Dict[str, Any]:
         """Create a single repository."""
@@ -119,6 +144,7 @@ class RepositoryFactory:
         # Create result
         result = {
             "repo_path": repo_path,
+            "local_path": repo_path,  # Add local_path for consistency with other setups
             "repo_name": spec.repo_name,
             "base_path": base_path,
             "spec": spec
@@ -129,7 +155,7 @@ class RepositoryFactory:
         if user_config_data:
             result.update(user_config_data)
         
-        if KEEP_TEST_DIR:
+        if _should_keep_test_dir():
             self._create_debug_info(base_path, spec, result)
         
         return result
@@ -421,7 +447,7 @@ default_project_path: /var/repos/dgs
             "spec": spec
         }
         
-        if KEEP_TEST_DIR:
+        if _should_keep_test_dir():
             self._create_debug_info(base_path, spec, result)
         
         return result
@@ -468,7 +494,7 @@ default_project_path: /var/repos/dgs
         }
         result.update(config_data)
         
-        if KEEP_TEST_DIR:
+        if _should_keep_test_dir():
             self._create_debug_info(base_path, spec, result)
         
         return result
@@ -495,7 +521,8 @@ default_project_path: /var/repos/dgs
             "remote_base": remote_base,
             "backend": backend,
             "base_path": base_path,
-            "spec": spec
+            "spec": spec,
+            "ssh_name": spec.ssh_name or spec.repo_name  # Include ssh_name in result
         }
         result.update(config_data)
         
@@ -528,11 +555,16 @@ default_project_path: /var/repos/dgs
         
         # Create SSH config from file data
         ssh_data = config_data.get("ssh", {})
+        # Fix backend type mapping for SSH configs
+        ssh_type = ssh_data.get("type", spec.backend_type)
+        if ssh_type == "local":
+            ssh_type = "zfs"  # Map local to zfs for SSH config validation
+        
         ssh_config = SSHRepositoryConfig(
             host=ssh_data.get("host", socket.gethostname()),
             path=ssh_data.get("path", repo_path.parent),
             name=ssh_data.get("name"),
-            type=ssh_data.get("type", spec.backend_type)
+            type=ssh_type
         )
         
         # Create ignore settings

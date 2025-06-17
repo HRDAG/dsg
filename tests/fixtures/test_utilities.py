@@ -181,10 +181,18 @@ def create_dsg_structure(repo_path: Path) -> None:
     dsg_dir = repo_path / ".dsg"
     dsg_dir.mkdir(exist_ok=True)
     
+    # Create archive directory
+    archive_dir = dsg_dir / "archive"
+    archive_dir.mkdir(exist_ok=True)
+    
     # Create initial empty manifest
     empty_manifest = Manifest(entries=OrderedDict())
     manifest_path = dsg_dir / "last-sync.json"
     empty_manifest.to_json(manifest_path)
+    
+    # Create sync messages file
+    sync_messages_path = dsg_dir / "sync-messages.json"
+    sync_messages_path.write_text('[]')  # Empty list of sync messages
 
 
 def regenerate_manifest(config: Config) -> Manifest:
