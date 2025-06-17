@@ -280,13 +280,36 @@ def display_config_summary(console: Console, config) -> None:
     
     table.add_row("User Name", config.user.user_name)
     table.add_row("User ID", config.user.user_id)
-    table.add_row("Transport", config.project.transport)
     
-    if config.project.ssh:
-        table.add_row("SSH Host", config.project.ssh.host)
-        table.add_row("SSH Path", str(config.project.ssh.path))
-        table.add_row("Repository Name", config.project.ssh.name)
-        table.add_row("Repository Type", config.project.ssh.type)
+    # Display configuration based on format (repository vs legacy)
+    if config.project.repository is not None:
+        # Repository format
+        repository = config.project.repository
+        transport = config.project.get_transport()
+        table.add_row("Configuration", "Repository format")
+        table.add_row("Repository Type", repository.type)
+        table.add_row("Transport", f"{transport} (derived)")
+        
+        if hasattr(repository, 'host'):
+            table.add_row("Host", repository.host)
+        if hasattr(repository, 'pool'):
+            table.add_row("ZFS Pool", repository.pool)
+        if hasattr(repository, 'mountpoint'):
+            table.add_row("Mount Point", repository.mountpoint)
+        if hasattr(repository, 'did'):
+            table.add_row("IPFS DID", repository.did)
+        if hasattr(repository, 'remote'):
+            table.add_row("Rclone Remote", repository.remote)
+    else:
+        # Legacy format
+        table.add_row("Configuration", "Legacy transport format")
+        table.add_row("Transport", config.project.transport)
+        
+        if config.project.ssh:
+            table.add_row("SSH Host", config.project.ssh.host)
+            table.add_row("SSH Path", str(config.project.ssh.path))
+            table.add_row("Repository Name", config.project.ssh.name)
+            table.add_row("Repository Type", config.project.ssh.type)
     
     console.print(table)
 

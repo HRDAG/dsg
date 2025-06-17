@@ -129,11 +129,30 @@ def clone(
     
     # Use the new unified clone implementation
     from pathlib import Path
-    # Determine source URL from config
-    if config.project.transport == "ssh" and config.project.ssh:
+    # Determine source URL from config (supporting both repository and legacy formats)
+    if config.project.repository is not None:
+        # Repository format - construct URL from repository config
+        repository = config.project.repository
+        transport = config.project.get_transport()
+        
+        if transport == "ssh":
+            if hasattr(repository, 'host') and hasattr(repository, 'mountpoint'):
+                source_url = f"ssh://{repository.host}{repository.mountpoint}"
+            else:
+                raise ValueError(f"Repository type {repository.type} doesn't support SSH transport for cloning")
+        elif transport == "local":
+            if hasattr(repository, 'mountpoint'):
+                source_url = f"file://{repository.mountpoint}"
+            else:
+                raise ValueError(f"Repository type {repository.type} doesn't support local transport for cloning")
+        else:
+            raise ValueError(f"Transport type {transport} not supported for cloning")
+    elif config.project.transport == "ssh" and config.project.ssh:
+        # Legacy format
         source_url = f"ssh://{config.project.ssh.host}{config.project.ssh.path}"
     else:
-        raise ValueError(f"Unsupported transport type: {config.project.transport}")
+        transport = config.project.transport if config.project.transport else "unknown"
+        raise ValueError(f"Unsupported transport type: {transport}")
     
     result = clone_repository(
         config=config,

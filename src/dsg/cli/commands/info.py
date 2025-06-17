@@ -239,7 +239,13 @@ def validate_config(
         # Config is already loaded, so basic validation passed
         config_result.set_passed(True, "Configuration loaded successfully")
         config_result.add_detail(f"Project root: {config.project_root}")
-        config_result.add_detail(f"Transport: {config.project.transport}")
+        # Show transport information (supporting both repository and legacy formats)
+        if config.project.repository is not None:
+            transport = config.project.get_transport()
+            config_result.add_detail(f"Repository: {config.project.repository.type} on {config.project.repository.host}")
+            config_result.add_detail(f"Transport: {transport} (derived)")
+        else:
+            config_result.add_detail(f"Transport: {config.project.transport} (legacy)")
     except Exception as e:
         config_result.set_passed(False, f"Configuration error: {e}")
     

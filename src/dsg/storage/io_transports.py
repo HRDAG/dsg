@@ -535,7 +535,34 @@ class SSHTransport:
 
 def create_transport(config) -> LocalhostTransport | SSHTransport:
     """Factory function to create appropriate transport based on config"""
-    if hasattr(config, 'project') and hasattr(config.project, 'transport'):
+    
+    # Use repository-centric configuration if available
+    if hasattr(config, 'project') and config.project.repository is not None:
+        from dsg.config.transport_resolver import derive_transport
+        transport_type = derive_transport(config.project.repository)
+        repository = config.project.repository
+        
+        if transport_type == 'ssh':
+            # Extract SSH configuration from repository
+            ssh_config = {
+                'hostname': repository.host,
+                'port': getattr(repository, 'port', 22),
+                'username': getattr(config.user, 'user_name', 'dsg'),
+            }
+            
+            # Add authentication if available
+            if hasattr(repository, 'key_file'):
+                ssh_config['key_filename'] = repository.key_file
+            
+            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']} (repository format)")
+            return SSHTransport(ssh_config)
+        
+        elif transport_type == 'local':
+            logging.info("Creating localhost transport (repository format)")
+            return LocalhostTransport()
+    
+    # Legacy transport-centric configuration
+    elif hasattr(config, 'project') and hasattr(config.project, 'transport'):
         transport_type = config.project.transport
         
         if transport_type == 'ssh':
@@ -550,11 +577,11 @@ def create_transport(config) -> LocalhostTransport | SSHTransport:
             if hasattr(config.project.ssh, 'key_file'):
                 ssh_config['key_filename'] = config.project.ssh.key_file
             
-            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']}")
+            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']} (legacy format)")
             return SSHTransport(ssh_config)
         
         elif transport_type == 'localhost':
-            logging.info("Creating localhost transport")
+            logging.info("Creating localhost transport (legacy format)")
             return LocalhostTransport()
     
     # Default to localhost if no transport specified

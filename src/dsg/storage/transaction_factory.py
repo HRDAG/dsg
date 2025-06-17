@@ -226,7 +226,31 @@ def create_transport(config: 'Config'):
     Raises:
         ValueError: If transport type not supported
     """
-    if config.project.transport == "ssh":
+    # Use repository-centric configuration if available
+    if config.project.repository is not None:
+        # Repository format: derive transport from repository configuration
+        from dsg.config.transport_resolver import derive_transport
+        transport_type = derive_transport(config.project.repository)
+        repository = config.project.repository
+        
+        if transport_type == "local":
+            # Local transport for localhost repositories
+            temp_dir = config.project_root / ".dsg" / "tmp"
+            return LocalhostTransport(temp_dir)
+        elif transport_type == "ssh":
+            # SSH transport for remote repositories
+            ssh_params = {
+                'hostname': repository.host,
+                'username': config.user.user_name if hasattr(config.user, 'user_name') else None,
+                # TODO: Add SSH key, password, port configuration as needed
+            }
+            temp_dir = config.project_root / ".dsg" / "tmp"
+            return SSHTransport(ssh_params, temp_dir)
+        else:
+            raise NotImplementedError(f"Transport type '{transport_type}' not yet implemented in create_transport")
+    
+    # Legacy transport-centric configuration
+    elif config.project.transport == "ssh":
         ssh_config = config.project.ssh
         if not ssh_config:
             raise ValueError("SSH configuration required but not found. Add ssh section to .dsgconfig.yml with host, path, and type fields.")
