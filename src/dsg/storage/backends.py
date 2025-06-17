@@ -69,71 +69,19 @@ class Backend(ABC, FileOperations):
     PRIORITY: High - affects production usability when users have partial access
 
 
-    TODO: CRITICAL - ZFS Atomic Sync Operations
-    =============================================
+    TODO: COMPLETED - ZFS Transaction System Integration
+    ===================================================
 
-    Current sync operations are incremental and non-atomic. If interrupted,
-    repositories can be left in inconsistent states with:
-    - Partial file updates
-    - Mismatched manifests between local and remote
-    - Incomplete metadata updates
-    - Broken sync chains
+    ZFS atomic sync operations have been implemented via the new transaction system
+    in Phase 2 refactoring. The transaction system provides:
 
-    ZFS ATOMIC SYNC STRATEGY:
+    - True atomic operations via ZFS clone→promote patterns
+    - Automatic rollback on failures with proper cleanup
+    - Transaction isolation for multi-user scenarios
+    - Comprehensive error recovery mechanisms
 
-    Instead of direct file modifications, use ZFS clone/promote for true atomicity:
-
-    1. PREPARATION PHASE:
-       - Create ZFS clone of current repository state
-       - Work directory: /dataset/repo@sync-temp-clone
-       - Original remains untouched during entire operation
-
-    2. SYNC WORK PHASE (on clone):
-       - Apply all bidirectional file changes to clone
-       - Update manifests, metadata, sync chains
-       - Generate and verify sync hashes
-       - Complete all backend operations
-
-    3. ATOMIC COMMIT PHASE:
-       - Verify clone integrity (validate-snapshot on clone)
-       - ZFS promote clone to become new repository state
-       - Original becomes snapshot for rollback
-       - If promotion fails, destroy clone and rollback
-
-    BENEFITS:
-    - True atomic sync: either complete success or complete rollback
-    - No partial sync states possible
-    - Instant rollback capability
-    - Concurrent read access during sync (readers use original)
-    - Consistent snapshots always maintained
-
-    IMPLEMENTATION CONSIDERATIONS:
-    - ZFS clone is copy-on-write (minimal space overhead)
-    - Promote operation is atomic and fast
-    - Need ZFS admin privileges for clone/promote
-    - Backend.supports_atomic_sync() capability detection
-    - Fallback to incremental sync for non-ZFS backends
-
-    ZFS COMMANDS INVOLVED:
-    - zfs clone dataset/repo@latest dataset/repo@sync-temp
-    - zfs promote dataset/repo@sync-temp  # atomic switch
-    - zfs destroy dataset/repo@old-state  # cleanup
-
-    ROLLBACK STRATEGY:
-    - Keep previous state as snapshot during sync
-    - If any validation fails, zfs rollback to previous snapshot
-    - Automatic cleanup of temp clones on failure
-
-    INTEGRATION POINTS:
-    - Sync command: detect ZFS backend and use atomic mode
-    - Backend.begin_atomic_sync() / Backend.commit_atomic_sync()
-    - validate-snapshot: verify atomic sync integrity
-    - Error handling: automatic rollback on any failure
-
-    QUESTION:
-    - how does atomicity work on the client side?
-
-    PRIORITY: Medium-High - significantly improves sync reliability
+    The new transaction system replaces the old incremental sync approach with
+    atomic transactions that ensure repository consistency.
     """
 
     @abstractmethod
