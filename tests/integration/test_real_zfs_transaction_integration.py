@@ -342,6 +342,8 @@ class TestRealZFSTransactionIntegration:
         # Create source repository with realistic structure
         factory_result = dsg_repository_factory(
             style="realistic", 
+            config_format="repository",  # Use repository format
+            backend_type="xfs",  # Use XFS for test isolation
             with_dsg_dir=True, 
             repo_name="real-zfs-tx-test"
         )
@@ -402,6 +404,8 @@ class TestRealZFSTransactionIntegration:
         """Test transaction rollback with real ZFS when sync fails."""
         factory_result = dsg_repository_factory(
             style="minimal", 
+            config_format="repository",  # Use repository format
+            backend_type="xfs",  # Use XFS for test isolation
             with_dsg_dir=True, 
             repo_name="real-zfs-rollback-test"
         )
