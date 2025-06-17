@@ -87,49 +87,7 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    Example output:
    <!--- CLI help output start --->
    ```
-                                                                                   
-    Usage: dsg [OPTIONS] COMMAND [ARGS]...                                         
-                                                                                   
-    dsg - Project data management tools                                            
-                                                                                   
-    Setup: init, clone, list-repos                                                 
-    Core Operations: list-files, status, sync                                      
-    History: log, blame, snapmount, snapfetch                                      
-    Validation: validate-config, validate-file, validate-snapshot, validate-chain  
-                                                                                   
-   ╭─ Options ────────────────────────────────────────────────────────────────────╮
-   │ --version                       Show version and exit                        │
-   │ --debug                         Enable debug logging                         │
-   │ --verbose             -v        Enable verbose output                        │
-   │ --quiet               -q        Suppress output                              │
-   │ --json                          Output results as JSON                       │
-   │ --install-completion            Install completion for the current shell.    │
-   │ --show-completion               Show completion for the current shell, to    │
-   │                                 copy it or customize the installation.       │
-   │ --help                          Show this message and exit.                  │
-   ╰──────────────────────────────────────────────────────────────────────────────╯
-   ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-   │ list-repos          Setup: List available repositories from discovery        │
-   │                     config.                                                  │
-   │ status              Core Operations: Show sync status by comparing local     │
-   │                     files with last sync.                                    │
-   │ list-files          Core Operations: List all files in the repository.       │
-   │ log                 History: Show repository sync history.                   │
-   │ blame               History: Show file modification history.                 │
-   │ validate-config     Validation: Validate repository configuration.           │
-   │ validate-file       Validation: Validate a specific file.                    │
-   │ validate-snapshot   Validation: Validate a repository snapshot.              │
-   │ validate-chain      Validation: Validate the entire snapshot chain.          │
-   │ init                Setup: Initialize a new data repository.                 │
-   │ clone               Setup: Clone data from existing dsg repository.          │
-   │ sync                Core Operations: Sync local changes to remote            │
-   │                     repository.                                              │
-   │ snapmount           History: Mount a repository snapshot for read-only       │
-   │                     access.                                                  │
-   │ snapfetch           History: Fetch a specific file from a repository         │
-   │                     snapshot.                                                │
-   ╰──────────────────────────────────────────────────────────────────────────────╯
-   
+
    ```
    <!--- CLI help output end --->
 

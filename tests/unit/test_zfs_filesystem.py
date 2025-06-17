@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dsg.storage.remote import ZFSFilesystem
 from dsg.system.exceptions import ZFSOperationError, TransactionCommitError
+from tests.fixtures.zfs_test_config import ZFS_TEST_MOUNT_BASE
 
 
 class TestZFSFilesystemInterface:
@@ -14,7 +15,7 @@ class TestZFSFilesystemInterface:
     def mock_zfs_ops(self):
         """Create a mock ZFSOperations instance."""
         mock_ops = MagicMock()
-        mock_ops.begin.return_value = "/var/tmp/test/test-repo-tx-123"
+        mock_ops.begin.return_value = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         return mock_ops
     
     @pytest.fixture
@@ -30,7 +31,7 @@ class TestZFSFilesystemInterface:
         
         mock_zfs_ops.begin.assert_called_once_with(transaction_id)
         assert zfs_filesystem.transaction_id == transaction_id
-        assert zfs_filesystem.clone_path == "/var/tmp/test/test-repo-tx-123"
+        assert zfs_filesystem.clone_path == f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
     
     def test_commit_calls_unified_interface(self, zfs_filesystem, mock_zfs_ops):
         """Test that commit() calls the new unified ZFSOperations.commit()."""
@@ -38,7 +39,7 @@ class TestZFSFilesystemInterface:
         
         # Setup transaction state
         zfs_filesystem.transaction_id = transaction_id
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-123"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         
         zfs_filesystem.commit(transaction_id)
         
@@ -52,7 +53,7 @@ class TestZFSFilesystemInterface:
         
         # Setup transaction state
         zfs_filesystem.transaction_id = transaction_id
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-123"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         
         zfs_filesystem.rollback(transaction_id)
         
@@ -63,7 +64,7 @@ class TestZFSFilesystemInterface:
     def test_commit_transaction_id_mismatch(self, zfs_filesystem):
         """Test that commit raises error on transaction ID mismatch."""
         zfs_filesystem.transaction_id = "tx-original"
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-original"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-original"
         
         with pytest.raises(TransactionCommitError, match="ZFS commit failed"):
             zfs_filesystem.commit("tx-different")
@@ -72,7 +73,7 @@ class TestZFSFilesystemInterface:
         """Test that commit properly handles and wraps ZFS errors."""
         transaction_id = "tx-test-123"
         zfs_filesystem.transaction_id = transaction_id
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-123"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         
         # Mock ZFS operation failure
         mock_zfs_ops.commit.side_effect = Exception("ZFS operation failed")
@@ -87,7 +88,7 @@ class TestZFSFilesystemInterface:
     def test_rollback_transaction_id_mismatch_warning(self, zfs_filesystem, mock_zfs_ops):
         """Test that rollback logs warning on transaction ID mismatch but continues."""
         zfs_filesystem.transaction_id = "tx-original"
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-original"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-original"
         
         with patch('logging.warning') as mock_warning:
             zfs_filesystem.rollback("tx-different")
@@ -104,7 +105,7 @@ class TestZFSFilesystemInterface:
         """Test that rollback handles errors gracefully without raising."""
         transaction_id = "tx-test-123"
         zfs_filesystem.transaction_id = transaction_id
-        zfs_filesystem.clone_path = "/var/tmp/test/test-repo-tx-123"
+        zfs_filesystem.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         
         # Mock ZFS operation failure
         mock_zfs_ops.rollback.side_effect = Exception("ZFS rollback failed")
@@ -127,7 +128,7 @@ class TestZFSFilesystemBackwardCompatibility:
     def mock_zfs_ops(self):
         """Create a mock ZFSOperations instance."""
         mock_ops = MagicMock()
-        mock_ops.begin.return_value = "/var/tmp/test/test-repo-tx-123"
+        mock_ops.begin.return_value = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         return mock_ops
     
     @pytest.fixture
@@ -166,7 +167,7 @@ class TestZFSFilesystemFileOperations:
     def mock_zfs_ops(self):
         """Create a mock ZFSOperations instance."""
         mock_ops = MagicMock()
-        mock_ops.begin.return_value = "/var/tmp/test/test-repo-tx-123"
+        mock_ops.begin.return_value = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         return mock_ops
     
     @pytest.fixture
@@ -175,7 +176,7 @@ class TestZFSFilesystemFileOperations:
         fs = ZFSFilesystem(mock_zfs_ops)
         # Setup transaction state for file operations
         fs.transaction_id = "tx-test-123"
-        fs.clone_path = "/var/tmp/test/test-repo-tx-123"
+        fs.clone_path = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         return fs
     
     def test_send_file_with_transaction(self, zfs_filesystem):
@@ -185,7 +186,7 @@ class TestZFSFilesystemFileOperations:
         with patch('dsg.storage.remote.FileContentStream') as mock_stream:
             result = zfs_filesystem.send_file(rel_path)
             
-            expected_path = Path("/var/tmp/test/test-repo-tx-123/data/test.csv")
+            expected_path = Path(f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123/data/test.csv")
             mock_stream.assert_called_once_with(expected_path)
             assert result == mock_stream.return_value
     
@@ -206,7 +207,7 @@ class TestZFSFilesystemFileOperations:
             with patch('pathlib.Path.mkdir') as mock_mkdir:
                 zfs_filesystem.recv_file(rel_path, mock_temp_file)
                 
-                expected_dest = Path("/var/tmp/test/test-repo-tx-123/data/test.csv")
+                expected_dest = Path(f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123/data/test.csv")
                 mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
                 mock_move.assert_called_once_with("/tmp/temp-file-123", expected_dest)
     
@@ -305,7 +306,7 @@ class TestZFSFilesystemTransactionFlow:
     def mock_zfs_ops(self):
         """Create a mock ZFSOperations instance."""
         mock_ops = MagicMock()
-        mock_ops.begin.return_value = "/var/tmp/test/test-repo-tx-123"
+        mock_ops.begin.return_value = f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         return mock_ops
     
     @pytest.fixture
@@ -320,7 +321,7 @@ class TestZFSFilesystemTransactionFlow:
         # Begin transaction
         zfs_filesystem.begin(transaction_id)
         assert zfs_filesystem.transaction_id == transaction_id
-        assert zfs_filesystem.clone_path == "/var/tmp/test/test-repo-tx-123"
+        assert zfs_filesystem.clone_path == f"{ZFS_TEST_MOUNT_BASE}/test-repo-tx-123"
         
         # File operations should work
         with patch('dsg.storage.remote.FileContentStream'):

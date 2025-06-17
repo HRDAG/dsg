@@ -22,6 +22,7 @@ from unittest.mock import patch, MagicMock
 from dsg.core.lifecycle import init_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.storage.backends import LocalhostBackend
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
 
 
 def check_zfs_available() -> tuple[bool, str]:
@@ -37,13 +38,13 @@ def check_zfs_available() -> tuple[bool, str]:
             return False, "ZFS command not found"
         
         # Check if test pool exists
-        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
+        result = subprocess.run(['sudo', 'zfs', 'list', ZFS_TEST_POOL], 
                               capture_output=True, text=True)
         if result.returncode != 0:
-            return False, "ZFS test pool 'dsgtest' not available"
+            return False, f"ZFS test pool '{ZFS_TEST_POOL}' not available"
         
         # Check if we can create datasets (test permissions)
-        test_dataset = f"dsgtest/pytest-{uuid.uuid4().hex[:8]}"
+        test_dataset = get_test_dataset_name("pytest", uuid.uuid4().hex[:8])
         try:
             result = subprocess.run(['sudo', 'zfs', 'create', test_dataset], 
                                   capture_output=True, text=True)
@@ -78,8 +79,8 @@ def create_test_zfs_dataset() -> tuple[str, str]:
     print("🔧 DEBUG: Using UPDATED create_test_zfs_dataset with ownership fix")
     
     test_id = uuid.uuid4().hex[:8]
-    dataset_name = f"dsgtest/pytest-{test_id}"
-    mount_path = f"/var/tmp/test/pytest-{test_id}"
+    dataset_name = get_test_dataset_name("pytest", test_id)
+    mount_path = get_test_mount_path(dataset_name)
     
     # Create the dataset
     result = subprocess.run(['sudo', 'zfs', 'create', dataset_name], 
@@ -146,10 +147,10 @@ class TestZFSInitBugDemonstration:
             (input_dir / "data2.csv").write_text("id,value\n1,test")
             
             # Create DSG config for ZFS backend pointing to real ZFS
-            # For ZFS dataset dsgtest/pytest-xxx, we need:
-            # ssh.path = /var/tmp/test (points to pool) 
+            # For ZFS dataset {ZFS_TEST_POOL}/pytest-xxx, we need:
+            # ssh.path = {ZFS_TEST_MOUNT_BASE} (points to pool) 
             # ssh.name = pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/tmp/test")
+            remote_base = Path(ZFS_TEST_MOUNT_BASE)
             repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
             
             ssh_config = SSHRepositoryConfig(
@@ -232,7 +233,7 @@ class TestZFSInitBugDemonstration:
             (input_dir / "test.txt").write_text("sync test data")
             
             # Create config using real ZFS location
-            remote_base = Path("/var/tmp/test")
+            remote_base = Path(ZFS_TEST_MOUNT_BASE)
             repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
             
             ssh_config = SSHRepositoryConfig(
@@ -314,10 +315,10 @@ class TestZFSBackendDirectly:
             (local_dsg / "archive").mkdir()
             
             # Create LocalhostBackend pointing to real ZFS location
-            # For ZFS dataset dsgtest/pytest-xxx, we need:
-            # repo_path = /var/tmp/test (points to pool)
+            # For ZFS dataset {ZFS_TEST_POOL}/pytest-xxx, we need:
+            # repo_path = {ZFS_TEST_MOUNT_BASE} (points to pool)
             # repo_name = pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/tmp/test")
+            remote_base = Path(ZFS_TEST_MOUNT_BASE)
             repo_name = Path(remote_repo_path).name
             backend = LocalhostBackend(remote_base, repo_name)
             

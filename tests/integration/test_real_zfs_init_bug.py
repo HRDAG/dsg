@@ -9,13 +9,13 @@
 """
 Real ZFS integration test demonstrating the remote .dsg bug.
 
-This test uses the actual ZFS pool at /var/tmp/test to demonstrate
+This test uses the actual ZFS test pool to demonstrate
 that `dsg init --force` creates local .dsg but fails to create remote .dsg.
 
 REQUIREMENTS:
-- ZFS pool 'dsgtest' exists at /var/tmp/test
+- ZFS test pool exists (configurable via DSG_TEST_ZFS_POOL, default 'dsgtest')
 - User has sudo access for ZFS operations
-- /var/tmp/test is available for testing
+- ZFS test mount base is available (configurable via DSG_TEST_ZFS_MOUNT_BASE, default '/var/tmp/test')
 """
 
 import pytest
@@ -26,6 +26,7 @@ from pathlib import Path
 from dsg.core.lifecycle import init_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.system.execution import CommandExecutor as ce
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
 
 
 class TestRealZFSInitBug:
@@ -34,8 +35,8 @@ class TestRealZFSInitBug:
     @pytest.fixture
     def cleanup_zfs_test_dataset(self):
         """Cleanup fixture to ensure test dataset is removed before and after test."""
-        test_dataset = "dsgtest/real-zfs-test"
-        test_mount = "/var/tmp/test/real-zfs-test"
+        test_dataset = get_test_dataset_name("real-zfs-test")
+        test_mount = get_test_mount_path(test_dataset)
         
         def cleanup():
             try:
@@ -82,7 +83,7 @@ class TestRealZFSInitBug:
         
         ssh_config = SSHRepositoryConfig(
             host="localhost",
-            path=Path("/var/tmp/test"),
+            path=Path(ZFS_TEST_MOUNT_BASE),
             name=unique_name,
             type="zfs"
         )
@@ -122,8 +123,8 @@ class TestRealZFSInitBug:
             print("✓ Local .dsg structure created correctly")
             
             # Verify ZFS dataset was created
-            zfs_dataset = f"dsgtest/{unique_name}"
-            zfs_mount = f"/var/tmp/test/{unique_name}"
+            zfs_dataset = f"{ZFS_TEST_POOL}/{unique_name}"
+            zfs_mount = f"{ZFS_TEST_MOUNT_BASE}/{unique_name}"
             
             # Check that ZFS dataset exists
             result = ce.run_sudo(["zfs", "list", zfs_dataset], check=False)
@@ -187,7 +188,7 @@ class TestRealZFSInitBug:
         
         ssh_config = SSHRepositoryConfig(
             host="localhost",
-            path=Path("/var/tmp/test"),
+            path=Path(ZFS_TEST_MOUNT_BASE),
             name=unique_name,
             type="zfs"
         )

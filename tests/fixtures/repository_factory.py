@@ -32,6 +32,7 @@ from dsg.config.manager import (
 from dsg.data.manifest import Manifest
 from dsg.core.scanner import scan_directory
 from dsg.storage.backends import LocalhostBackend
+from tests.fixtures.zfs_test_config import ZFS_TEST_MOUNT_BASE
 
 
 # Use KEEP_TEST_DIR to preserve test directories for inspection
@@ -289,7 +290,7 @@ class RepositoryFactory:
                     "transport": "ssh",
                     "ssh": {
                         "host": "localhost",
-                        "path": "/var/tmp/test" if spec.backend_type == "zfs" else str(remote_ssh_path if remote_ssh_path is not None else (base_path / "remote")),
+                        "path": ZFS_TEST_MOUNT_BASE if spec.backend_type == "zfs" else str(remote_ssh_path if remote_ssh_path is not None else (base_path / "remote")),
                         "name": ssh_name,
                         "type": spec.backend_type
                     },
@@ -319,7 +320,7 @@ class RepositoryFactory:
             ssh_path = remote_ssh_path if remote_ssh_path is not None else (base_path / "remote")
             config_dict["ssh"] = {
                 "host": "localhost", 
-                "path": "/var/tmp/test" if spec.backend_type == "zfs" else str(ssh_path),
+                "path": ZFS_TEST_MOUNT_BASE if spec.backend_type == "zfs" else str(ssh_path),
                 "type": spec.backend_type
             }
             if ssh_name is not None:

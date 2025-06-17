@@ -3,13 +3,14 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from dsg.storage.snapshots import ZFSOperations
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
 
 
 class TestOperationDetection:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
+        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
     
     def test_detect_init_when_dataset_missing(self, zfs_ops):
         """Test detection of init operation when main dataset doesn't exist."""
@@ -21,7 +22,7 @@ class TestOperationDetection:
             
             assert operation_type == "init"
             mock_run.assert_called_once_with(
-                ["zfs", "list", "dsgtest/test-repo"], 
+                ["zfs", "list", f"{ZFS_TEST_POOL}/test-repo"], 
                 check=False
             )
     
@@ -40,7 +41,7 @@ class TestInitPattern:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
+        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
     
     def test_begin_init_transaction(self, zfs_ops):
         """Test init transaction begin creates temp dataset correctly."""
@@ -58,16 +59,16 @@ class TestInitPattern:
                 assert len(calls) == 4
                 
                 # Check create command
-                assert calls[0][0][0] == ["zfs", "create", "dsgtest/test-repo-init-tx-abc123"]
+                assert calls[0][0][0] == ["zfs", "create", f"{ZFS_TEST_POOL}/test-repo-init-tx-abc123"]
                 
                 # Check mountpoint command
-                assert calls[1][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo-init-tx-abc123", "dsgtest/test-repo-init-tx-abc123"]
+                assert calls[1][0][0] == ["zfs", "set", f"mountpoint={ZFS_TEST_MOUNT_BASE}/test-repo-init-tx-abc123", f"{ZFS_TEST_POOL}/test-repo-init-tx-abc123"]
                 
                 # Check ownership commands
-                assert calls[2][0][0] == ["chown", "testuser:svn", "/var/tmp/test/test-repo-init-tx-abc123"]
-                assert calls[3][0][0] == ["chmod", "755", "/var/tmp/test/test-repo-init-tx-abc123"]
+                assert calls[2][0][0] == ["chown", "testuser:svn", f"{ZFS_TEST_MOUNT_BASE}/test-repo-init-tx-abc123"]
+                assert calls[3][0][0] == ["chmod", "755", f"{ZFS_TEST_MOUNT_BASE}/test-repo-init-tx-abc123"]
                 
-                assert result_path == "/var/tmp/test/test-repo-init-tx-abc123"
+                assert result_path == f"{ZFS_TEST_MOUNT_BASE}/test-repo-init-tx-abc123"
     
     def test_commit_init_transaction(self, zfs_ops):
         """Test init transaction commit performs atomic rename."""
@@ -83,24 +84,24 @@ class TestInitPattern:
             assert len(calls) == 5
             
             # Check rename command
-            assert calls[0][0][0] == ["zfs", "rename", "dsgtest/test-repo-init-tx-abc123", "dsgtest/test-repo"]
+            assert calls[0][0][0] == ["zfs", "rename", f"{ZFS_TEST_POOL}/test-repo-init-tx-abc123", f"{ZFS_TEST_POOL}/test-repo"]
             
             # Check mountpoint update
-            assert calls[1][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo", "dsgtest/test-repo"]
+            assert calls[1][0][0] == ["zfs", "set", f"mountpoint={ZFS_TEST_MOUNT_BASE}/test-repo", f"{ZFS_TEST_POOL}/test-repo"]
             
             # Check ownership and permissions (calls 2 and 3)
             assert "chown" in calls[2][0][0][0]
             assert "chmod" in calls[3][0][0][0]
             
             # Check initial snapshot creation
-            assert calls[4][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@init-snapshot"]
+            assert calls[4][0][0] == ["zfs", "snapshot", f"{ZFS_TEST_POOL}/test-repo@init-snapshot"]
 
 
 class TestSyncPattern:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
+        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
     
     def test_begin_sync_transaction(self, zfs_ops):
         """Test sync transaction begin creates snapshot and clone."""
@@ -118,19 +119,19 @@ class TestSyncPattern:
                 assert len(calls) == 5
                 
                 # Check snapshot creation
-                assert calls[0][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@sync-temp-tx-def456"]
+                assert calls[0][0][0] == ["zfs", "snapshot", f"{ZFS_TEST_POOL}/test-repo@sync-temp-tx-def456"]
                 
                 # Check clone creation
-                assert calls[1][0][0] == ["zfs", "clone", "dsgtest/test-repo@sync-temp-tx-def456", "dsgtest/test-repo-sync-tx-def456"]
+                assert calls[1][0][0] == ["zfs", "clone", f"{ZFS_TEST_POOL}/test-repo@sync-temp-tx-def456", f"{ZFS_TEST_POOL}/test-repo-sync-tx-def456"]
                 
                 # Check mountpoint setting
-                assert calls[2][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo-sync-tx-def456", "dsgtest/test-repo-sync-tx-def456"]
+                assert calls[2][0][0] == ["zfs", "set", f"mountpoint={ZFS_TEST_MOUNT_BASE}/test-repo-sync-tx-def456", f"{ZFS_TEST_POOL}/test-repo-sync-tx-def456"]
                 
                 # Check ownership and permissions
-                assert calls[3][0][0] == ["chown", "testuser:svn", "/var/tmp/test/test-repo-sync-tx-def456"]
-                assert calls[4][0][0] == ["chmod", "755", "/var/tmp/test/test-repo-sync-tx-def456"]
+                assert calls[3][0][0] == ["chown", "testuser:svn", f"{ZFS_TEST_MOUNT_BASE}/test-repo-sync-tx-def456"]
+                assert calls[4][0][0] == ["chmod", "755", f"{ZFS_TEST_MOUNT_BASE}/test-repo-sync-tx-def456"]
                 
-                assert result_path == "/var/tmp/test/test-repo-sync-tx-def456"
+                assert result_path == f"{ZFS_TEST_MOUNT_BASE}/test-repo-sync-tx-def456"
     
     def test_commit_sync_transaction(self, zfs_ops):
         """Test sync transaction commit performs promote and cleanup."""
@@ -146,25 +147,25 @@ class TestSyncPattern:
             assert len(calls) == 9
             
             # Check pre-sync snapshot
-            assert calls[0][0][0] == ["zfs", "snapshot", "dsgtest/test-repo@pre-sync-tx-def456"]
+            assert calls[0][0][0] == ["zfs", "snapshot", f"{ZFS_TEST_POOL}/test-repo@pre-sync-tx-def456"]
             
             # Check promote
-            assert calls[1][0][0] == ["zfs", "promote", "dsgtest/test-repo-sync-tx-def456"]
+            assert calls[1][0][0] == ["zfs", "promote", f"{ZFS_TEST_POOL}/test-repo-sync-tx-def456"]
             
             # Check rename operations
-            assert calls[2][0][0] == ["zfs", "rename", "dsgtest/test-repo", "dsgtest/test-repo-old-tx-def456"]
-            assert calls[3][0][0] == ["zfs", "rename", "dsgtest/test-repo-sync-tx-def456", "dsgtest/test-repo"]
+            assert calls[2][0][0] == ["zfs", "rename", f"{ZFS_TEST_POOL}/test-repo", f"{ZFS_TEST_POOL}/test-repo-old-tx-def456"]
+            assert calls[3][0][0] == ["zfs", "rename", f"{ZFS_TEST_POOL}/test-repo-sync-tx-def456", f"{ZFS_TEST_POOL}/test-repo"]
             
             # Check mountpoint update and ownership (calls 4, 5, 6)
-            assert calls[4][0][0] == ["zfs", "set", "mountpoint=/var/tmp/test/test-repo", "dsgtest/test-repo"]
+            assert calls[4][0][0] == ["zfs", "set", f"mountpoint={ZFS_TEST_MOUNT_BASE}/test-repo", f"{ZFS_TEST_POOL}/test-repo"]
             assert "chown" in calls[5][0][0][0]
             assert "chmod" in calls[6][0][0][0]
             
             # Check cleanup (with check=False)
-            assert calls[7][0][0] == ["zfs", "destroy", "dsgtest/test-repo@sync-temp-tx-def456"]
+            assert calls[7][0][0] == ["zfs", "destroy", f"{ZFS_TEST_POOL}/test-repo@sync-temp-tx-def456"]
             assert calls[7][1]["check"] == False
             
-            assert calls[8][0][0] == ["zfs", "destroy", "-r", "dsgtest/test-repo-old-tx-def456"]
+            assert calls[8][0][0] == ["zfs", "destroy", "-r", f"{ZFS_TEST_POOL}/test-repo-old-tx-def456"]
             assert calls[8][1]["check"] == False
     
     def test_sync_deferred_cleanup_handling(self, zfs_ops):
@@ -198,7 +199,7 @@ class TestUnifiedInterface:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
+        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
     
     def test_begin_auto_detects_init(self, zfs_ops):
         """Test unified begin() auto-detects init operation."""
@@ -288,13 +289,13 @@ class TestUnifiedInterface:
                 assert len(calls) == 3
                 
                 # Check snapshot list
-                assert calls[0][0][0] == ["zfs", "list", "-t", "snapshot", "dsgtest/test-repo@pre-sync-tx-123"]
+                assert calls[0][0][0] == ["zfs", "list", "-t", "snapshot", f"{ZFS_TEST_POOL}/test-repo@pre-sync-tx-123"]
                 
                 # Check rollback
-                assert calls[1][0][0] == ["zfs", "rollback", "dsgtest/test-repo@pre-sync-tx-123"]
+                assert calls[1][0][0] == ["zfs", "rollback", f"{ZFS_TEST_POOL}/test-repo@pre-sync-tx-123"]
                 
                 # Check cleanup
-                assert calls[2][0][0] == ["zfs", "destroy", "dsgtest/test-repo@pre-sync-tx-123"]
+                assert calls[2][0][0] == ["zfs", "destroy", f"{ZFS_TEST_POOL}/test-repo@pre-sync-tx-123"]
                 assert calls[2][1]["check"] == False
 
 
@@ -303,7 +304,7 @@ class TestErrorHandling:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations("dsgtest", "test-repo", "/var/tmp/test")
+        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
     
     def test_begin_init_failure_cleanup(self, zfs_ops):
         """Test cleanup on init transaction begin failure."""

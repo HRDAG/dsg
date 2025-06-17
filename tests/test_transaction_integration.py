@@ -9,7 +9,7 @@
 """
 Integration tests for Transaction coordinator with real ZFS operations.
 
-These tests use real ZFS datasets from the dsgtest pool to test the complete
+These tests use real ZFS datasets from the configured ZFS test pool to test the complete
 Transaction coordinator with real filesystem operations instead of mocks.
 """
 
@@ -26,6 +26,7 @@ from dsg.core.transaction_coordinator import Transaction
 from dsg.storage import ClientFilesystem, LocalhostTransport
 from dsg.storage.snapshots import ZFSOperations  
 from dsg.storage.remote import ZFSFilesystem
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
 
 # Import the bb_repo fixture
 # dsg_repository_factory fixture available via conftest.py
@@ -34,11 +35,11 @@ from dsg.storage.remote import ZFSFilesystem
 def check_zfs_available() -> tuple[bool, str]:
     """Check if ZFS testing infrastructure is available."""
     try:
-        # Check if zfs command exists and dsgtest pool is available
-        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
+        # Check if zfs command exists and test pool is available
+        result = subprocess.run(['sudo', 'zfs', 'list', ZFS_TEST_POOL], 
                               capture_output=True, text=True)
         if result.returncode != 0:
-            return False, "ZFS test pool 'dsgtest' not available"
+            return False, f"ZFS test pool '{ZFS_TEST_POOL}' not available"
         return True, "ZFS available"
     except Exception as e:
         return False, f"ZFS check failed: {e}"
@@ -51,9 +52,9 @@ def create_test_zfs_dataset_for_transaction() -> tuple[str, str, str]:
         Tuple of (dataset_name, mount_path, pool_name)
     """
     test_id = uuid.uuid4().hex[:8]
-    dataset_name = f"dsgtest/tx-test-{test_id}"
-    mount_path = f"/var/tmp/test/tx-test-{test_id}"
-    pool_name = "dsgtest"
+    dataset_name = get_test_dataset_name("tx-test", test_id)
+    mount_path = get_test_mount_path(dataset_name)
+    pool_name = ZFS_TEST_POOL
     
     # Create the dataset
     subprocess.run(['sudo', 'zfs', 'create', dataset_name], 
@@ -170,9 +171,9 @@ class TestTransactionIntegration:
                 # Verify that no temporary ZFS datasets remain (proper cleanup)
                 result = subprocess.run(['sudo', 'zfs', 'list', '-t', 'all'], 
                                       capture_output=True, text=True)
-                # SAFETY: Only look at dsgtest pool to prevent accidental destruction of other pools
-                dsgtest_lines = [line for line in result.stdout.split('\n') if 'dsgtest' in line]
-                temp_datasets = [line for line in dsgtest_lines 
+                # SAFETY: Only look at ZFS test pool to prevent accidental destruction of other pools
+                pool_lines = [line for line in result.stdout.split('\n') if ZFS_TEST_POOL in line]
+                temp_datasets = [line for line in pool_lines 
                                if f'tx-test-' in line and 'sync-tx-' in line]
                 assert len(temp_datasets) == 0, "Temporary ZFS datasets should be cleaned up on rollback"
                 

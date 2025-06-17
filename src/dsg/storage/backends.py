@@ -23,6 +23,7 @@ from dsg.system.execution import CommandExecutor as ce
 from .transports import LocalhostTransport
 from .snapshots import ZFSOperations
 from .utils import create_temp_file_list
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
 
 
 class Backend(ABC, FileOperations):
@@ -336,7 +337,7 @@ class LocalhostBackend(Backend):
         # For now, assume ZFS since that's what dsg-tester is using
 
         # Create ZFS operations - need pool name from repo_path
-        # For path like "/var/tmp/test", determine the actual ZFS pool name
+        # For path like ZFS_TEST_MOUNT_BASE, determine the actual ZFS pool name
         pool_name = self._get_zfs_pool_name()
         zfs_ops = ZFSOperations(pool_name, self.repo_name, str(self.repo_path))
 
@@ -389,7 +390,7 @@ class LocalhostBackend(Backend):
                                 return dataset.strip().split('/')[0]
                 
                 # If no exact match, look for datasets that could contain our path
-                # For /var/tmp/test, look for pool name that could be mounted there
+                # For ZFS_TEST_MOUNT_BASE, look for pool name that could be mounted there
                 for dataset in datasets:
                     if dataset.strip() and '/' not in dataset.strip():
                         # This is a pool name (no slashes)
@@ -405,15 +406,15 @@ class LocalhostBackend(Backend):
                                 return pool_name
             
             # Fallback: try to detect pool from path structure
-            # /var/tmp/test -> try "dsgtest" first, then fall back to path component
-            if '/var/tmp/test' in str(self.repo_path):
-                # Check if dsgtest pool exists
+            # ZFS_TEST_MOUNT_BASE -> try ZFS_TEST_POOL first, then fall back to path component
+            if ZFS_TEST_MOUNT_BASE in str(self.repo_path):
+                # Check if ZFS_TEST_POOL pool exists
                 test_result = subprocess.run(
-                    ['zfs', 'list', 'dsgtest'], 
+                    ['zfs', 'list', ZFS_TEST_POOL], 
                     capture_output=True, text=True, check=False
                 )
                 if test_result.returncode == 0:
-                    return 'dsgtest'
+                    return ZFS_TEST_POOL
             
             # Final fallback: use last path component
             return self.repo_path.name
@@ -442,7 +443,7 @@ class LocalhostBackend(Backend):
                 
             # Only try ZFS for paths that could be ZFS mount points
             # Common ZFS mount points: /var/repos, /pool, /zfs, etc.
-            zfs_mount_indicators = ['/var/repos', '/var/tmp/test', '/pool', '/zfs', '/tank', '/data']
+            zfs_mount_indicators = ['/var/repos', ZFS_TEST_MOUNT_BASE, '/pool', '/zfs', '/tank', '/data']
             if not any(indicator in repo_path_str for indicator in zfs_mount_indicators):
                 return None
             

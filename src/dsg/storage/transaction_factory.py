@@ -24,6 +24,7 @@ from dsg.storage.remote import ZFSFilesystem, XFSFilesystem
 from dsg.storage.io_transports import LocalhostTransport, SSHTransport
 from dsg.storage.snapshots import ZFSOperations
 from dsg.system.host_utils import is_local_host
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
 
 if TYPE_CHECKING:
     from dsg.config.manager import Config
@@ -55,7 +56,7 @@ def _get_zfs_pool_name_for_path(mount_base: str) -> str:
                             return dataset.strip().split('/')[0]
             
             # If no exact match, look for datasets that could contain our path
-            # For /var/tmp/test, look for pool name that could be mounted there
+            # For ZFS_TEST_MOUNT_BASE, look for pool name that could be mounted there
             for dataset in datasets:
                 if dataset.strip() and '/' not in dataset.strip():
                     # This is a pool name (no slashes)
@@ -71,15 +72,15 @@ def _get_zfs_pool_name_for_path(mount_base: str) -> str:
                             return pool_name
         
         # Fallback: try to detect pool from path structure
-        # /var/tmp/test -> try "dsgtest" first, then fall back to path component
-        if '/var/tmp/test' in mount_base:
-            # Check if dsgtest pool exists
+        # ZFS_TEST_MOUNT_BASE -> try ZFS_TEST_POOL first, then fall back to path component
+        if ZFS_TEST_MOUNT_BASE in mount_base:
+            # Check if ZFS_TEST_POOL pool exists
             test_result = subprocess.run(
-                ['zfs', 'list', 'dsgtest'], 
+                ['zfs', 'list', ZFS_TEST_POOL], 
                 capture_output=True, text=True, check=False
             )
             if test_result.returncode == 0:
-                return 'dsgtest'
+                return ZFS_TEST_POOL
         
         # Final fallback: use last path component
         return Path(mount_base).name

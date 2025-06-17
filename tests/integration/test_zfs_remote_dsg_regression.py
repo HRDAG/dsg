@@ -29,6 +29,7 @@ from pathlib import Path
 
 from dsg.core.lifecycle import init_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
 
 
 def check_zfs_available() -> tuple[bool, str]:
@@ -44,10 +45,10 @@ def check_zfs_available() -> tuple[bool, str]:
             return False, "ZFS command not found"
         
         # Check if test pool exists
-        result = subprocess.run(['sudo', 'zfs', 'list', 'dsgtest'], 
+        result = subprocess.run(['sudo', 'zfs', 'list', ZFS_TEST_POOL], 
                               capture_output=True, text=True)
         if result.returncode != 0:
-            return False, "ZFS test pool 'dsgtest' not available"
+            return False, f"ZFS test pool '{ZFS_TEST_POOL}' not available"
         
         # Check if we can create datasets (test permissions)
         test_dataset = f"zsd/test/pytest-{uuid.uuid4().hex[:8]}"
@@ -154,10 +155,10 @@ class TestZFSRemoteDsgRegression:
             test_files = create_test_files(project_root)  # noqa: F841
             
             # Create ZFS backend configuration pointing to real ZFS
-            # For ZFS dataset dsgtest/pytest-xxx:
-            # - ssh.path = /var/tmp/test (ZFS pool mount point)
+            # For ZFS dataset {ZFS_TEST_POOL}/pytest-xxx:
+            # - ssh.path = {ZFS_TEST_MOUNT_BASE} (ZFS pool mount point)
             # - repo name = pytest-xxx (dataset path within pool)
-            remote_base = Path("/var/tmp/test")
+            remote_base = Path(ZFS_TEST_MOUNT_BASE)
             repo_name = Path(remote_repo_path).name  # e.g., "pytest-abc123"
             
             ssh_config = SSHRepositoryConfig(
@@ -283,7 +284,7 @@ class TestZFSRemoteDsgRegression:
             project_root.mkdir()
             create_test_files(project_root)
             
-            remote_base = Path("/var/tmp/test")
+            remote_base = Path(ZFS_TEST_MOUNT_BASE)
             repo_name = Path(remote_repo_path).name
             
             ssh_config = SSHRepositoryConfig(
