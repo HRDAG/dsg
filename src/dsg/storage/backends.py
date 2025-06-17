@@ -23,7 +23,14 @@ from dsg.system.execution import CommandExecutor as ce
 from .transports import LocalhostTransport
 from .snapshots import ZFSOperations
 from .utils import create_temp_file_list
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
+
+# Try to import test configuration, but provide fallbacks for package installations
+try:
+    from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE
+except ImportError:
+    # Fallback values when tests module is not available (e.g., in packaged installations)
+    ZFS_TEST_POOL = "dsgtest"
+    ZFS_TEST_MOUNT_BASE = "/var/tmp/test"
 
 
 class Backend(ABC, FileOperations):
