@@ -10,189 +10,157 @@ scripts/auto-issues/README.md
 
 # AI-AI Collaborative Development System
 
-## The Vision
+## What This Is
 
-We're building a **systematic AI-AI feedback loop** that transforms software development from reactive bug-fixing into proactive quality improvement. Two AI agents collaborate to continuously improve code quality while humans focus on high-level decisions.
+A systematic approach to software development where human developers define goals and two specialized AI agents collaborate to achieve them through continuous testing and improvement.
 
-## What We're Building
+## How It Works
 
-### The Players
+### The Process Flow
 
-**🔧 Dev-Claude (Implementation Agent)**
-- Analyzes bug reports and implements fixes
-- Generates regression tests from every bug
-- Scans proactively for similar issues
-- Responds with "WORKS FOR ME" when ready for testing
+The development cycle follows the natural order of software creation and verification:
 
-**🧪 QA-Claude (Testing Agent)**  
-- Discovers issues through black-box testing
-- Files structured, actionable bug reports
-- Verifies fixes independently without implementation knowledge
-- Responds with "CONFIRMED FIXED" or detailed failure analysis
+**1. Human Developer** defines what the code should accomplish
+- Sets project goals and functional requirements
+- Provides domain expertise and strategic direction
+- Maintains alignment between implementation and objectives
+- *"Our time may be waning but we have a few tricks left"* - goal definition remains fundamentally human
 
-**👨‍💼 Human Developer (Strategic Oversight)**
-- Approves fixes and releases
-- Provides domain expertise and priorities  
-- Handles complex architectural decisions
-- Maintains final quality control
+**2. QA-Claude** discovers problems through real-world usage
+- Performs black-box testing of the software as an end user would
+- Tests actual deployment scenarios (installation, CLI usage, workflows)
+- Files detailed GitHub issues when problems are discovered
+- Initiates the improvement cycle by identifying gaps between goals and reality
 
-### The Breakthrough
+**3. Dev-Claude** analyzes and resolves the issues
+- Analyzes GitHub issues and determines root causes
+- Implements fixes and generates regression tests
+- Scans codebase for similar patterns after fixing bugs
+- Reports "WORKS FOR ME" and asks "TESTER: ok to close?" when ready for verification
 
-**Traditional Development:**
+**4. Human Developer** approves the proposed changes
+- Reviews fixes for alignment with project goals
+- Approves architectural changes and releases
+- Maintains quality oversight and final authority
+
+**5. QA-Claude** verifies the resolution
+- Tests fixes through independent black-box testing
+- Reports verification results ("CONFIRMED FIXED" or detailed failure analysis)
+- Closes the loop by confirming the issue is resolved in practice
+
 ```
-Human finds bug → Human fixes bug → Human tests fix → Ship
+Human goals → QA-Claude real-world testing → GitHub issue → Dev-Claude analysis and fix → Human approval → QA-Claude verification → Issue closure
 ```
 
-**AI-AI Collaborative Development:**
-```
-QA-Claude finds bug → Structured report → Dev-Claude fixes → Human approves → QA-Claude verifies → Auto-ship
-```
+## Demonstrated Results
 
-## Why This Matters
+### Issue #24: A Case Study
 
-### Quality Multiplication
-- **Every bug becomes permanent immunity** - Regression tests prevent re-occurrence
-- **Pattern learning** - Fix entire classes of issues, not just individual bugs  
-- **Proactive detection** - Find issues before they impact users
-- **Systematic improvement** - Each cycle makes the system more robust
-
-### Development Velocity
-- **Reduced friction** - From 20+ approvals per issue to single cascade approval
-- **Continuous testing** - QA-Claude constantly exercises the system
-- **Instant feedback** - Issues discovered and reported immediately
-- **Parallel work** - AI agents work while humans focus on strategy
-
-### Cross-Project Scaling
-- **Pattern recognition** - Solutions learned in one project apply to others
-- **Shared tooling** - Same infrastructure works across multiple codebases
-- **Institutional knowledge** - AI agents accumulate expertise over time
-- **Consistent quality** - Systematic approach ensures uniform standards
-
-## Real-World Example: Issue #24
-
-### The Problem
-QA-Claude discovered a packaging bug through black-box testing:
+**Initial Assessment**: QA-Claude discovered what appeared to be a simple packaging bug during routine black-box testing:
 ```
 ModuleNotFoundError: No module named 'tests'
 ```
 
-### The AI-AI Response
-1. **QA-Claude** filed a detailed GitHub issue with full traceback and environment info
-2. **Dev-Claude** analyzed the root cause (test imports in production code)
-3. **Human** approved the comprehensive fix (repository-centric configuration)
-4. **Dev-Claude** posted "WORKS FOR ME - ready for verification" 
-5. **QA-Claude** verified the fix with structured testing
+**Actual Complexity**: The fix required 20+ commits spanning:
+- Root cause analysis (test imports in production code)
+- Complete configuration architecture refactoring
+- Repository-centric configuration implementation
+- Comprehensive test suite updates
+- Documentation and process improvements
 
-### The Outcome
-- **Immediate fix** - Packaging now works correctly
-- **Systematic improvement** - Entire configuration architecture upgraded
-- **Permanent immunity** - 8 regression tests prevent re-occurrence
-- **Pattern learning** - Similar import issues now detectable proactively
+**QA-Claude Value**: The black-box testing approach identified a production-blocking issue that internal testing had missed. Without user-perspective testing, this packaging failure would have prevented deployment.
 
-## The Technical Innovation
+**Final Resolution**: 
+- Issue resolved in DSG v0.4.2
+- 8 regression tests ensure the problem cannot recur
+- Architecture improvements benefit the entire system
+- Similar import issues now detectable through pattern scanning
 
-### Structured Communication
-AI agents communicate through structured formats that enable systematic processing:
-- **Bug reports** with environment, traceback, and reproduction steps
-- **Fix responses** with verification steps and edge cases
-- **Verification results** with clear pass/fail criteria
+**Time Investment**: What seemed like a simple fix became a comprehensive system improvement, demonstrating how black-box testing reveals the true scope of issues.
 
-### Learning System
-Each issue becomes data that improves the system:
-- **Issue classification** - Automatically categorize and route problems
-- **Fix patterns** - Learn common solutions and apply them systematically  
-- **Test generation** - Convert every bug into permanent regression coverage
-- **Proactive scanning** - Detect similar issues before they're reported
+## Observed Benefits
 
-### Human-AI Balance
-Humans handle strategic decisions while AI handles systematic work:
-- **AI autonomy** for safe operations (reading, analyzing, testing)
-- **Human approval** for impactful changes (commits, releases, architecture)
-- **Escalation paths** for complex issues requiring human expertise
-- **Quality gates** ensuring human oversight of critical decisions
+### Quality Improvement
+- Each resolved issue becomes a permanent test that prevents regression
+- Pattern recognition allows fixing entire classes of similar issues
+- Real-world testing catches problems that unit tests miss
+- Systematic approach improves baseline quality over time
 
-## Future Applications
+### Development Efficiency
+- Human attention focuses on goal-setting and architectural decisions
+- Routine analysis and implementation work handled systematically
+- Issues discovered and reported automatically through continuous testing
+- Single approval cascade replaces multiple manual coordination steps
 
-### Beyond Bug Fixing
-- **Feature development** - QA-Claude tests new features as they're built
-- **Performance monitoring** - Continuous benchmarking and optimization
-- **Security analysis** - Systematic vulnerability detection and patching
-- **Documentation** - User experience testing drives better docs
+### Knowledge Accumulation
+- Issue patterns and solutions build institutional knowledge
+- Cross-project pattern recognition improves over time
+- Systematic documentation of problems and solutions
+- Consistent quality standards across different codebases
 
-### Scaling Patterns
-- **Multi-project deployment** - Same system works across entire organization
-- **Specialized agents** - Domain-specific AI agents for different project types
-- **Community contributions** - Open source projects benefit from continuous AI QA
-- **Enterprise adoption** - Large organizations multiply development velocity
+## Technical Implementation
 
-## What Makes This Different
+### Structured Data Exchange
+- GitHub issues contain complete environment information, error traces, and reproduction steps
+- Fix responses include verification procedures and test cases
+- Results are reported with clear success/failure criteria and supporting evidence
 
-### Not Just Automation
-This isn't about replacing human judgment with automation. It's about **amplifying human expertise** with systematic AI collaboration that handles the routine work while escalating complex decisions.
+### Pattern Recognition
+- Successfully resolved issues generate regression tests
+- Similar code patterns are identified and evaluated after each fix
+- Issue classification enables targeted response strategies
+- Solution approaches are documented for reuse across projects
 
-### Not Just Testing
-This isn't just automated testing. It's a **learning system** that gets smarter with each issue, building institutional knowledge and improving proactively.
+### Quality Assurance Process
+- Human approval required for all code changes and releases
+- AI agents handle analysis, testing, and documentation work
+- Complex architectural decisions escalated to human developer
+- Final quality control maintained through human oversight
 
-### Not Just Bug Fixing
-This isn't just reactive bug fixing. It's **systematic quality improvement** that prevents entire classes of issues and continuously raises the baseline.
+## Current Status and Future Work
 
-## The Vision Realized
+### Demonstrated Capabilities
+- QA-Claude successfully identifies real-world issues through black-box testing
+- Dev-Claude analyzes problems and implements appropriate fixes
+- Structured GitHub workflow coordinates agent collaboration
+- Human oversight ensures alignment with project goals
 
-When fully implemented, this system will:
+### Planned Enhancements
+- Automated issue analysis and response generation
+- Proactive scanning for similar problems after fixes
+- Multi-project pattern recognition and solution sharing
+- GitHub App orchestration to reduce coordination overhead
 
-**For Developers:**
-- Focus on architecture and complex problems
-- Approve fixes rather than implement them
-- Benefit from continuous quality improvement
-- Scale impact across multiple projects
-
-**For Projects:**
-- Achieve higher quality with less manual effort
-- Build immunity to common issue patterns
-- Accelerate development through reduced debugging
-- Maintain consistent standards automatically
-
-**For Users:**
-- Experience fewer bugs through proactive prevention
-- Benefit from faster issue resolution
-- Enjoy more reliable software through systematic testing
-- See continuous improvement rather than reactive patches
+### Scaling Considerations
+- System designed to work across multiple projects simultaneously
+- Agent specialization possible for different domains or problem types
+- Institutional knowledge accumulates through documented issue patterns
+- Quality standards maintained consistently across different codebases
 
 ---
 
-## Current Status
-
-✅ **Proof of Concept Complete** - Issue #24 demonstrated the full AI-AI workflow  
-🔄 **Enhancement Phase** - Building systematic tooling and automation  
-🎯 **Next Phase** - GitHub App orchestrator for friction-free coordination  
-🚀 **Future Phase** - Multi-project scaling and advanced pattern learning
-
-**The future of software development is collaborative intelligence - AI agents handling systematic work while humans focus on creative and strategic challenges.**
-
----
-
-## Tools in This Directory
+## Tools and Documentation
 
 ### Current Implementation
 
 **`issue_triage.py`** - Interactive tool for issue analysis and fix workflow
-- Analyze GitHub issues and generate test/fix proposals
-- Mark issues as fixed with structured tester handoff
-- Support for the "WORKS FOR ME → TESTER: ok to close?" protocol
+- Parse GitHub issues and generate test/fix recommendations
+- Mark issues as resolved with structured verification procedures
+- Support for "WORKS FOR ME → TESTER: ok to close?" handoff protocol
 
-**`WORKFLOW.md`** - Documentation for current manual AI-AI workflow
-- Process for version bumping and fix responses
-- Templates for structured GitHub comments
-- Quality assurance protocols
+**`WORKFLOW.md`** - Process documentation for current AI-AI coordination
+- Version management and release procedures
+- GitHub comment templates and response formats
+- Quality assurance protocols and approval gates
 
-### Future Enhancements
+### Development Roadmap
 
-**`TODO-AI-AI-IMPROVEMENTS.md`** - Systematic automation roadmap
-- Issue analysis assistant and automated response generation
-- Regression test auto-generation from every bug
-- Proactive issue scanning and pattern detection
+**`TODO-AI-AI-IMPROVEMENTS.md`** - Enhancement plan for systematic automation
+- Automated issue analysis and response generation
+- Regression test creation from resolved issues
+- Proactive pattern scanning and similar issue detection
 
-**`GITHUB-APP-ORCHESTRATOR.md`** - Vision for friction-free coordination
-- GitHub App to orchestrate Dev-Claude ↔ QA-Claude handoffs
-- Single approval cascade from local work to GitHub
+**`GITHUB-APP-ORCHESTRATOR.md`** - Architecture for coordination automation
+- GitHub App design for agent workflow orchestration
+- Single approval workflow replacing manual coordination steps
 - Multi-project scaling with consistent protocols
