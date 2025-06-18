@@ -12,8 +12,9 @@ uses explicit repository configuration instead of auto-detection with test impor
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from pathlib import Path
+import sys
 
 from dsg.config.manager import ProjectConfig, SSHRepositoryConfig
 from dsg.config.repositories import ZFSRepository, XFSRepository, IPFSRepository
@@ -25,6 +26,28 @@ from dsg.system.exceptions import ConfigError
 
 class TestIssue24BackendFix:
     """Test that Issue #24 is fixed - no test imports in backend operations."""
+    
+    def setup_method(self, method):
+        """Set up clean state for each test."""
+        # Clear any existing patches to avoid interference
+        self._active_patches = []
+        # Store original state for debugging
+        self._debug_info = {
+            'test_name': method.__name__,
+            'patches_before': len([p for p in sys.modules if 'mock' in str(type(sys.modules[p]))]),
+        }
+    
+    def teardown_method(self, method):
+        """Clean up after each test to prevent state pollution."""
+        # Stop any active patches
+        for patcher in getattr(self, '_active_patches', []):
+            try:
+                patcher.stop()
+            except RuntimeError:
+                pass  # Already stopped
+        
+        # Clear the list
+        self._active_patches = []
     
     def test_issue_24_fixed_zfs_repository_format_explicit_pool(self):
         """Test ZFS repository format uses explicit pool, no auto-detection."""
@@ -42,28 +65,33 @@ class TestIssue24BackendFix:
         config.project_root = Path("/local/project")
         
         # Mock ZFS operations to avoid actual ZFS commands
-        with patch('dsg.storage.transaction_factory.ZFSOperations') as mock_zfs_ops:
-            mock_zfs_instance = MagicMock()
-            mock_zfs_ops.return_value = mock_zfs_instance
-            
-            # Mock transport creation
-            with patch('dsg.storage.transaction_factory.create_transport') as mock_transport:
-                mock_transport.return_value = MagicMock()
-                
-                # Create transaction - this should use explicit pool
-                transaction = create_transaction(config)
-                
-                # Verify ZFSOperations was created with explicit pool from config
-                mock_zfs_ops.assert_called_once()
-                call_args = mock_zfs_ops.call_args
-                
-                # The pool_name should come from config.repository.pool
-                assert call_args[1]['pool_name'] == "explicit-test-pool"
-                assert call_args[1]['repo_name'] == "test-project"
-                assert call_args[1]['mount_base'] == "/var/tmp/test"
-                
-                # Verify transaction was created successfully
-                assert isinstance(transaction, Transaction)
+        zfs_patcher = patch('dsg.storage.transaction_factory.ZFSOperations')
+        mock_zfs_ops = zfs_patcher.start()
+        self._active_patches.append(zfs_patcher)
+        
+        mock_zfs_instance = MagicMock()
+        mock_zfs_ops.return_value = mock_zfs_instance
+        
+        # Mock transport creation  
+        transport_patcher = patch('dsg.storage.transaction_factory.create_transport')
+        mock_transport = transport_patcher.start()
+        self._active_patches.append(transport_patcher)
+        mock_transport.return_value = MagicMock()
+        
+        # Create transaction - this should use explicit pool from repository config
+        transaction = create_transaction(config)
+        
+        # Verify ZFSOperations was created with explicit pool from config
+        mock_zfs_ops.assert_called_once()
+        call_args = mock_zfs_ops.call_args
+        
+        # The pool_name should come from config.repository.pool
+        assert call_args[1]['pool_name'] == "explicit-test-pool"
+        assert call_args[1]['repo_name'] == "test-project"
+        assert call_args[1]['mount_base'] == "/var/tmp/test"
+        
+        # Verify transaction was created successfully
+        assert isinstance(transaction, Transaction)
     
     def test_issue_24_fixed_legacy_format_via_conversion(self):
         """Test legacy SSH format works via repository conversion."""
@@ -80,27 +108,39 @@ class TestIssue24BackendFix:
         )
         config.project_root = Path("/local/project")
         
-        # Mock ZFS operations
-        with patch('dsg.storage.transaction_factory.ZFSOperations') as mock_zfs_ops:
-            mock_zfs_instance = MagicMock()
-            mock_zfs_ops.return_value = mock_zfs_instance
-            
-            # Mock transport creation
-            with patch('dsg.storage.transaction_factory.create_transport') as mock_transport:
-                mock_transport.return_value = MagicMock()
-                
-                # Create transaction - should convert legacy to repository internally
-                transaction = create_transaction(config)
-                
-                # Verify ZFSOperations was called with converted repository data
-                mock_zfs_ops.assert_called_once()
-                call_args = mock_zfs_ops.call_args
-                
-                # Pool should come from auto-detection for legacy configs
-                # (Legacy configs still use auto-detection - that's expected)
-                assert call_args[1]['pool_name'] == "repos"  # From path detection
-                assert call_args[1]['repo_name'] == "legacy-project"
-                assert call_args[1]['mount_base'] == "/data/repos"
+        # Mock ZFS operations to avoid actual ZFS commands
+        zfs_patcher = patch('dsg.storage.transaction_factory.ZFSOperations')
+        mock_zfs_ops = zfs_patcher.start()
+        self._active_patches.append(zfs_patcher)
+        
+        mock_zfs_instance = MagicMock()
+        mock_zfs_ops.return_value = mock_zfs_instance
+        
+        # Mock transport creation
+        transport_patcher = patch('dsg.storage.transaction_factory.create_transport')
+        mock_transport = transport_patcher.start()
+        self._active_patches.append(transport_patcher)
+        mock_transport.return_value = MagicMock()
+        
+        # Mock subprocess for ZFS pool detection
+        subprocess_patcher = patch('dsg.storage.transaction_factory.subprocess.run')
+        mock_subprocess = subprocess_patcher.start()
+        self._active_patches.append(subprocess_patcher)
+        mock_subprocess.return_value.returncode = 0
+        mock_subprocess.return_value.stdout = "dsgtest\n"  # Mock pool detection
+        
+        # Create transaction - should convert legacy to repository internally
+        transaction = create_transaction(config)
+        
+        # Verify ZFSOperations was called with converted repository data
+        mock_zfs_ops.assert_called_once()
+        call_args = mock_zfs_ops.call_args
+        
+        # For legacy configs, pool comes from detection logic
+        # The detection logic falls back to Path(mount_base).name when ZFS commands fail
+        assert call_args[1]['pool_name'] == "repos"  # From Path("/data/repos").name
+        assert call_args[1]['repo_name'] == "legacy-project"
+        assert call_args[1]['mount_base'] == "/data/repos"
     
     def test_issue_24_no_auto_detection_calls(self):
         """Test that no auto-detection functions are called with repository config."""
@@ -117,23 +157,32 @@ class TestIssue24BackendFix:
         config.project_root = Path("/local/project")
         
         # Mock the auto-detection function to verify it's NOT called
-        with patch('dsg.storage.transaction_factory._get_zfs_pool_name_for_path') as mock_detect:
-            with patch('dsg.storage.transaction_factory.ZFSOperations') as mock_zfs_ops:
-                mock_zfs_ops.return_value = MagicMock()
-                
-                with patch('dsg.storage.transaction_factory.create_transport') as mock_transport:
-                    mock_transport.return_value = MagicMock()
-                    
-                    # Create transaction
-                    create_transaction(config)
-                    
-                    # Verify auto-detection was NOT called
-                    mock_detect.assert_not_called()
-                    
-                    # Verify ZFS was created with explicit config values
-                    mock_zfs_ops.assert_called_once()
-                    call_args = mock_zfs_ops.call_args
-                    assert call_args[1]['pool_name'] == "configured-pool"
+        detect_patcher = patch('dsg.storage.transaction_factory._get_zfs_pool_name_for_path')
+        mock_detect = detect_patcher.start()
+        self._active_patches.append(detect_patcher)
+        
+        # Mock ZFS operations
+        zfs_patcher = patch('dsg.storage.transaction_factory.ZFSOperations')
+        mock_zfs_ops = zfs_patcher.start()
+        self._active_patches.append(zfs_patcher)
+        mock_zfs_ops.return_value = MagicMock()
+        
+        # Mock transport creation
+        transport_patcher = patch('dsg.storage.transaction_factory.create_transport')
+        mock_transport = transport_patcher.start()
+        self._active_patches.append(transport_patcher)
+        mock_transport.return_value = MagicMock()
+        
+        # Create transaction
+        create_transaction(config)
+        
+        # Verify auto-detection was NOT called
+        mock_detect.assert_not_called()
+        
+        # Verify ZFS was created with explicit config values
+        mock_zfs_ops.assert_called_once()
+        call_args = mock_zfs_ops.call_args
+        assert call_args[1]['pool_name'] == "configured-pool"
     
     def test_issue_24_no_test_imports_in_production_path(self):
         """Test that production code path doesn't rely on test imports."""
@@ -150,25 +199,37 @@ class TestIssue24BackendFix:
         config.project_root = Path("/local/project")
         
         # Mock test constants to verify they're not used
-        with patch('dsg.storage.transaction_factory.ZFS_TEST_POOL', 'should-not-be-used'):
-            with patch('dsg.storage.transaction_factory.ZFS_TEST_MOUNT_BASE', '/should/not/be/used'):
-                with patch('dsg.storage.transaction_factory.ZFSOperations') as mock_zfs_ops:
-                    mock_zfs_ops.return_value = MagicMock()
-                    
-                    with patch('dsg.storage.transaction_factory.create_transport') as mock_transport:
-                        mock_transport.return_value = MagicMock()
-                        
-                        # Create transaction
-                        create_transaction(config)
-                        
-                        # Verify production values from config were used, not test constants
-                        call_args = mock_zfs_ops.call_args
-                        assert call_args[1]['pool_name'] == "production-pool"
-                        assert call_args[1]['mount_base'] == "/pool/repositories"
-                        
-                        # Verify test constants were not used
-                        assert call_args[1]['pool_name'] != 'should-not-be-used'
-                        assert call_args[1]['mount_base'] != '/should/not/be/used'
+        test_pool_patcher = patch('dsg.storage.transaction_factory.ZFS_TEST_POOL', 'should-not-be-used')
+        test_pool_patcher.start()
+        self._active_patches.append(test_pool_patcher)
+        
+        test_mount_patcher = patch('dsg.storage.transaction_factory.ZFS_TEST_MOUNT_BASE', '/should/not/be/used')
+        test_mount_patcher.start()
+        self._active_patches.append(test_mount_patcher)
+        
+        # Mock ZFS operations
+        zfs_patcher = patch('dsg.storage.transaction_factory.ZFSOperations')
+        mock_zfs_ops = zfs_patcher.start()
+        self._active_patches.append(zfs_patcher)
+        mock_zfs_ops.return_value = MagicMock()
+        
+        # Mock transport creation
+        transport_patcher = patch('dsg.storage.transaction_factory.create_transport')
+        mock_transport = transport_patcher.start()
+        self._active_patches.append(transport_patcher)
+        mock_transport.return_value = MagicMock()
+        
+        # Create transaction
+        create_transaction(config)
+        
+        # Verify production values from config were used, not test constants
+        call_args = mock_zfs_ops.call_args
+        assert call_args[1]['pool_name'] == "production-pool"
+        assert call_args[1]['mount_base'] == "/pool/repositories"
+        
+        # Verify test constants were not used
+        assert call_args[1]['pool_name'] != 'should-not-be-used'
+        assert call_args[1]['mount_base'] != '/should/not/be/used'
 
 
 class TestRepositoryConfigIntegration:
