@@ -22,11 +22,9 @@ from rich.console import Console
 from dsg.core.lifecycle import clone_repository, init_repository
 from dsg.config.manager import Config
 from dsg.data.manifest import Manifest
-from dsg.system.exceptions import SyncError
 
 # Global mock to prevent ZFS calls in tests - these integration tests use XFS
 # Add this at module level to apply to all tests
-import pytest
 
 @pytest.fixture(autouse=True)
 def mock_zfs_operations():
@@ -51,6 +49,7 @@ class TestCloneRepositoryBasic:
         source = dsg_repository_factory(
             style="minimal",  # Use minimal instead of realistic to avoid complex symlinks
             setup="single",   # Use single setup instead of with_remote
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True, 
             with_dsg_dir=True,
@@ -61,7 +60,7 @@ class TestCloneRepositoryBasic:
         console = Console()
         
         # Initialize the source repository to create manifests
-        init_result = init_repository(source_config, normalize=True)
+        init_result = init_repository(source_config, normalize=True)  # FIXME: Assigned but never used
         assert init_result.snapshot_hash is not None
         
         # Debug: Check what the repository factory returned
@@ -69,7 +68,6 @@ class TestCloneRepositoryBasic:
         
         # For now, let's test the sync_manifests function directly since we're having backend issues
         from collections import OrderedDict
-        from dsg.data.manifest import Manifest
         
         # Test: Use sync_manifests directly (simulating clone scenario)
         local_manifest = Manifest(entries=OrderedDict())  # Empty local (clone scenario)
@@ -116,6 +114,7 @@ class TestCloneRepositoryBasic:
         source = dsg_repository_factory(
             style="empty",
             setup="with_remote", 
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -125,7 +124,7 @@ class TestCloneRepositoryBasic:
         source_config = Config.load(source["repo_path"])
         
         # Initialize empty source
-        init_result = init_repository(source_config, normalize=True)
+        init_repository(source_config, normalize=True)  # FIXME: Assigned but never used
         
         # Setup destination
         with tempfile.TemporaryDirectory() as dest_dir:
@@ -167,6 +166,7 @@ class TestCloneRepositoryBackends:
         source = dsg_repository_factory(
             style="realistic",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS to avoid ZFS pool issues in tests
             with_config=True,
             with_dsg_dir=True,
@@ -176,7 +176,7 @@ class TestCloneRepositoryBackends:
         source_config = Config.load(source["repo_path"])
         
         # Initialize source with XFS backend (ZFS mocked via fixture)
-        init_result = init_repository(source_config, normalize=True)
+        init_repository(source_config, normalize=True)  # FIXME: Assigned but never used
         
         # Setup destination
         with tempfile.TemporaryDirectory() as dest_dir:
@@ -222,6 +222,7 @@ class TestCloneRepositoryErrorScenarios:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=False,  # No .dsg directory
@@ -255,6 +256,7 @@ class TestCloneRepositoryErrorScenarios:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -296,6 +298,7 @@ class TestCloneRepositoryTransactionIntegration:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,
@@ -325,7 +328,7 @@ class TestCloneRepositoryTransactionIntegration:
                 
                 # Use the remote_base path from the "with_remote" setup
                 source_url = str(source["remote_base"] / source["spec"].repo_name)
-                clone_result = clone_repository(
+                clone_repository(
                     config=dest_config,
                     source_url=source_url,
                     dest_path=dest_path,
@@ -348,6 +351,7 @@ class TestCloneRepositoryTransactionIntegration:
         source = dsg_repository_factory(
             style="minimal",
             setup="with_remote",
+            config_format="repository",  # Use repository format
             backend_type="xfs",  # Use XFS for local filesystem testing
             with_config=True,
             with_dsg_dir=True,

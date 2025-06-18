@@ -21,7 +21,6 @@ import pytest
 import datetime
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from unittest import mock
 
 from dsg.core.lifecycle import (
     SnapshotInfo, 

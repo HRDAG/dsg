@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Iterator, Protocol
 
 from dsg.system.exceptions import (
-    TransactionError, TransactionRollbackError, TransactionCommitError,
+    TransactionError, TransactionCommitError,
     TransactionIntegrityError, ClientFilesystemError, RemoteFilesystemError,
     TransportError, NetworkError
 )
-from dsg.core.retry import retry_transfer_operation, TRANSFER_RETRY_CONFIG
+from dsg.core.retry import retry_transfer_operation
 
 
 class ContentStream(Protocol):

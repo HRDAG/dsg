@@ -268,12 +268,16 @@ class TestActionCommandHandlers:
         console = Mock(spec=Console)
         config = Mock(spec=Config)
         
-        # Mock the config structure properly
+        # Mock the config structure for repository format
         config.project = Mock()
-        config.project.transport = "ssh"
-        config.project.ssh = Mock()
-        config.project.ssh.host = "test-host"
-        config.project.ssh.path = "/test/path"
+        config.project.repository = Mock()
+        config.project.repository.type = "xfs"
+        config.project.repository.host = "test-host"
+        config.project.repository.mountpoint = "/test/path"
+        config.project.get_transport = Mock(return_value="ssh")
+        
+        # Set transport to None for repository format
+        config.project.transport = None
         
         # Mock the clone_repository function to avoid actual cloning
         with patch('dsg.cli.commands.actions.clone_repository') as mock_clone:

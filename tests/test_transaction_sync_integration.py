@@ -14,10 +14,9 @@ Tests sync operations across all sync states using the unified transaction appro
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import patch, Mock
 
-from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan
+from dsg.storage.transaction_factory import calculate_sync_plan
 from dsg.core.lifecycle import _execute_sync_operations
 from dsg.data.manifest_merger import SyncState
 from rich.console import Console

@@ -15,12 +15,10 @@ synchronization.
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock
 from collections import OrderedDict
 
 from dsg.data.manifest import Manifest
-from dsg.data.manifest_merger import SyncState
 
 
 class TestSyncManifestsFunction:

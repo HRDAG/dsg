@@ -23,12 +23,12 @@ import time
 import threading
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from dataclasses import dataclass
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
-from dsg.system.exceptions import TransportError, NetworkError, ConnectionTimeoutError
-from dsg.core.retry import retry_network_operation, NETWORK_RETRY_CONFIG
+from dsg.system.exceptions import TransportError, NetworkError
+from dsg.core.retry import retry_network_operation
 
 
 @dataclass
@@ -84,7 +84,7 @@ class ConnectionPool:
                     del self._created_times[conn]
                 try:
                     conn.close()
-                except:
+                except Exception:
                     pass
             
             # Try to reuse existing connection
@@ -120,7 +120,7 @@ class ConnectionPool:
                         return
                 elif hasattr(connection, 'is_connected') and not connection.is_connected():
                     return
-            except:
+            except Exception:
                 # Connection is bad, don't return to pool
                 return
             
@@ -132,7 +132,7 @@ class ConnectionPool:
                 # Pool is full, close connection
                 try:
                     connection.close()
-                except:
+                except Exception:
                     pass
     
     def close_all(self) -> None:
@@ -142,7 +142,7 @@ class ConnectionPool:
                 for conn in pool:
                     try:
                         conn.close()
-                    except:
+                    except Exception:
                         pass
                 pool.clear()
                 self._connection_counts[host_key] = 0
@@ -252,7 +252,7 @@ class LocalhostTransport:
             # Cleanup temp file on failure
             try:
                 temp_file.cleanup()
-            except:
+            except Exception:
                 pass
             raise TransportError(f"Local file transfer failed: {e}")
     
@@ -285,7 +285,7 @@ class RemoteTempFile:
         try:
             if self.path.exists():
                 self.path.unlink()
-        except:
+        except Exception:
             pass
 
 
@@ -388,7 +388,7 @@ class SSHTransport:
                     for filename in self.sftp_client.listdir(self.remote_temp_dir):
                         try:
                             self.sftp_client.remove(f"{self.remote_temp_dir}/{filename}")
-                        except:
+                        except Exception:
                             pass
                     
                     # Remove the directory itself
@@ -473,7 +473,7 @@ class SSHTransport:
             # Try to cleanup failed remote file
             try:
                 self.sftp_client.remove(remote_temp_path)
-            except:
+            except Exception:
                 pass
             raise TransportError(f"SSH upload failed: {e}")
     
@@ -528,14 +528,41 @@ class SSHTransport:
             # Cleanup local temp file on failure
             try:
                 temp_file.cleanup()
-            except:
+            except Exception:
                 pass
             raise TransportError(f"SSH download failed: {e}")
 
 
 def create_transport(config) -> LocalhostTransport | SSHTransport:
     """Factory function to create appropriate transport based on config"""
-    if hasattr(config, 'project') and hasattr(config.project, 'transport'):
+    
+    # Use repository-centric configuration if available
+    if hasattr(config, 'project') and config.project.repository is not None:
+        from dsg.config.transport_resolver import derive_transport
+        transport_type = derive_transport(config.project.repository)
+        repository = config.project.repository
+        
+        if transport_type == 'ssh':
+            # Extract SSH configuration from repository
+            ssh_config = {
+                'hostname': repository.host,
+                'port': getattr(repository, 'port', 22),
+                'username': getattr(config.user, 'user_name', 'dsg'),
+            }
+            
+            # Add authentication if available
+            if hasattr(repository, 'key_file'):
+                ssh_config['key_filename'] = repository.key_file
+            
+            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']} (repository format)")
+            return SSHTransport(ssh_config)
+        
+        elif transport_type == 'local':
+            logging.info("Creating localhost transport (repository format)")
+            return LocalhostTransport()
+    
+    # Legacy transport-centric configuration
+    elif hasattr(config, 'project') and hasattr(config.project, 'transport'):
         transport_type = config.project.transport
         
         if transport_type == 'ssh':
@@ -550,11 +577,11 @@ def create_transport(config) -> LocalhostTransport | SSHTransport:
             if hasattr(config.project.ssh, 'key_file'):
                 ssh_config['key_filename'] = config.project.ssh.key_file
             
-            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']}")
+            logging.info(f"Creating SSH transport to {ssh_config['hostname']}:{ssh_config['port']} (legacy format)")
             return SSHTransport(ssh_config)
         
         elif transport_type == 'localhost':
-            logging.info("Creating localhost transport")
+            logging.info("Creating localhost transport (legacy format)")
             return LocalhostTransport()
     
     # Default to localhost if no transport specified

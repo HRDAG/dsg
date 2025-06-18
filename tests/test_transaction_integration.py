@@ -26,7 +26,7 @@ from dsg.core.transaction_coordinator import Transaction
 from dsg.storage import ClientFilesystem, LocalhostTransport
 from dsg.storage.snapshots import ZFSOperations  
 from dsg.storage.remote import ZFSFilesystem
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, get_test_dataset_name, get_test_mount_path
 
 # Import the bb_repo fixture
 # dsg_repository_factory fixture available via conftest.py
@@ -174,7 +174,7 @@ class TestTransactionIntegration:
                 # SAFETY: Only look at ZFS test pool to prevent accidental destruction of other pools
                 pool_lines = [line for line in result.stdout.split('\n') if ZFS_TEST_POOL in line]
                 temp_datasets = [line for line in pool_lines 
-                               if f'tx-test-' in line and 'sync-tx-' in line]
+                               if 'tx-test-' in line and 'sync-tx-' in line]
                 assert len(temp_datasets) == 0, "Temporary ZFS datasets should be cleaned up on rollback"
                 
         finally:

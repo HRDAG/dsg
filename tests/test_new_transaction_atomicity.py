@@ -14,14 +14,11 @@ verifying that transactions provide true atomicity and rollback capability.
 """
 
 import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 
 from dsg.storage.transaction_factory import create_transaction
-from dsg.core.transaction_coordinator import Transaction
 from dsg.storage.remote import ZFSFilesystem, XFSFilesystem
-from dsg.system.exceptions import TransactionError, TransactionCommitError, TransactionRollbackError
+from dsg.system.exceptions import TransactionCommitError
 
 
 class TestTransactionAtomicity:

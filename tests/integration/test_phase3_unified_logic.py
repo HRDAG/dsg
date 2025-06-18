@@ -13,7 +13,6 @@ These tests verify that the unified sync_manifests() function works correctly
 for init, clone, and sync scenarios without complex backend dependencies.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -21,7 +20,7 @@ from collections import OrderedDict
 
 from rich.console import Console
 
-from dsg.core.lifecycle import sync_manifests, clone_repository, init_repository
+from dsg.core.lifecycle import sync_manifests, clone_repository
 from dsg.config.manager import Config, ProjectConfig, UserConfig, SSHRepositoryConfig, IgnoreSettings
 from dsg.data.manifest import Manifest, FileRef
 
@@ -294,7 +293,6 @@ class TestUnifiedSyncLogic:
     
     def _create_minimal_config(self) -> Config:
         """Create a minimal config for testing."""
-        import tempfile
         
         # Create temporary directory for test
         temp_dir = Path(tempfile.mkdtemp())
@@ -420,7 +418,6 @@ class TestCloneRepositoryLogic:
     
     def _create_minimal_config(self) -> Config:
         """Create a minimal config for testing."""
-        import tempfile
         
         # Create temporary directory for test
         temp_dir = Path(tempfile.mkdtemp())

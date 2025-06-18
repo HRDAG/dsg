@@ -34,13 +34,10 @@ GROUP 3: Edge Case States (4 states)
 - sxLxCxR__none: File not present anywhere (no-op)
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan
-from dsg.core.operations import get_sync_status
 from dsg.data.manifest_merger import SyncState
-from dsg.core.transaction_coordinator import Transaction
 
 
 class TestNormalOperationStatesViaTransaction:

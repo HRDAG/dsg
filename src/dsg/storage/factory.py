@@ -44,7 +44,30 @@ def create_backend(config: 'Config') -> Backend:
     # TODO: Replace with composed architecture once tests are updated
     # For now, use existing backend classes for compatibility
 
-    if config.project.transport == "ssh":
+    # Use repository-centric configuration if available
+    if config.project.repository is not None:
+        # Repository format: derive transport and backend from repository configuration
+        from dsg.config.transport_resolver import derive_transport
+        transport_type = derive_transport(config.project.repository)
+        repository = config.project.repository
+        
+        if transport_type == "local":
+            # Local backend for localhost repositories
+            repo_path = Path(repository.mountpoint)
+            return LocalhostBackend(repo_path, config.project.name)
+        elif transport_type == "ssh":
+            # SSH backend for remote repositories - create compatible config
+            ssh_config = type('SSHConfig', (), {
+                'host': repository.host,
+                'path': Path(repository.mountpoint),
+                'type': repository.type
+            })()
+            return SSHBackend(ssh_config, config.user, config.project.name)
+        else:
+            raise NotImplementedError(f"Backend for transport type '{transport_type}' not yet implemented")
+    
+    # Legacy transport-centric configuration
+    elif config.project.transport == "ssh":
         if _is_effectively_localhost(config.project.ssh, config.project.name):
             # Use filesystem operations for localhost optimization
             repo_path = Path(config.project.ssh.path)

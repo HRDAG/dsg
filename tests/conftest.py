@@ -21,7 +21,6 @@ from dsg.config.manager import (
 )
 
 # Import repository factory fixture
-from tests.fixtures.repository_factory import dsg_repository_factory
 
 
 # Configure pytest to avoid assertion rewriting warnings  
@@ -284,7 +283,7 @@ def factory_standard_config_objects(dsg_repository_factory):
     
     # Extract config components using the factory's config creation logic
     from tests.fixtures.repository_factory import _factory
-    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    config = _factory._create_config_object(result["repo_path"], result["spec"], result["base_path"], None)
     
     return {
         "config": config,
@@ -306,7 +305,7 @@ def factory_legacy_format_config_objects(dsg_repository_factory):
     )
     
     from tests.fixtures.repository_factory import _factory
-    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    config = _factory._create_config_object(result["repo_path"], result["spec"], result["base_path"], None)
     return config
 
 
@@ -323,7 +322,7 @@ def factory_new_format_config_objects(dsg_repository_factory):
     )
     
     from tests.fixtures.repository_factory import _factory
-    config = _factory._create_config_object(result["repo_path"], result["spec"])
+    config = _factory._create_config_object(result["repo_path"], result["spec"], result["base_path"], None)
     return config
 
 

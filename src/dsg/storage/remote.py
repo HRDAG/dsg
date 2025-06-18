@@ -20,8 +20,7 @@ from typing import Iterator
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
 from dsg.system.exceptions import (
-    RemoteFilesystemError, ZFSOperationError, XFSOperationError, 
-    TransactionRollbackError, TransactionCommitError
+    ZFSOperationError, TransactionCommitError
 )
 from .snapshots import ZFSOperations
 

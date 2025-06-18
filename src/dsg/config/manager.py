@@ -17,6 +17,7 @@ from loguru import logger
 from pydantic import BaseModel, EmailStr, Field, model_validator, PrivateAttr
 
 from dsg.system.exceptions import ConfigError
+from .repositories import Repository
 
 
 # ---- Constants ----
@@ -209,9 +210,12 @@ def migrate_legacy_config_data(data: dict) -> tuple[dict, bool]:
 class ProjectConfig(BaseModel):
     """Project configuration including transport and settings."""
     name: str  # Repository name (required, no more migration)
-    transport: Literal["ssh", "rclone", "ipfs"]
-
-    # Transport-specific configs (only one will be set)
+    
+    # NEW: Repository-centric configuration (preferred)
+    repository: Optional[Repository] = Field(default=None, description="Repository configuration (new format)")
+    
+    # LEGACY: Transport-centric configuration (backward compatibility)
+    transport: Optional[Literal["ssh", "rclone", "ipfs"]] = Field(default=None, description="Transport method (legacy format)")
     ssh: Optional[SSHRepositoryConfig] = None
     rclone: Optional[RcloneRepositoryConfig] = None
     ipfs: Optional[IPFSRepositoryConfig] = None
@@ -225,30 +229,103 @@ class ProjectConfig(BaseModel):
 
 
     @model_validator(mode="after")
-    def validate_transport_config(self) -> "ProjectConfig":
-        """Validate transport configuration consistency."""
-        # Validate exactly one transport config is set
-        configs = [self.ssh, self.rclone, self.ipfs]
-        set_configs = [c for c in configs if c is not None]
-
-        if len(set_configs) != 1:
-            raise ConfigError("Exactly one transport config must be set")
-
-        # Validate the selected transport config exists and is valid
-        transport_config_map = {
-            "ssh": self.ssh,
-            "rclone": self.rclone,
-            "ipfs": self.ipfs
-        }
+    def validate_config_consistency(self) -> "ProjectConfig":
+        """Validate configuration consistency for both repository and transport configs."""
+        # Check that exactly one configuration approach is used
+        has_repository = self.repository is not None
+        has_transport = self.transport is not None
         
-        transport_config = transport_config_map.get(self.transport)
-        if transport_config is None:
-            raise ConfigError(f"{self.transport.upper()} config required when transport={self.transport}")
+        if has_repository and has_transport:
+            raise ConfigError("Cannot specify both 'repository' (new format) and 'transport' (legacy format) in the same config")
         
-        # Let the transport config validate its own requirements
-        transport_config.validate_required_for_transport()
+        if not has_repository and not has_transport:
+            raise ConfigError("Must specify either 'repository' (new format) or 'transport' (legacy format)")
+        
+        # Validate repository configuration (new format)
+        if has_repository:
+            # Repository config validation is handled by Pydantic models
+            return self
+        
+        # Validate transport configuration (legacy format)
+        if has_transport:
+            # Validate exactly one transport config is set
+            configs = [self.ssh, self.rclone, self.ipfs]
+            set_configs = [c for c in configs if c is not None]
+
+            if len(set_configs) != 1:
+                raise ConfigError("Exactly one transport config must be set")
+
+            # Validate the selected transport config exists and is valid
+            transport_config_map = {
+                "ssh": self.ssh,
+                "rclone": self.rclone,
+                "ipfs": self.ipfs
+            }
+            
+            transport_config = transport_config_map.get(self.transport)
+            if transport_config is None:
+                raise ConfigError(f"{self.transport.upper()} config required when transport={self.transport}")
+            
+            # Let the transport config validate its own requirements
+            transport_config.validate_required_for_transport()
 
         return self
+
+    def get_repository(self) -> Repository:
+        """Get repository configuration, converting from legacy format if needed."""
+        
+        if self.repository is not None:
+            # New repository format - return directly
+            return self.repository
+        
+        # Legacy transport format - convert to repository
+        if self.transport == "ssh" and self.ssh is not None:
+            from .repositories import ZFSRepository, XFSRepository
+            if self.ssh.type == "zfs":
+                # Convert SSH+ZFS to ZFSRepository
+                # Note: We'll need pool detection until Issue #24 is fully resolved
+                # For now, use a default pool name that can be overridden in config
+                return ZFSRepository(
+                    type="zfs",
+                    host=self.ssh.host,
+                    pool="dsgdata",  # Default pool - should be explicit in config
+                    mountpoint=str(self.ssh.path)
+                )
+            elif self.ssh.type == "xfs":
+                return XFSRepository(
+                    type="xfs",
+                    host=self.ssh.host,
+                    mountpoint=str(self.ssh.path)
+                )
+        
+        elif self.transport == "rclone" and self.rclone is not None:
+            from .repositories import RcloneRepository
+            return RcloneRepository(
+                type="rclone",
+                remote=self.rclone.remote,
+                path=str(self.rclone.path)
+            )
+        
+        elif self.transport == "ipfs" and self.ipfs is not None:
+            from .repositories import IPFSRepository
+            return IPFSRepository(
+                type="ipfs",
+                did=self.ipfs.did,
+                encrypted=self.ipfs.encrypted
+            )
+        
+        raise ConfigError("Invalid configuration state - should not reach here after validation")
+
+    def get_transport(self) -> str:
+        """Get transport method, auto-deriving from repository if using new format."""
+        from .transport_resolver import derive_transport
+        
+        if self.repository is not None:
+            # New format - derive transport from repository
+            return derive_transport(self.repository)
+        else:
+            # Legacy format - use explicit transport
+            return self.transport
 
     @classmethod
     def load(cls, config_path: Path) -> "ProjectConfig":

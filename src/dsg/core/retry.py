@@ -17,10 +17,10 @@ import time
 import logging
 import random
 from functools import wraps
-from typing import Callable, Type, Union, Tuple, Any
+from typing import Callable, Type, Tuple, Any
 
 from dsg.system.exceptions import (
-    TransportError, NetworkError, ConnectionTimeoutError,
+    NetworkError, ConnectionTimeoutError,
     TransferError, FilesystemError
 )
 

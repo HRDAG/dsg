@@ -17,12 +17,9 @@ than internal implementation details.
 import json
 import os
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 from typer.testing import CliRunner
 
 from dsg.cli import app
-from collections import OrderedDict
 
 
 class TestCLIBaselineBehavior:
