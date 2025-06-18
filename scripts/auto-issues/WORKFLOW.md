@@ -115,6 +115,8 @@ This issue has been addressed in [commit/merge] [hash]:
 - If new issues: "REGRESSION: [describe new problems]"
 
 [Brief description of the fix approach]
+
+**TESTER: ok to close?**
 ```
 
 ## Issue-Specific Testing Guidelines

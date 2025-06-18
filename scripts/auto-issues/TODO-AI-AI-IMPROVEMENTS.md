@@ -94,6 +94,7 @@ def generate_fix_response(issue_number):
 - Auto-generate verification steps based on issue type
 - Include relevant edge cases automatically
 - Reference specific commits and version numbers
+- **Always end with "TESTER: ok to close?"** - clear signal for QA Claude
 
 ## Priority 3: Regression Test Auto-Generation
 
