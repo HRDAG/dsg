@@ -126,6 +126,6 @@ class TestRepositoryFactoryBasics:
         config = ProjectConfig.load(result['config_path'])
         
         assert config.repository.type == "zfs"
-        assert config.repository.host != "localhost"  # Should be remote
-        assert config.repository.pool == "dsgdata"  # Production pool
-        assert config.get_transport() == "ssh"
+        assert config.repository.host == "localhost"  # Uses localhost for test isolation
+        assert config.repository.pool == "dsgtest_remote"  # Test pool for remote setup
+        assert config.get_transport() == "local"  # localhost resolves to local transport

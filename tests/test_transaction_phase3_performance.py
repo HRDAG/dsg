@@ -406,8 +406,13 @@ class TestTransportFactory:
     
     def test_create_localhost_transport(self):
         """Test creating localhost transport from config"""
+        from dsg.config.repositories import XFSRepository
         mock_config = Mock()
-        mock_config.project.transport = 'localhost'
+        mock_config.project.repository = XFSRepository(
+            type="xfs",
+            host="localhost", 
+            mountpoint="/test/path"
+        )
         
         transport = create_transport(mock_config)
         
@@ -415,10 +420,13 @@ class TestTransportFactory:
     
     def test_create_ssh_transport(self):
         """Test creating SSH transport from config"""
+        from dsg.config.repositories import XFSRepository
         mock_config = Mock()
-        mock_config.project.transport = 'ssh'
-        mock_config.project.ssh.host = 'test.example.com'
-        mock_config.project.ssh.port = 22
+        mock_config.project.repository = XFSRepository(
+            type="xfs",
+            host="test.example.com",  # Remote host
+            mountpoint="/remote/path"
+        )
         mock_config.user.user_name = 'testuser'
         
         transport = create_transport(mock_config)
@@ -428,9 +436,13 @@ class TestTransportFactory:
     
     def test_create_transport_default(self):
         """Test default transport creation"""
+        from dsg.config.repositories import XFSRepository
         mock_config = Mock()
-        # No transport attribute
-        del mock_config.project.transport
+        mock_config.project.repository = XFSRepository(
+            type="xfs",
+            host="localhost",  # Default to localhost
+            mountpoint="/default/path"
+        )
         
         transport = create_transport(mock_config)
         
