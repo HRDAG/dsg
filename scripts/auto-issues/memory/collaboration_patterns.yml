@@ -1,0 +1,147 @@
+# Author: PB & Claude
+# Maintainer: Dev-Claude & QA-Claude
+# Original date: 2025-06-18
+# License: (c) HRDAG, 2025, GPL-2 or newer
+#
+# ------
+# scripts/auto-issues/memory/collaboration_patterns.yml
+# Cross-agent learning: Patterns for effective AI-AI collaboration
+
+successful_collaboration_cycles:
+  issue_24_full_cycle:
+    discovery: "qa_claude_black_box_testing"
+    analysis: "dev_claude_root_cause_investigation"
+    implementation: "dev_claude_architectural_solution"
+    verification: "qa_claude_independent_testing"
+    outcome: "CONFIRMED_FIXED"
+    cycle_duration: "~20_commits"
+    lesson: "simple_seeming_issues_can_require_comprehensive_solutions"
+    
+  issue_30_feature_request:
+    discovery: "qa_claude_safety_violation_detection"
+    analysis: "dev_claude_legitimate_feature_gap_identification"
+    status: "awaiting_human_approval_for_new_feature"
+    lesson: "safety_concerns_often_indicate_missing_features"
+
+communication_protocols:
+  effective_patterns:
+    dev_to_qa_handoff:
+      format: "WORKS_FOR_ME + specific_testing_guidance"
+      includes: ["confidence_level", "blast_radius", "edge_cases_to_test"]
+      ending: "TESTER: ok to close?"
+      
+    qa_to_dev_reporting:
+      format: "structured_issue_with_reproduction_steps"
+      includes: ["environment_details", "exact_commands", "expected_vs_actual"]
+      categories: ["blocking", "user_experience", "test_infrastructure"]
+      
+    verification_reporting:
+      success_format: "CONFIRMED_FIXED + evidence"
+      failure_format: "FIX_FAILED + detailed_reproduction"
+      regression_format: "REGRESSION_DETECTED + new_issues_found"
+
+escalation_patterns:
+  to_human_developer:
+    triggers:
+      - "architectural_decisions_needed"
+      - "new_feature_requests"
+      - "breaking_change_considerations"
+      - "priority_conflicts"
+    format: "clear_problem_statement + options + recommendation"
+    
+  cross_agent_clarification:
+    dev_requests_from_qa:
+      - "more_specific_reproduction_steps"
+      - "environment_configuration_details"
+      - "user_workflow_context"
+      
+    qa_requests_from_dev:
+      - "specific_testing_scenarios_to_focus_on"
+      - "side_effects_to_watch_for"
+      - "confidence_level_explanation"
+
+learning_feedback_loops:
+  dev_learns_from_qa:
+    testing_blind_spots:
+      - "packaging_and_distribution_issues"
+      - "user_safety_expectations"
+      - "workflow_integration_problems"
+    
+    user_perspective_insights:
+      - "installation_experience_matters"
+      - "safety_features_are_expected"
+      - "documentation_must_match_reality"
+      
+  qa_learns_from_dev:
+    implementation_constraints:
+      - "architectural_changes_take_time"
+      - "simple_symptoms_complex_causes"
+      - "blast_radius_affects_testing_scope"
+    
+    debugging_approaches:
+      - "root_cause_analysis_methodologies"
+      - "confidence_assessment_criteria"
+      - "fix_verification_strategies"
+
+anti_patterns_identified:
+  ineffective_collaboration:
+    - pattern: "qa_reports_without_reproduction_steps"
+      consequence: "dev_cannot_diagnose_effectively"
+      improvement: "always_include_exact_commands_and_environment"
+    
+    - pattern: "dev_fixes_without_testing_guidance"
+      consequence: "qa_testing_insufficient_or_misdirected"
+      improvement: "provide_specific_scenarios_and_edge_cases"
+      
+    - pattern: "assuming_qa_understands_technical_details"
+      consequence: "verification_testing_incomplete"
+      improvement: "explain_what_changed_and_why_in_user_terms"
+
+collaboration_evolution_tracking:
+  cycle_1_issues_24_30:
+    strengths:
+      - "qa_found_real_user_experience_problems"
+      - "dev_provided_thorough_analysis"
+      - "structured_communication_protocols_working"
+    
+    improvements_needed:
+      - "faster_issue_classification"
+      - "better_confidence_calibration"
+      - "more_proactive_edge_case_identification"
+      
+  future_enhancement_goals:
+    - "automated_pattern_recognition_from_issue_history"
+    - "predictive_testing_based_on_fix_types"
+    - "dynamic_confidence_scoring_based_on_past_accuracy"
+
+cross_project_scalability:
+  reusable_patterns:
+    - "black_box_user_experience_testing"
+    - "safety_first_feature_validation"
+    - "development_vs_production_environment_testing"
+    
+  project_specific_adaptations:
+    - "domain_specific_safety_requirements"
+    - "technology_stack_specific_testing_approaches"
+    - "user_workflow_specific_scenarios"
+    
+  scaling_considerations:
+    - "context_persistence_across_sessions"
+    - "pattern_learning_accumulation"
+    - "cross_project_knowledge_transfer"
+
+success_metrics:
+  collaboration_effectiveness:
+    - "issue_discovery_to_resolution_time"
+    - "fix_verification_success_rate"
+    - "regression_prevention_accuracy"
+    
+  learning_progression:
+    - "pattern_recognition_improvement"
+    - "confidence_calibration_accuracy"
+    - "proactive_issue_identification"
+    
+  user_impact:
+    - "user_experience_issue_reduction"
+    - "production_blocking_bug_prevention"
+    - "feature_completeness_improvement"

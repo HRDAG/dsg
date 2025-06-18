@@ -1,0 +1,144 @@
+# Author: PB & Claude
+# Maintainer: QA-Claude
+# Original date: 2025-06-18
+# License: (c) HRDAG, 2025, GPL-2 or newer
+#
+# ------
+# scripts/auto-issues/memory/qa_patterns.yml
+# QA-Claude Learning Memory: Successful testing patterns and discoveries
+
+successful_discovery_patterns:
+  black_box_import_testing:
+    scenario: "test_fresh_pip_install"
+    discovery: "issue_24_packaging_bug"
+    method: "simulate_user_installation_experience"
+    success_indicators: ["found_production_blocking_bug"]
+    
+  safety_feature_validation:
+    scenario: "test_destructive_commands"
+    discovery: "issue_30_missing_clean_command"
+    method: "check_safety_mechanisms_for_dangerous_operations"
+    success_indicators: ["identified_missing_safety_feature"]
+    
+  cli_syntax_verification:
+    scenario: "test_documented_vs_actual_commands"
+    discovery: "issue_28_cli_syntax_mismatch"
+    method: "compare_expected_flags_with_help_output"
+    success_indicators: ["found_documentation_code_divergence"]
+    
+  environment_consistency_testing:
+    scenario: "test_development_vs_production_behavior"
+    discovery: "issue_29_installation_ux_problem"
+    method: "verify_user_expectations_match_reality"
+    success_indicators: ["identified_onboarding_friction"]
+
+effective_testing_approaches:
+  real_world_simulation:
+    description: "Test DSG as end user would experience it"
+    techniques:
+      - "fresh_environment_installation"
+      - "follow_documentation_literally"
+      - "test_common_workflow_sequences"
+    blind_spots_revealed:
+      - "development_environment_assumptions"
+      - "missing_user_experience_features"
+      - "packaging_and_distribution_issues"
+      
+  safety_first_validation:
+    description: "Test safety mechanisms and destructive operations"
+    techniques:
+      - "look_for_missing_dry_run_options"
+      - "test_destructive_commands_carefully"
+      - "verify_confirmation_prompts_exist"
+    blind_spots_revealed:
+      - "missing_safety_features"
+      - "inadequate_user_warnings"
+      - "dangerous_default_behaviors"
+      
+  cross_scenario_consistency:
+    description: "Test that different scenarios work together"
+    techniques:
+      - "test_init_then_clone_workflows"
+      - "verify_configuration_portability"
+      - "test_command_composition"
+    blind_spots_revealed:
+      - "workflow_integration_problems"
+      - "state_management_issues"
+      - "configuration_consistency_problems"
+
+issue_classification_learning:
+  blocking_severity:
+    indicators: ["prevents_basic_functionality", "packaging_failures", "import_errors"]
+    examples: ["issue_24_imports", "issue_27_logging"]
+    response_priority: "immediate_fix_required"
+    
+  user_experience_severity:
+    indicators: ["confusing_behavior", "missing_safety_features", "poor_onboarding"]
+    examples: ["issue_29_installation", "issue_30_clean_command"]
+    response_priority: "medium_fix_improves_adoption"
+    
+  test_infrastructure_severity:
+    indicators: ["test_scenario_problems", "configuration_mismatches"]
+    examples: ["issue_26_clone_setup", "issue_28_cli_syntax"]
+    response_priority: "low_fix_improves_testing"
+
+verification_success_patterns:
+  issue_24_verification:
+    verification_method: "black_box_import_testing"
+    verification_result: "CONFIRMED_FIXED"
+    verification_evidence: ["successful_import", "cli_functionality_works"]
+    lesson: "architectural_fixes_require_comprehensive_retesting"
+
+dev_claude_collaboration_feedback:
+  most_helpful_dev_responses:
+    - "clear_root_cause_analysis_with_evidence"
+    - "specific_testing_guidance_for_verification"
+    - "honest_confidence_assessment_of_fixes"
+    
+  dev_response_improvements_needed:
+    - "more_specific_blast_radius_documentation"
+    - "clearer_side_effect_predictions"
+    - "better_edge_case_identification"
+
+testing_blind_spots_discovered:
+  packaging_and_distribution:
+    description: "Development environment differs from user installation"
+    missed_by_internal_testing: ["test_imports_in_production", "pip_install_workflow"]
+    detection_method: "fresh_environment_simulation"
+    
+  user_safety_expectations:
+    description: "Users expect safety features for dangerous operations"
+    missed_by_internal_testing: ["dry_run_options", "confirmation_prompts"]
+    detection_method: "safety_first_validation"
+    
+  workflow_integration:
+    description: "Individual commands work but workflows have gaps"
+    missed_by_internal_testing: ["init_clone_sequences", "cross_command_state"]
+    detection_method: "end_to_end_scenario_testing"
+
+continuous_improvement_requests:
+  for_dev_claude:
+    - "provide_testing_scripts_with_fixes"
+    - "document_architectural_assumptions_clearly"
+    - "suggest_related_areas_for_proactive_testing"
+    
+  for_qa_collaboration:
+    - "standardize_verification_result_reporting"
+    - "improve_issue_severity_classification"
+    - "develop_systematic_edge_case_exploration"
+
+learned_testing_priorities:
+  always_test_first:
+    - "basic_import_and_cli_functionality"
+    - "fresh_installation_workflows"
+    - "safety_mechanisms_for_destructive_operations"
+    
+  test_after_architectural_changes:
+    - "backward_compatibility_scenarios"
+    - "cross_component_interactions"
+    - "configuration_migration_paths"
+    
+  test_for_regression:
+    - "previously_fixed_issue_scenarios"
+    - "similar_code_path_variations"
+    - "edge_cases_around_core_changes"

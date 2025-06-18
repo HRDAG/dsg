@@ -1,0 +1,167 @@
+# Author: PB & Claude
+# Maintainer: Dev-Claude
+# Original date: 2025-06-18
+# License: (c) HRDAG, 2025, GPL-2 or newer
+#
+# ------
+# scripts/auto-issues/memory/fix_patterns.yml
+# Dev-Claude Learning Memory: Successful fix patterns and anti-patterns
+
+successful_approaches:
+  issue_24_imports:
+    pattern: "repository_centric_config"
+    diagnosis_method: "trace_import_paths_in_production"
+    solution_type: "architecture_change"
+    verification: "black_box_import_testing"
+    blast_radius: "high"
+    confidence_level: "high"
+    human_approval_required: true
+    commits: ["e991e92f", "f60e7be9"]
+    
+  issue_27_logging:
+    pattern: "missing_method_in_custom_class"
+    diagnosis_method: "check_class_interface_vs_usage"
+    solution_type: "interface_completion"
+    verification: "method_availability_testing"
+    blast_radius: "medium"
+    confidence_level: "medium"
+    investigation_required: true
+
+debugging_frameworks:
+  import_errors:
+    symptom_patterns: ["ModuleNotFoundError", "ImportError", "test imports in production"]
+    diagnosis_steps:
+      1: "reproduce_in_minimal_environment"
+      2: "trace_import_chain_from_entry_point"
+      3: "identify_production_vs_dev_discrepancy"
+      4: "propose_architecture_solution"
+    tools: ["grep_imports", "check_pyproject_toml", "test_pip_install"]
+    escalation_triggers: ["requires_architecture_change"]
+    
+  cli_syntax_errors:
+    symptom_patterns: ["invalid flag", "no such option", "CLI syntax mismatch"]
+    diagnosis_steps:
+      1: "compare_expected_vs_actual_help_output"
+      2: "check_typer_command_definitions"
+      3: "verify_documentation_matches_implementation"
+      4: "update_tests_or_cli_accordingly"
+    tools: ["dsg_help_output", "grep_cli_definitions"]
+    escalation_triggers: ["breaking_change_needed"]
+
+  missing_features:
+    symptom_patterns: ["command not found", "safety_violation", "missing safety feature"]
+    diagnosis_steps:
+      1: "assess_if_feature_needed_for_safety"
+      2: "check_existing_similar_implementations"
+      3: "design_minimal_viable_feature"
+      4: "implement_with_dry_run_safety"
+    escalation_triggers: ["new_features_require_human_approval"]
+
+  environment_errors:
+    symptom_patterns: ["only works via uv run", "system command not found"]
+    diagnosis_steps:
+      1: "check_development_vs_production_installation"
+      2: "verify_console_scripts_configuration"
+      3: "test_pip_install_workflow"
+      4: "update_documentation_or_packaging"
+    tools: ["pip_install_test", "check_console_scripts"]
+
+anti_patterns:
+  learned_failures:
+    - pattern: "assuming_dev_environment_matches_production"
+      consequence: "packaging_bugs_not_caught"
+      lesson: "always_test_pip_install_workflow"
+      example: "issue_24_test_imports"
+    
+    - pattern: "mocking_core_interfaces_heavily"
+      consequence: "false_positives_in_tests"
+      lesson: "prefer_real_objects_with_cleanup"
+      example: "issue_24_mock_replacement"
+
+    - pattern: "ignoring_qa_claude_safety_concerns"
+      consequence: "user_experience_degradation"
+      lesson: "safety_violations_are_legitimate_feature_requests"
+      example: "issue_30_clean_command"
+
+qa_claude_collaboration:
+  testing_guidance_templates:
+    architecture_changes:
+      qa_focus_areas:
+        - "test_core_workflows_still_function"
+        - "verify_backward_compatibility"
+        - "test_edge_cases_in_new_architecture"
+      dev_confidence_indicators: ["comprehensive_regression_tests", "gradual_rollout"]
+      
+    feature_additions:
+      qa_focus_areas:
+        - "test_safety_mechanisms_work"
+        - "verify_help_text_accuracy"
+        - "test_error_handling_edge_cases"
+      dev_confidence_indicators: ["safety_first_design", "dry_run_option"]
+        
+    bug_fixes:
+      qa_focus_areas:
+        - "reproduce_original_issue_scenario"
+        - "test_similar_code_paths"
+        - "verify_no_regression_in_related_features"
+      dev_confidence_indicators: ["minimal_change_scope", "existing_test_coverage"]
+
+  confidence_scoring:
+    high_confidence:
+      criteria: ["well_tested_pattern", "minimal_blast_radius", "similar_successful_fixes"]
+      qa_guidance: "standard_verification_sufficient"
+      communication: "WORKS FOR ME - high confidence fix"
+      
+    medium_confidence:
+      criteria: ["new_pattern", "medium_blast_radius", "complex_interactions"]
+      qa_guidance: "extra_edge_case_testing_needed"
+      communication: "WORKS FOR ME - please test edge cases"
+      
+    low_confidence:
+      criteria: ["experimental_approach", "high_blast_radius", "architectural_change"]
+      qa_guidance: "comprehensive_testing_required"
+      communication: "WORKS FOR ME - experimental fix, extensive testing needed"
+
+improvement_tracking:
+  fastest_solved_patterns:
+    - "cli_syntax_mismatches"
+    - "missing_import_statements" 
+    - "configuration_validation_errors"
+    
+  challenging_patterns:
+    - "logging_system_initialization_order"
+    - "test_environment_vs_production_discrepancies"
+    - "cross_component_interaction_bugs"
+    
+  human_intervention_needed:
+    - "architectural_decisions"
+    - "new_feature_scope_definition"
+    - "breaking_change_approval"
+
+collaboration_friction_points:
+  information_gaps_from_qa:
+    - "exact_reproduction_steps_missing"
+    - "environment_differences_not_specified"
+    - "user_workflow_context_incomplete"
+    
+  iteration_reduction_strategies:
+    - "provide_multiple_hypotheses_with_testing"
+    - "include_verification_scripts_with_fixes"
+    - "suggest_related_areas_for_proactive_testing"
+    - "document_blast_radius_and_side_effects"
+
+learned_issue_classifications:
+  critical_bugs:
+    - "production_blocking_imports"
+    - "data_corruption_risks"
+    - "security_vulnerabilities"
+    
+  medium_priority:
+    - "user_experience_issues"
+    - "cli_syntax_problems"
+    - "missing_safety_features"
+    
+  low_priority:
+    - "test_infrastructure_improvements"
+    - "documentation_updates"
+    - "cosmetic_improvements"
