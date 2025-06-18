@@ -11,7 +11,6 @@ Validates that the correct transport method is derived for each repository type
 and hostname combination.
 """
 
-import pytest
 
 from dsg.config.repositories import ZFSRepository, XFSRepository, IPFSRepository, RcloneRepository
 from dsg.config.transport_resolver import derive_transport, get_transport_description, _is_localhost

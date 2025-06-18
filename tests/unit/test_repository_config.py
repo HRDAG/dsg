@@ -182,7 +182,7 @@ class TestIPFSRepository:
         
         assert repo.type == "ipfs"
         assert repo.did == "did:key:abc123def456"
-        assert repo.encrypted == True  # Default value
+        assert repo.encrypted  # Default value
         assert "encrypted" in str(repo)
     
     def test_valid_ipfs_repository_unencrypted(self):
@@ -195,7 +195,7 @@ class TestIPFSRepository:
         
         assert repo.type == "ipfs"
         assert repo.did == "did:key:abc123def456"
-        assert repo.encrypted == False
+        assert not repo.encrypted
         assert "unencrypted" in str(repo)
     
     def test_ipfs_missing_did(self):
@@ -428,4 +428,4 @@ class TestRepositoryConfigurationScenarios:
             encrypted=True
         )
         assert ipfs_repo.type == "ipfs"
-        assert ipfs_repo.encrypted == True
+        assert ipfs_repo.encrypted

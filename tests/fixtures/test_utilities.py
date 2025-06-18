@@ -13,13 +13,11 @@ Contains helper functions for creating test content, files, and repository struc
 Extracted from bb_repo_factory.py during fixture consolidation.
 """
 
-import json
-import os
 from pathlib import Path
 from typing import Dict
 
 from dsg.config.manager import Config
-from dsg.data.manifest import Manifest, FileRef
+from dsg.data.manifest import Manifest
 from dsg.core.scanner import scan_directory
 
 

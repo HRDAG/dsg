@@ -18,15 +18,13 @@ This module tests:
 """
 
 import pytest
-import logging
 from unittest.mock import Mock, patch
 from pathlib import Path
 
 from dsg.core.transaction_coordinator import Transaction
 from dsg.system.exceptions import (
     TransactionError, TransactionRollbackError, TransactionCommitError,
-    TransactionIntegrityError, ClientFilesystemError, RemoteFilesystemError,
-    ZFSOperationError, NetworkError, TransferError, ConnectionTimeoutError
+    TransactionIntegrityError, NetworkError, ConnectionTimeoutError
 )
 from dsg.core.retry import RetryConfig, retry_with_backoff, RetryableOperation
 
@@ -78,7 +76,7 @@ class TestTransactionErrorHandling:
         
         # Force an exception in the transaction
         with pytest.raises(ValueError):
-            with transaction as tx:
+            with transaction:
                 raise ValueError("Simulated transaction failure")
         
         # Verify both rollback methods were called despite failures
@@ -107,7 +105,6 @@ class TestTransactionErrorHandling:
     def test_client_filesystem_rollback_error_handling(self):
         """Test client filesystem rollback with partial failures"""
         from dsg.storage.client import ClientFilesystem
-        from pathlib import Path
         
         # Create a mock project root
         mock_project_root = Path("/mock/project")
@@ -135,7 +132,7 @@ class TestRetryMechanism:
     
     def test_retry_config_delay_calculation(self):
         """Test exponential backoff delay calculation"""
-        from dsg.core.retry import calculate_delay, RetryConfig
+        from dsg.core.retry import calculate_delay
         
         config = RetryConfig(
             base_delay=1.0,
@@ -155,7 +152,6 @@ class TestRetryMechanism:
     
     def test_retry_decorator_success_on_second_attempt(self):
         """Test retry decorator with success on second attempt"""
-        from dsg.core.retry import retry_with_backoff, RetryConfig
         
         # Fast retry config for testing
         config = RetryConfig(max_attempts=3, base_delay=0.01, jitter=False)
@@ -176,7 +172,6 @@ class TestRetryMechanism:
     
     def test_retry_decorator_non_retryable_error(self):
         """Test retry decorator with non-retryable error"""
-        from dsg.core.retry import retry_with_backoff, RetryConfig
         from dsg.system.exceptions import AuthenticationError
         
         config = RetryConfig(max_attempts=3, base_delay=0.01)
@@ -197,7 +192,6 @@ class TestRetryMechanism:
     
     def test_retry_decorator_exhaust_all_attempts(self):
         """Test retry decorator when all attempts are exhausted"""
-        from dsg.core.retry import retry_with_backoff, RetryConfig
         
         config = RetryConfig(max_attempts=3, base_delay=0.01, jitter=False)
         
@@ -216,7 +210,6 @@ class TestRetryMechanism:
     
     def test_retryable_operation_context_manager(self):
         """Test RetryableOperation context manager"""
-        from dsg.core.retry import RetryableOperation, RetryConfig
         
         config = RetryConfig(max_attempts=2, base_delay=0.01)
         
@@ -387,7 +380,7 @@ class TestRobustnessFeatures:
         transaction = Transaction(mock_client_fs, mock_remote_fs, mock_transport)
         
         with patch('dsg.core.transaction_coordinator.logging') as mock_logging:
-            with transaction as tx:
+            with transaction:
                 pass  # Successful transaction
             
             # Verify commit logging
@@ -407,7 +400,7 @@ class TestRobustnessFeatures:
         transaction = Transaction(mock_client_fs, mock_remote_fs, mock_transport)
         
         with pytest.raises(ValueError):
-            with transaction as tx:
+            with transaction:
                 raise ValueError("Trigger rollback")
         
         # Both rollback methods should have been attempted

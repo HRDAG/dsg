@@ -273,7 +273,6 @@ class ProjectConfig(BaseModel):
 
     def get_repository(self) -> Repository:
         """Get repository configuration, converting from legacy format if needed."""
-        from .transport_resolver import derive_transport
         
         if self.repository is not None:
             # New repository format - return directly

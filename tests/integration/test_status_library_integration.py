@@ -66,7 +66,6 @@ def test_get_sync_status_all_eq(dsg_repository_factory):
     """
     Test get_sync_status() for the all-equal sync state.
     """
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -110,7 +109,6 @@ def test_get_sync_status_library_functionality(dsg_repository_factory):
     This test validates the library interface and basic operation without
     needing to create specific sync states.
     """
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 

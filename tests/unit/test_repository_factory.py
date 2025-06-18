@@ -8,7 +8,6 @@
 Simple tests for repository factory repository configuration generation.
 """
 
-import pytest
 from tests.fixtures.repository_factory import RepositoryFactory
 from dsg.config.manager import ProjectConfig
 
@@ -69,7 +68,7 @@ class TestRepositoryFactoryBasics:
         
         assert config.repository.type == "ipfs"
         assert config.repository.did.startswith("did:key:")
-        assert config.repository.encrypted == True
+        assert config.repository.encrypted
         assert config.get_transport() == "ipfs"
     
     def test_rclone_repository_config_generation(self):

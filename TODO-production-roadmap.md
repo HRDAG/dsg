@@ -9,45 +9,17 @@ License: (c) HRDAG, 2025, GPL-2 or newer
 TODO-production-roadmap.md
 -->
 
-# DSG Production Roadmap - Ready for Deployment
+# DSG Production Deployment Roadmap
 
-**Status**: ✅ **READY** - Configuration refactoring complete, no longer blocked  
+**Status**: ✅ **READY TO PROCEED** - Configuration foundation complete  
 **Version**: 0.4.1  
 **Date**: 2025-06-18  
-**Dependencies**: ✅ **Issue #24 RESOLVED** - All tasks below are now unblocked
 
-## Executive Summary
-
-**Current State**: DSG Phase 2 transaction system is complete and functioning excellently with 95%+ test success rate (895+ tests). **Issue #24 has been completely resolved** - no test imports remain in production code.
-
-**Recent Achievement**: ✅ **Configuration refactoring complete** - Repository-centric configuration architecture successfully implemented, eliminating all packaging issues.
-
-**Current Focus**: Production deployment, operational excellence, and real-world validation.
-
-## Phase 2 Achievements ✅
-
-### Completed Transaction System
-- **ZFS Transaction System**: Auto-detecting init vs sync patterns with atomic operations
-- **Multi-User Collaboration**: Comprehensive conflict detection and resolution workflows  
-- **End-to-End Workflows**: Complete sync lifecycle validation with real ZFS integration
-- **Test Infrastructure**: 895+ comprehensive tests covering all 15 sync states
-- **Transaction Patterns**: Clean init (rename) and robust sync (clone→promote) operations
-- **Real ZFS Integration**: All operations tested with actual ZFS datasets (dsgtest pool)
-
-### Completed Configuration Refactoring
-- **Issue #24 RESOLVED**: No test imports in production code, packaging works perfectly
-- **Repository-Centric Config**: Type-safe, explicit repository configuration implemented
-- **Backward Compatibility**: Legacy transport configs continue working
-- **Type Safety**: Pydantic validation for all repository types
-- **Test Infrastructure**: Modern repository factory supporting all scenarios
-
-## Production Deployment Roadmap
+## Production Deployment Tasks
 
 ### 1. Production Environment Planning 🎯 **PRIORITY 1**
 
 **Goal**: Deploy DSG safely in real-world HRDAG workflows
-
-**Ready to Proceed**: ✅ Configuration system is production-ready, packaging works
 
 **Tasks**:
 - **Production ZFS Setup**: Design pool architecture for HRDAG's data scale
@@ -67,8 +39,6 @@ TODO-production-roadmap.md
 
 **Goal**: Ensure DSG runs reliably with proper observability
 
-**Ready to Proceed**: ✅ Stable configuration system enables reliable monitoring
-
 **Tasks**:
 - **Comprehensive Logging**: Structured logging with appropriate levels and context
 - **Metrics Collection**: Performance metrics, error rates, transaction success/failure
@@ -86,8 +56,6 @@ TODO-production-roadmap.md
 ### 3. User Experience & Documentation 📚 **PRIORITY 3**
 
 **Goal**: Make DSG accessible and usable for HRDAG researchers
-
-**Ready to Proceed**: ✅ Final configuration API is stable and ready for documentation
 
 **Tasks**:
 - **User Guides**: Step-by-step workflows for common HRDAG data patterns
@@ -108,8 +76,6 @@ TODO-production-roadmap.md
 
 **Goal**: Ensure DSG meets HRDAG's security and data protection requirements
 
-**Ready to Proceed**: ✅ Production-ready configuration system ready for security audit
-
 **Tasks**:
 - **Security Audit**: Comprehensive review of ZFS transaction security
 - **Access Control**: User permissions and repository access management
@@ -128,8 +94,6 @@ TODO-production-roadmap.md
 
 **Goal**: Optimize DSG for HRDAG's data scale and usage patterns
 
-**Ready to Proceed**: ✅ Explicit repository configuration eliminates auto-detection overhead
-
 **Tasks**:
 - **Performance Benchmarking**: Large-scale data sync performance testing
 - **ZFS Tuning**: Optimize ZFS parameters for DSG workloads
@@ -147,8 +111,6 @@ TODO-production-roadmap.md
 ### 6. Real-World Integration Testing 🧪 **PRIORITY 6**
 
 **Goal**: Validate DSG with actual HRDAG data and workflows
-
-**Ready to Proceed**: ✅ Production-ready system can be safely deployed for pilot testing
 
 **Tasks**:
 - **Pilot Project**: Select representative HRDAG project for DSG migration
@@ -171,24 +133,24 @@ TODO-production-roadmap.md
 ## Success Criteria
 
 ### Production Readiness Metrics
-- **✅ Production Deployment**: DSG running in production with real HRDAG data
-- **✅ User Adoption**: 3+ research teams actively using DSG
-- **✅ Reliability**: 99.9% uptime with comprehensive monitoring
-- **✅ Performance**: Sync operations complete within acceptable time bounds
-- **✅ Security**: Security audit passed with no critical findings
-- **✅ Documentation**: Complete user guides and operational procedures
+- **Production Deployment**: DSG running in production with real HRDAG data
+- **User Adoption**: 3+ research teams actively using DSG
+- **Reliability**: 99.9% uptime with comprehensive monitoring
+- **Performance**: Sync operations complete within acceptable time bounds
+- **Security**: Security audit passed with no critical findings
+- **Documentation**: Complete user guides and operational procedures
 
 ### User Experience Metrics
-- **✅ Onboarding Time**: New users productive within 1 day
-- **✅ Error Recovery**: Clear error messages with actionable solutions
-- **✅ Workflow Efficiency**: DSG enhances rather than hinders research workflows
-- **✅ Collaboration**: Multi-user workflows smooth and conflict-free
+- **Onboarding Time**: New users productive within 1 day
+- **Error Recovery**: Clear error messages with actionable solutions
+- **Workflow Efficiency**: DSG enhances rather than hinders research workflows
+- **Collaboration**: Multi-user workflows smooth and conflict-free
 
 ### Operational Metrics
-- **✅ Monitoring Coverage**: All critical operations monitored and alerted
-- **✅ Recovery Time**: Mean time to recovery < 30 minutes for common issues
-- **✅ Maintenance**: Automated maintenance procedures working correctly
-- **✅ Backup**: Regular backups with tested recovery procedures
+- **Monitoring Coverage**: All critical operations monitored and alerted
+- **Recovery Time**: Mean time to recovery < 30 minutes for common issues
+- **Maintenance**: Automated maintenance procedures working correctly
+- **Backup**: Regular backups with tested recovery procedures
 
 ## Implementation Timeline
 
@@ -209,24 +171,23 @@ TODO-production-roadmap.md
 ### Total Estimated Timeline
 **11-16 weeks** for complete production readiness, depending on parallelization and HRDAG-specific requirements.
 
-## Risk Assessment
+## Risk Assessment & Mitigations
 
-### Current Advantages
+### Production Deployment Risks
+- **Production Scale**: *Mitigation* - Performance benchmarking and ZFS tuning
+- **User Adoption**: *Mitigation* - Excellent documentation and training
+- **Data Migration**: *Mitigation* - Careful pilot project selection and gradual rollout
+- **Operational Complexity**: *Mitigation* - Comprehensive monitoring and automation
+
+### Technical Advantages
 - **Reliable Foundation**: No packaging issues, stable configuration system
 - **Proven Technology**: ZFS transaction system thoroughly tested
 - **Type Safety**: Configuration validation prevents many errors
 - **Scalability**: Explicit config works at any scale
 - **Maintainability**: Clean architecture with clear separation of concerns
 
-### Remaining Risks & Mitigations
-- **Production Scale**: *Mitigation* - Performance benchmarking and ZFS tuning
-- **User Adoption**: *Mitigation* - Excellent documentation and training
-- **Data Migration**: *Mitigation* - Careful pilot project selection and gradual rollout
-- **Operational Complexity**: *Mitigation* - Comprehensive monitoring and automation
+## Production Architecture Requirements
 
-## Key Architectural Principles
-
-### Production Architecture Requirements
 1. **Reliability**: All operations must be atomic and recoverable
 2. **Performance**: ZFS efficiency maintained at production scale
 3. **Security**: Data protection throughout sync lifecycle
@@ -234,15 +195,37 @@ TODO-production-roadmap.md
 5. **Maintainability**: Clear operational procedures and automation
 6. **Explicitness**: Repository configuration is explicit and type-safe
 
-### Configuration Architecture (COMPLETE)
-1. ✅ **Type Safety**: Repository configuration validated by type system
-2. ✅ **Explicitness**: All storage parameters explicitly configured
-3. ✅ **Extensibility**: Easy to add new repository types
-4. ✅ **Migration**: Smooth upgrade path from legacy configs
-5. ✅ **Documentation**: Clear examples for all repository types
+## Current Configuration Support
 
-## Conclusion
+DSG supports both repository format (recommended) and legacy format:
 
-DSG is now **ready for production deployment**. The configuration refactoring is complete, Issue #24 is resolved, and all blocking issues have been eliminated. The focus now shifts to operational excellence, user experience, and real-world validation.
+### Repository Format (Recommended)
+```yaml
+name: my-project
+repository:
+  type: zfs
+  host: localhost
+  pool: dsgtest
+  mountpoint: /var/tmp/test
+```
 
-The roadmap above provides a clear path to production readiness with estimated timelines and success criteria. All tasks are now unblocked and ready for execution.
+### Legacy Format (Still Supported)
+```yaml
+name: my-project
+transport: ssh
+ssh:
+  host: localhost
+  path: /var/tmp/test
+  type: zfs
+```
+
+## Next Steps
+
+1. **Start with Priority 1**: Production Environment Planning
+2. **Establish monitoring early**: Priority 2 should begin as soon as production environment is defined
+3. **Parallel documentation**: Priority 3 can proceed in parallel with operational setup
+4. **Security review**: Should be completed before handling real HRDAG data
+5. **Performance optimization**: Essential before large-scale deployment
+6. **Pilot testing**: Final validation with real research workflows
+
+DSG is ready for production deployment. The roadmap above provides a clear path with estimated timelines and success criteria.

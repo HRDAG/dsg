@@ -161,7 +161,6 @@ def test_sync_state_enum_import():
 
 def test_create_sync_state_all_eq(dsg_repository_factory):
     """Test creating the simplest sync state: all equal."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -208,7 +207,6 @@ def test_create_sync_state_all_eq(dsg_repository_factory):
 
 def test_create_sync_state_none(dsg_repository_factory):
     """Test creating the none state: file not present anywhere."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -234,7 +232,6 @@ def test_create_sync_state_none(dsg_repository_factory):
 
 def test_create_sync_state_only_local(dsg_repository_factory):
     """Test creating the only-local state: file exists only locally."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -260,7 +257,6 @@ def test_create_sync_state_only_local(dsg_repository_factory):
 
 def test_create_sync_state_all_different(dsg_repository_factory):
     """Test creating the all-different state: all three differ."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -302,7 +298,6 @@ def test_create_sync_state_all_different(dsg_repository_factory):
 
 def test_create_sync_state_cache_eq_remote(dsg_repository_factory):
     """Test creating state where local is missing but cache and remote match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -338,7 +333,6 @@ def test_create_sync_state_cache_eq_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_eq_remote(dsg_repository_factory):
     """Test creating state where cache is missing but local and remote match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -375,7 +369,6 @@ def test_create_sync_state_local_eq_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_eq_cache(dsg_repository_factory):
     """Test creating state where remote is missing but local and cache match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -410,7 +403,6 @@ def test_create_sync_state_local_eq_cache(dsg_repository_factory):
 
 def test_create_sync_state_remote_changed(dsg_repository_factory):
     """Test creating state where remote changed but local and cache match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -454,7 +446,6 @@ def test_create_sync_state_remote_changed(dsg_repository_factory):
 
 def test_create_sync_state_cache_outdated(dsg_repository_factory):
     """Test creating state where cache is outdated but local and remote match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -496,7 +487,6 @@ def test_create_sync_state_cache_outdated(dsg_repository_factory):
 
 def test_create_sync_state_only_remote(dsg_repository_factory):
     """Test creating state where only remote has the file."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -522,7 +512,6 @@ def test_create_sync_state_only_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_changed(dsg_repository_factory):
     """Test creating state where local changed but cache and remote match."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -566,7 +555,6 @@ def test_create_sync_state_local_changed(dsg_repository_factory):
 
 def test_create_sync_state_cache_ne_remote(dsg_repository_factory):
     """Test creating state where local is missing and cache differs from remote."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -599,7 +587,6 @@ def test_create_sync_state_cache_ne_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_ne_remote(dsg_repository_factory):
     """Test creating state where cache is missing and local differs from remote."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -636,7 +623,6 @@ def test_create_sync_state_local_ne_remote(dsg_repository_factory):
 
 def test_create_sync_state_local_ne_cache(dsg_repository_factory):
     """Test creating state where remote is missing and local differs from cache."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 
@@ -671,7 +657,6 @@ def test_create_sync_state_local_ne_cache(dsg_repository_factory):
 
 def test_create_sync_state_only_cache(dsg_repository_factory):
     """Test creating state where only cache has the file."""
-    from tests.fixtures.repository_factory import _factory as factory
     setup = dsg_repository_factory(
         style="realistic",
         setup="local_remote_pair", 

@@ -27,15 +27,14 @@ import uuid
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
-from dsg.storage.transaction_factory import create_transaction
 from dsg.storage.snapshots import ZFSOperations
 from dsg.storage.remote import ZFSFilesystem
 from dsg.storage.client import ClientFilesystem
 from dsg.storage.io_transports import LocalhostTransport
 from dsg.core.transaction_coordinator import Transaction
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, get_test_dataset_name, get_test_mount_path
 
 
 def check_zfs_available() -> tuple[bool, str]:
@@ -288,7 +287,7 @@ class TestRealZFSTransactionOperations:
                 assert len(final_files) >= initial_count, "Final should have at least the original files"
                 print(f"ZFS Transaction Success: Init files={initial_count}, Final files={len(final_files)}")
                 print(f"Snapshots created: {len(new_snapshots)}")
-                print(f"Clone operations completed successfully")
+                print("Clone operations completed successfully")
                 
             finally:
                 cleanup_real_zfs_dataset(dataset_name)
@@ -449,7 +448,7 @@ class TestRealZFSTransactionIntegration:
                 }
                 
                 # Record initial ZFS state
-                initial_datasets = subprocess.run(
+                subprocess.run(
                     ['sudo', 'zfs', 'list', '-t', 'all', '-o', 'name', '-H'],
                     capture_output=True, text=True
                 ).stdout

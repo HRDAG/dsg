@@ -23,23 +23,20 @@ Key test scenarios:
 4. Resolution workflows: How conflicts are detected and resolved
 """
 
-import pytest
 import tempfile
 import uuid
-import time
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import List
 from unittest.mock import MagicMock
 
-from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan
-from dsg.core.operations import get_sync_status
+from dsg.storage.transaction_factory import calculate_sync_plan
 from dsg.data.manifest_merger import SyncState
 from dsg.core.transaction_coordinator import Transaction
 from dsg.storage.client import ClientFilesystem
 from dsg.storage.remote import ZFSFilesystem
 from dsg.storage.io_transports import LocalhostTransport
 from dsg.storage.snapshots import ZFSOperations
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, get_test_dataset_name, get_test_mount_path
 
 
 def create_test_user_repository(user_name: str, base_path: Path) -> Path:
@@ -302,7 +299,7 @@ class TestBasicMultiUserScenarios:
             
             # Each user then syncs to get others' work
             for sync_user in ['alice', 'bob', 'charlie']:
-                sync_repo = context.get_user_repo(sync_user)
+                context.get_user_repo(sync_user)
                 
                 # Build download list of other users' files
                 download_files = []
@@ -771,7 +768,7 @@ class TestMultiUserConflictDetection:
     
     def test_multi_user_sync_state_scenarios(self, dsg_repository_factory):
         """Test various multi-user sync state scenarios."""
-        with MultiUserTestContext(['alice', 'bob']) as context:
+        with MultiUserTestContext(['alice', 'bob']):
             
             test_scenarios = [
                 {
@@ -816,7 +813,7 @@ class TestMultiUserConflictDetection:
                     print(f"  ✓ Conflict detected for {scenario['name']}")
                 else:
                     # Non-conflict states should have appropriate operations
-                    has_operation = (
+                    (
                         'test_file.txt' in sync_plan['upload_files'] or
                         'test_file.txt' in sync_plan['download_files'] or
                         'test_file.txt' in sync_plan['delete_local'] or

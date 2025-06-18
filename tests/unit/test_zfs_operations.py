@@ -163,10 +163,10 @@ class TestSyncPattern:
             
             # Check cleanup (with check=False)
             assert calls[7][0][0] == ["zfs", "destroy", f"{ZFS_TEST_POOL}/test-repo@sync-temp-tx-def456"]
-            assert calls[7][1]["check"] == False
+            assert not calls[7][1]["check"]
             
             assert calls[8][0][0] == ["zfs", "destroy", "-r", f"{ZFS_TEST_POOL}/test-repo-old-tx-def456"]
-            assert calls[8][1]["check"] == False
+            assert not calls[8][1]["check"]
     
     def test_sync_deferred_cleanup_handling(self, zfs_ops):
         """Test that cleanup failures don't block sync commit."""
@@ -178,7 +178,7 @@ class TestSyncPattern:
                 result = MagicMock()
                 if "promote" in cmd:
                     result.returncode = 0
-                elif "destroy" in cmd and check == False:
+                elif "destroy" in cmd and not check:
                     result.returncode = 1  # Cleanup fails
                 else:
                     result.returncode = 0
@@ -191,7 +191,7 @@ class TestSyncPattern:
             
             # Verify cleanup was attempted with check=False
             cleanup_calls = [call for call in mock_run.call_args_list 
-                           if "destroy" in str(call) and call[1].get("check") == False]
+                           if "destroy" in str(call) and not call[1].get("check")]
             assert len(cleanup_calls) >= 2
 
 
@@ -296,7 +296,7 @@ class TestUnifiedInterface:
                 
                 # Check cleanup
                 assert calls[2][0][0] == ["zfs", "destroy", f"{ZFS_TEST_POOL}/test-repo@pre-sync-tx-123"]
-                assert calls[2][1]["check"] == False
+                assert not calls[2][1]["check"]
 
 
 

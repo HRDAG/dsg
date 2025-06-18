@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Iterator
 
 from dsg.core.transaction_coordinator import ContentStream, TempFile
-from dsg.system.exceptions import ClientFilesystemError, TransactionRollbackError
+from dsg.system.exceptions import TransactionRollbackError
 
 
 class FileContentStream:

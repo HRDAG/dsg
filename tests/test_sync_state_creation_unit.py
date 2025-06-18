@@ -38,10 +38,10 @@ def test_sync_state_creation_unit(dsg_repository_factory):
     target_file = "task1/import/input/test-unit.csv"
     
     # Step 1: Create the "all equal" state manually
-    local_path = setup["local_path"]
+    setup["local_path"]
     remote_path = setup["remote_path"]
     local_config = setup["local_config"]
-    remote_config = setup["remote_config"]
+    setup["remote_config"]
     last_sync_path = setup["last_sync_path"]
     
     original_content = "id,name,value\n1,Alice,100\n2,Bob,200\n"

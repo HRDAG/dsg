@@ -24,7 +24,6 @@ from dsg.storage.transaction_factory import create_transaction, create_remote_fi
 from dsg.core.transaction_coordinator import Transaction
 from dsg.storage.remote import ZFSFilesystem, XFSFilesystem
 from dsg.storage.snapshots import ZFSOperations
-from dsg.system.exceptions import ConfigError
 
 
 class TestIssue24BackendFix:

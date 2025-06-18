@@ -21,7 +21,6 @@ from dsg.config.manager import (
 )
 
 # Import repository factory fixture
-from tests.fixtures.repository_factory import dsg_repository_factory
 
 
 # Configure pytest to avoid assertion rewriting warnings  

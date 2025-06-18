@@ -286,7 +286,6 @@ class TestComprehensiveFileTypes:
 
     def test_symlink_edge_cases_sync(self, dsg_repository_factory):
         """Test sync operations with various symlink scenarios."""
-        from tests.fixtures.repository_factory import _factory as factory
         setup = dsg_repository_factory(
             style="realistic",
             setup="local_remote_pair", 

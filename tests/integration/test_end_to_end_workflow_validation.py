@@ -28,21 +28,15 @@ Key test scenarios:
 import pytest
 import tempfile
 import uuid
-import time
-import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
-import json
+from typing import Dict, List
 
-from dsg.storage.transaction_factory import create_transaction
 from dsg.storage.snapshots import ZFSOperations
 from dsg.storage.remote import ZFSFilesystem
 from dsg.storage.client import ClientFilesystem
 from dsg.storage.io_transports import LocalhostTransport
 from dsg.core.transaction_coordinator import Transaction
-from dsg.core.operations import get_sync_status
-from dsg.config.manager import Config
-from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, ZFS_TEST_MOUNT_BASE, get_test_dataset_name, get_test_mount_path
+from tests.fixtures.zfs_test_config import ZFS_TEST_POOL, get_test_dataset_name, get_test_mount_path
 
 
 def create_realistic_research_repository(base_path: Path) -> Dict[str, List[Path]]:
@@ -489,13 +483,6 @@ class TestCompleteSyncLifecycle:
             print("Phase 3: Major repository reorganization")
             
             # Create new directory structure
-            new_structure = {
-                'data/raw': [],
-                'data/processed': [],
-                'analysis/scripts': [],
-                'analysis/results': [],
-                'documentation': []
-            }
             
             # Move files to new structure
             reorganized_files = []

@@ -20,13 +20,13 @@ This module tests:
 import pytest
 import time
 import threading
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
 
 from dsg.storage.io_transports import (
     LocalhostTransport, SSHTransport, ConnectionPool, 
-    TransferMetrics, TempFileImpl, RemoteTempFile,
+    TransferMetrics, RemoteTempFile,
     create_transport, get_global_connection_pool, close_all_connections
 )
 from dsg.system.exceptions import NetworkError, TransportError

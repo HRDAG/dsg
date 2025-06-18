@@ -8,7 +8,6 @@
 
 import pytest
 from unittest.mock import Mock
-from pathlib import Path
 
 # Import the Transaction class and protocols
 from dsg.core.transaction_coordinator import Transaction

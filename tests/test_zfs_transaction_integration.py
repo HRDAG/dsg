@@ -14,14 +14,11 @@ Verifies that RemoteFilesystem transaction support works with ZFS operations.
 """
 
 import pytest
-import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from dsg.storage.transaction_factory import create_transaction, create_remote_filesystem
 from dsg.storage.remote import ZFSFilesystem
-from dsg.storage.snapshots import ZFSOperations
-from dsg.core.transaction_coordinator import Transaction
 
 
 class TestRemoteFilesystemTransactionSupport:
@@ -75,7 +72,7 @@ class TestRemoteFilesystemTransactionSupport:
              patch.object(remote_fs.zfs_ops, 'commit') as mock_commit, \
              patch('pathlib.Path.exists') as mock_exists, \
              patch('pathlib.Path.stat') as mock_stat, \
-             patch('pathlib.Path.mkdir') as mock_mkdir, \
+             patch('pathlib.Path.mkdir'), \
              patch('shutil.move') as mock_move:
             
             mock_begin.return_value = "/test/clone/path"

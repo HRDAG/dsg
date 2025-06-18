@@ -14,12 +14,10 @@ Tests transaction patterns, sync plan integration, and error handling/rollback.
 """
 
 import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
-from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan, create_remote_filesystem, create_transport
-from dsg.core.transaction_coordinator import Transaction, generate_transaction_id
+from dsg.storage.transaction_factory import create_transaction, calculate_sync_plan, create_remote_filesystem
+from dsg.core.transaction_coordinator import generate_transaction_id
 from dsg.data.manifest_merger import SyncState
 
 

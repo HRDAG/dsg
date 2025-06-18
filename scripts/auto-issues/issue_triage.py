@@ -495,7 +495,7 @@ def interactive_triage_workflow():
     
     # Generate test
     test_code, test_explanation = test_generator.generate_test(selected_issue)
-    console.print(f"\n[bold yellow]Proposed Test:[/bold yellow]")
+    console.print("\n[bold yellow]Proposed Test:[/bold yellow]")
     console.print(Panel(test_explanation, title="Test Analysis"))
     console.print(Syntax(test_code, "python", theme="monokai"))
     
@@ -505,7 +505,7 @@ def interactive_triage_workflow():
         
     # Generate fix proposal
     fix_code, fix_explanation = fix_generator.propose_fix(selected_issue)
-    console.print(f"\n[bold yellow]Proposed Fix:[/bold yellow]")
+    console.print("\n[bold yellow]Proposed Fix:[/bold yellow]")
     console.print(Panel(fix_explanation, title="Fix Analysis"))
     console.print(Syntax(fix_code, "python", theme="monokai"))
     
@@ -547,9 +547,9 @@ def get_recent_commits(limit: int = 10) -> List[Dict[str, str]]:
 
 def generate_edge_case_tests(issue: GitHubIssue) -> str:
     """Generate edge case testing suggestions based on issue analysis."""
-    issue_type = issue.classify_type()
+    issue.classify_type()  # FIXME: Assigned but never used
     title_lower = issue.title.lower()
-    body_lower = issue.body.lower()
+    issue.body.lower()  # FIXME: Assigned but never used
     
     edge_cases = []
     
@@ -642,7 +642,7 @@ This issue has been addressed in commit {commit_hash[:8]}:
 **Original Issue**: {issue.title}"""
 
     try:
-        result = subprocess.run(
+        subprocess.run(  # FIXME: Assigned but never used
             ["gh", "issue", "comment", str(issue_number), "--body", comment_body],
             capture_output=True,
             text=True,
@@ -732,87 +732,8 @@ def mark_issue_fixed_workflow(issue_number: int):
         if success:
             console.print(f"[green]✅ Issue #{issue_number} marked as fixed and ready for testing")
         else:
-            console.print(f"[red]❌ Failed to post comment")
+            console.print("[red]❌ Failed to post comment")
 
-
-def interactive_triage_workflow():
-    """Main interactive workflow for issue triage."""
-    console.print("[bold blue]DSG Issue Triage & TDD Script[/bold blue]")
-    console.print("Fetching GitHub issues...")
-    
-    # Get issues
-    all_issues = get_github_issues()
-    if not all_issues:
-        console.print("[red]No issues found or error fetching issues")
-        return
-        
-    versioned_issues = get_versioned_issues(all_issues)
-    if not versioned_issues:
-        console.print("[yellow]No versioned issues found")
-        return
-        
-    # Display issues
-    display_issues_table(versioned_issues)
-    
-    # Let user select an issue
-    issue_numbers = [str(issue.number) for issue in versioned_issues]
-    workflow_choices = issue_numbers + ["mark-fixed"]
-    
-    selected = Prompt.ask(
-        "Select issue number to analyze OR 'mark-fixed' to mark an issue as fixed",
-        choices=workflow_choices,
-        default=issue_numbers[0] if issue_numbers else None
-    )
-    
-    if not selected:
-        return
-        
-    if selected == "mark-fixed":
-        # Mark issue as fixed workflow
-        issue_num = Prompt.ask("Enter issue number to mark as fixed", choices=issue_numbers)
-        mark_issue_fixed_workflow(int(issue_num))
-        return
-        
-    # Find selected issue for analysis
-    selected_issue = next(issue for issue in versioned_issues if str(issue.number) == selected)
-    
-    # Initialize analyzers
-    project_root = Path(__file__).parent.parent
-    analyzer = DSGModuleAnalyzer(project_root)
-    test_generator = TestGenerator(analyzer)
-    fix_generator = FixGenerator(analyzer)
-    
-    # Analyze issue
-    console.print(f"\n[bold green]Analyzing Issue #{selected_issue.number}[/bold green]")
-    console.print(Panel(
-        f"[bold]{selected_issue.title}[/bold]\n\n{selected_issue.body[:300]}...",
-        title="Issue Details"
-    ))
-    
-    # Generate test
-    test_code, test_explanation = test_generator.generate_test(selected_issue)
-    console.print(f"\n[bold yellow]Proposed Test:[/bold yellow]")
-    console.print(Panel(test_explanation, title="Test Analysis"))
-    console.print(Syntax(test_code, "python", theme="monokai"))
-    
-    if Confirm.ask("Create this test file?"):
-        test_file, _ = analyzer.suggest_test_file(selected_issue)
-        console.print(f"[green]Test would be created at: {test_file}[/green]")
-        
-    # Generate fix proposal
-    fix_code, fix_explanation = fix_generator.propose_fix(selected_issue)
-    console.print(f"\n[bold yellow]Proposed Fix:[/bold yellow]")
-    console.print(Panel(fix_explanation, title="Fix Analysis"))
-    console.print(Syntax(fix_code, "python", theme="monokai"))
-    
-    if Confirm.ask("Proceed with TDD workflow?"):
-        console.print("[green]TDD workflow would proceed with:[/green]")
-        console.print("1. Create failing test")
-        console.print("2. Run test to confirm failure") 
-        console.print("3. Implement fix")
-        console.print("4. Run test to confirm success")
-        console.print("5. Create branch and commit")
-        console.print("6. Mark issue as fixed for tester review")
 
 
 def main():

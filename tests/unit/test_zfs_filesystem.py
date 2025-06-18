@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 from dsg.storage.remote import ZFSFilesystem
-from dsg.system.exceptions import ZFSOperationError, TransactionCommitError
+from dsg.system.exceptions import TransactionCommitError
 from tests.fixtures.zfs_test_config import ZFS_TEST_MOUNT_BASE
 
 

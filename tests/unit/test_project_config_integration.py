@@ -12,7 +12,6 @@ with legacy transport-centric configuration.
 """
 
 import pytest
-from pydantic import ValidationError
 
 from dsg.config.manager import ProjectConfig
 from dsg.config.repositories import ZFSRepository, XFSRepository, IPFSRepository, RcloneRepository
@@ -92,7 +91,7 @@ class TestProjectConfigRepositoryIntegration:
         assert config.get_transport() == "ipfs"
         repo = config.get_repository()
         assert repo.type == "ipfs"
-        assert repo.encrypted == True
+        assert repo.encrypted
     
     def test_repository_config_rclone(self):
         """Test ProjectConfig with Rclone repository configuration."""
@@ -193,7 +192,7 @@ class TestProjectConfigBackwardCompatibility:
         repo = config.get_repository()
         assert repo.type == "ipfs"
         assert repo.did == "did:key:legacy123"
-        assert repo.encrypted == False
+        assert not repo.encrypted
 
 
 class TestProjectConfigValidation:
@@ -236,7 +235,6 @@ class TestProjectConfigValidation:
     
     def test_legacy_transport_validation_still_works(self):
         """Test that legacy transport validation still works."""
-        from dsg.config.manager import SSHRepositoryConfig
         
         # Missing SSH config when transport=ssh should fail
         with pytest.raises(ConfigError) as exc_info:

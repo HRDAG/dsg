@@ -10,8 +10,7 @@ Tests for transport integration with repository configuration.
 Tests that transport creation uses repository config correctly.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from pathlib import Path
 
 from dsg.config.repositories import ZFSRepository, XFSRepository
