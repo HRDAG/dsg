@@ -29,10 +29,15 @@ dependencies = [
     "lz4>=4.3.2,<5.0.0",
     "paramiko>=3.0,<4.0",
     "humanize>=4.0,<5.0",
+    # AI tools dependencies
+    "PyGithub>=1.59.0,<2.0.0",
+    "click>=8.1.0,<9.0.0",
+    "jinja2>=3.1.0,<4.0.0",
 ]
 
 [project.scripts]
 dsg = "dsg.cli:main"
+dsg-ai-tools = "dsg_ai_tools.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/hrdag/dsg"
