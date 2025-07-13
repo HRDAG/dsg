@@ -15,6 +15,8 @@ from rich.console import Console
 from dsg.cli.utils import (
     validate_repository_command_prerequisites,
     validate_repository_setup_prerequisites,
+    validate_init_prerequisites,
+    create_project_config_from_params,
     handle_operation_error,
     handle_config_error,
     load_config_with_console
@@ -23,8 +25,10 @@ from dsg.data.json_collector import JSONCollector
 from dsg.system.logging_setup import setup_logging
 
 # Command type constants
+COMMAND_TYPE_INIT = "init"
 COMMAND_TYPE_SETUP = "setup"
 COMMAND_TYPE_REPOSITORY = "repository"
+COMMAND_TYPE_MAINTENANCE = "maintenance"
 
 
 def _validate_mutually_exclusive_flags(verbose: bool, quiet: bool) -> None:
@@ -162,10 +166,12 @@ def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY) -> Ca
     
     Args:
         command_type: Type of command for validation:
-            - "setup": Commands that create new repositories (init, clone)
+            - "init": Creates .dsgconfig.yml from command line parameters
+            - "setup": Commands that create new repositories using existing config (clone)
             - "repository": Commands that need existing repository (sync, snapmount, snapfetch)
+            - "maintenance": Commands that need config but not backend connectivity (clean)
     
-    Handles: init, clone, sync, snapmount, snapfetch
+    Handles: init, clone, sync, snapmount, snapfetch, clean
     Provides: verbose/quiet control, dry-run, force, normalize, JSON output
     """
     def decorator(func: Callable) -> Callable:
@@ -189,8 +195,52 @@ def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY) -> Ca
             # Load configuration with command-type-specific validation
             config = None
             try:
-                if command_type == COMMAND_TYPE_SETUP:
-                    # For init/clone - setup validation with force handling
+                if command_type == COMMAND_TYPE_INIT:
+                    # For init - minimal validation and create config from parameters
+                    validate_init_prerequisites(console, force=force, verbose=verbose)
+                    
+                    # Extract init-specific parameters from kwargs
+                    repo_name = kwargs.get('repo_name')
+                    transport = kwargs.get('transport', 'ssh')
+                    host = kwargs.get('host')
+                    repo_path = kwargs.get('repo_path')
+                    repo_type = kwargs.get('repo_type')
+                    rclone_remote = kwargs.get('rclone_remote')
+                    ipfs_did = kwargs.get('ipfs_did')
+                    interactive = kwargs.get('interactive', True)
+                    
+                    # Create project config from parameters
+                    project_config = create_project_config_from_params(
+                        console=console,
+                        repo_name=repo_name,
+                        transport=transport,
+                        host=host,
+                        repo_path=repo_path,
+                        repo_type=repo_type,
+                        rclone_remote=rclone_remote,
+                        ipfs_did=ipfs_did,
+                        interactive=interactive,
+                        verbose=verbose
+                    )
+                    
+                    # Save the config file
+                    import yaml
+                    from pathlib import Path
+                    
+                    config_path = Path(".dsgconfig.yml")
+                    with open(config_path, 'w') as f:
+                        # Use mode='json' to ensure Path objects are converted to strings
+                        config_dict = project_config.model_dump(exclude_defaults=True, mode='json')
+                        yaml.dump(config_dict, f, default_flow_style=False)
+                    
+                    if not quiet:
+                        console.print(f"[green]✓[/green] Created .dsgconfig.yml")
+                    
+                    # Load the config normally (this creates a full Config with user config)
+                    config = load_config_with_console(console, verbose=verbose)
+                    
+                elif command_type == COMMAND_TYPE_SETUP:
+                    # For clone - setup validation with force handling  
                     config = validate_repository_setup_prerequisites(
                         console, 
                         force=force, 
@@ -202,8 +252,15 @@ def operation_command_pattern(command_type: str = COMMAND_TYPE_REPOSITORY) -> Ca
                         console, 
                         verbose=verbose
                     )
+                elif command_type == COMMAND_TYPE_MAINTENANCE:
+                    # For clean and other maintenance - need config but not backend connectivity
+                    config = validate_repository_command_prerequisites(
+                        console, 
+                        verbose=verbose,
+                        check_backend=False  # Skip backend connectivity check
+                    )
                 else:
-                    raise ValueError(f"Unknown command_type '{command_type}'. Use '{COMMAND_TYPE_SETUP}' or '{COMMAND_TYPE_REPOSITORY}'.")
+                    raise ValueError(f"Unknown command_type '{command_type}'. Use '{COMMAND_TYPE_INIT}', '{COMMAND_TYPE_SETUP}', '{COMMAND_TYPE_REPOSITORY}', or '{COMMAND_TYPE_MAINTENANCE}'.")
                     
             except Exception as e:
                 if to_json:

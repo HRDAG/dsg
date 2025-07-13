@@ -126,6 +126,8 @@ A data versioning system based on Scott's `snap`. But generalized across backend
    │                     repository.                                              │
    │ snapmount           History: Mount a repository snapshot for read-only       │
    │                     access.                                                  │
+   │ clean               Maintenance: Clean temporary files, cache, and           │
+   │                     artifacts.                                               │
    │ snapfetch           History: Fetch a specific file from a repository         │
    │                     snapshot.                                                │
    ╰──────────────────────────────────────────────────────────────────────────────╯

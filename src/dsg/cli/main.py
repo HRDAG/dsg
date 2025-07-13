@@ -29,8 +29,10 @@ from dsg.cli.patterns import (
     info_command_pattern,
     discovery_command_pattern, 
     operation_command_pattern,
+    COMMAND_TYPE_INIT,
     COMMAND_TYPE_SETUP,
-    COMMAND_TYPE_REPOSITORY
+    COMMAND_TYPE_REPOSITORY,
+    COMMAND_TYPE_MAINTENANCE
 )
 from dsg.cli.utils import handle_operation_error
 from dsg.cli.commands import info as info_commands
@@ -232,19 +234,22 @@ def init(
     to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
 ) -> Any:
     """[bold blue]Setup[/bold blue]: Initialize a new data repository."""
-    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_SETUP)(
-        lambda console, config, dry_run, force, normalize, verbose, quiet: action_commands.init(
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_INIT)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet, **kwargs: action_commands.init(
             console, config, 
             dry_run=dry_run, force=force, normalize=normalize, 
             verbose=verbose, quiet=quiet,
-            host=host, repo_path=repo_path, repo_name=repo_name, repo_type=repo_type,
-            transport=transport, rclone_remote=rclone_remote, ipfs_did=ipfs_did,
-            interactive=interactive
+            # Init-specific parameters are now handled by the pattern, but we still need to pass them for compatibility
+            **{k: v for k, v in kwargs.items() if k in ['host', 'repo_path', 'repo_name', 'repo_type', 'transport', 'rclone_remote', 'ipfs_did', 'interactive']}
         )
     )
     return decorated_handler(
         dry_run=dry_run, force=force, normalize=normalize, 
-        verbose=verbose, quiet=quiet, to_json=to_json
+        verbose=verbose, quiet=quiet, to_json=to_json,
+        # Init-specific parameters
+        host=host, repo_path=repo_path, repo_name=repo_name, repo_type=repo_type,
+        transport=transport, rclone_remote=rclone_remote, ipfs_did=ipfs_did,
+        interactive=interactive
     )
 
 
@@ -322,6 +327,31 @@ def snapmount(
     return decorated_handler(
         dry_run=dry_run, force=force, normalize=normalize, 
         verbose=verbose, quiet=quiet, to_json=to_json
+    )
+
+
+@app.command()
+def clean(
+    target: str = typer.Option("all", "--target", help="What to clean: all, cache, temp, snapshots"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Show what would be cleaned without making changes (default: true)"),
+    force: bool = typer.Option(False, "--force", help="Skip confirmation prompts"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress output"),
+    to_json: bool = typer.Option(False, "--json", help="Output results as JSON")
+) -> Any:
+    """[bold red]Maintenance[/bold red]: Clean temporary files, cache, and artifacts."""
+    decorated_handler = operation_command_pattern(command_type=COMMAND_TYPE_MAINTENANCE)(
+        lambda console, config, dry_run, force, normalize, verbose, quiet, **kwargs: action_commands.clean(
+            console, config,
+            dry_run=dry_run, force=force, 
+            verbose=verbose, quiet=quiet,
+            target=kwargs.get('target', 'all')
+        )
+    )
+    return decorated_handler(
+        dry_run=dry_run, force=force, normalize=False,
+        verbose=verbose, quiet=quiet, to_json=to_json,
+        target=target
     )
 
 

@@ -9,7 +9,7 @@
 """
 Action command handlers - state-changing commands.
 
-Handles: init, clone, sync, snapmount, snapfetch
+Handles: init, clone, sync, snapmount, snapfetch, clean
 """
 
 from typing import Any
@@ -354,3 +354,197 @@ def snapfetch(
         console.print("[green]Snapfetch operation completed (placeholder)[/green]")
     
     return result
+
+
+def clean(
+    console: Console,
+    config: Config,
+    dry_run: bool = True,  # Default to dry run for safety
+    force: bool = False,
+    normalize: bool = False,
+    verbose: bool = False,
+    quiet: bool = False,
+    **operation_params
+) -> dict[str, Any]:
+    """Clean temporary files, cache, and artifacts.
+    
+    Args:
+        console: Rich console for output
+        config: Repository configuration
+        dry_run: Show what would be cleaned without making changes (default: True for safety)
+        force: Skip confirmation prompts
+        normalize: Not used for clean command
+        verbose: Show detailed output
+        quiet: Suppress output
+        **operation_params: Operation-specific parameters:
+            - target: What to clean (all, cache, temp, snapshots)
+    
+    Returns:
+        Clean operation result for JSON output
+    """
+    from pathlib import Path
+    import typer
+    
+    target = operation_params.get('target', 'all')
+    
+    # Define what can be cleaned
+    cleanable_items = {
+        'cache': {
+            'description': 'Cache files and temporary storage',
+            'paths': ['.dsg/cache', '.dsg/tmp', '.dsg/temp']
+        },
+        'temp': {
+            'description': 'Temporary files and working directories',
+            'paths': ['.dsg/tmp', '.dsg/temp', '.dsg/working']
+        },
+        'snapshots': {
+            'description': 'Local snapshot mounts and metadata',
+            'paths': ['.dsg/snapshots', '.dsg/mounts']
+        },
+        'logs': {
+            'description': 'Log files and debugging information',
+            'paths': ['.dsg/logs', '.dsg/debug']
+        }
+    }
+    
+    # Determine what to clean based on target
+    if target == 'all':
+        items_to_clean = cleanable_items
+    elif target in cleanable_items:
+        items_to_clean = {target: cleanable_items[target]}
+    else:
+        available_targets = ', '.join(list(cleanable_items.keys()) + ['all'])
+        if not quiet:
+            console.print(f"[red]✗[/red] Unknown target '{target}'. Available: {available_targets}")
+        return {
+            'operation': 'clean',
+            'status': 'error',
+            'error': f'Unknown target: {target}',
+            'available_targets': list(cleanable_items.keys()) + ['all']
+        }
+    
+    # Find files/directories that actually exist
+    existing_items = []
+    total_size = 0
+    
+    for item_type, item_info in items_to_clean.items():
+        for path_str in item_info['paths']:
+            path = Path(path_str)
+            if path.exists():
+                if path.is_file():
+                    size = path.stat().st_size
+                    existing_items.append({
+                        'type': item_type,
+                        'path': str(path),
+                        'size': size,
+                        'is_dir': False
+                    })
+                    total_size += size
+                elif path.is_dir():
+                    # Calculate directory size
+                    dir_size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                    existing_items.append({
+                        'type': item_type,
+                        'path': str(path),
+                        'size': dir_size,
+                        'is_dir': True
+                    })
+                    total_size += dir_size
+    
+    if not existing_items:
+        if not quiet:
+            console.print("[green]✓[/green] Nothing to clean - all artifacts are already removed")
+        return {
+            'operation': 'clean',
+            'status': 'success',
+            'items_cleaned': 0,
+            'bytes_freed': 0,
+            'target': target,
+            'dry_run': dry_run
+        }
+    
+    # Show what would be/will be cleaned
+    if not quiet:
+        if dry_run:
+            console.print(f"[yellow]DRY RUN[/yellow] - Would clean {len(existing_items)} items:")
+        else:
+            console.print(f"Cleaning {len(existing_items)} items:")
+        
+        for item in existing_items:
+            size_str = f"{item['size']} bytes" if item['size'] > 0 else "empty"
+            item_type = "directory" if item['is_dir'] else "file"
+            if verbose:
+                console.print(f"  - {item['path']} ({item_type}, {size_str})")
+            else:
+                console.print(f"  - {item['path']}")
+        
+        total_mb = total_size / (1024 * 1024)
+        console.print(f"Total: {total_size} bytes ({total_mb:.1f} MB)")
+    
+    # Return early if dry run
+    if dry_run:
+        return {
+            'operation': 'clean',
+            'status': 'dry_run',
+            'items_found': len(existing_items),
+            'bytes_to_free': total_size,
+            'target': target,
+            'dry_run': True,
+            'items': existing_items
+        }
+    
+    # Confirm before cleaning (unless force is specified)
+    if not force and not quiet:
+        if not typer.confirm(f"Delete {len(existing_items)} items ({total_mb:.1f} MB)?"):
+            console.print("[yellow]Clean operation cancelled[/yellow]")
+            return {
+                'operation': 'clean',
+                'status': 'cancelled',
+                'items_found': len(existing_items),
+                'bytes_to_free': total_size,
+                'target': target
+            }
+    
+    # Perform actual cleaning
+    cleaned_count = 0
+    bytes_freed = 0
+    errors = []
+    
+    for item in existing_items:
+        path = Path(item['path'])
+        try:
+            if path.is_file():
+                path.unlink()
+            elif path.is_dir():
+                import shutil
+                shutil.rmtree(path)
+            
+            cleaned_count += 1
+            bytes_freed += item['size']
+            
+            if verbose and not quiet:
+                console.print(f"  [green]✓[/green] Cleaned {item['path']}")
+                
+        except Exception as e:
+            error_msg = f"Failed to clean {item['path']}: {str(e)}"
+            errors.append(error_msg)
+            if not quiet:
+                console.print(f"  [red]✗[/red] {error_msg}")
+    
+    # Summary
+    if not quiet:
+        if errors:
+            console.print(f"[yellow]Cleaned {cleaned_count} items with {len(errors)} errors[/yellow]")
+        else:
+            freed_mb = bytes_freed / (1024 * 1024)
+            console.print(f"[green]✓[/green] Cleaned {cleaned_count} items, freed {freed_mb:.1f} MB")
+    
+    return {
+        'operation': 'clean',
+        'status': 'success' if not errors else 'partial_success',
+        'items_cleaned': cleaned_count,
+        'bytes_freed': bytes_freed,
+        'target': target,
+        'dry_run': False,
+        'errors': errors
+    }
