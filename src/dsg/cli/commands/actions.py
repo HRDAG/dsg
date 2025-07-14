@@ -404,6 +404,10 @@ def clean(
         'logs': {
             'description': 'Log files and debugging information',
             'paths': ['.dsg/logs', '.dsg/debug']
+        },
+        'backups': {
+            'description': 'Backup files created during conflict resolution',
+            'paths': []  # Special handling needed for glob patterns
         }
     }
     
@@ -428,28 +432,46 @@ def clean(
     total_size = 0
     
     for item_type, item_info in items_to_clean.items():
-        for path_str in item_info['paths']:
-            path = Path(path_str)
-            if path.exists():
-                if path.is_file():
-                    size = path.stat().st_size
+        if item_type == 'backups':
+            # Special handling for backup files - scan for our backup pattern
+            from dsg.core.scanner import BACKUP_FILE_REGEX
+            root_path = Path(config.project_root)
+            
+            # Find all backup files using our specific pattern
+            for file_path in root_path.rglob('*'):
+                if file_path.is_file() and BACKUP_FILE_REGEX.search(file_path.name):
+                    size = file_path.stat().st_size
                     existing_items.append({
                         'type': item_type,
-                        'path': str(path),
+                        'path': str(file_path.relative_to(root_path)),
                         'size': size,
                         'is_dir': False
                     })
                     total_size += size
-                elif path.is_dir():
-                    # Calculate directory size
-                    dir_size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
-                    existing_items.append({
-                        'type': item_type,
-                        'path': str(path),
-                        'size': dir_size,
-                        'is_dir': True
-                    })
-                    total_size += dir_size
+        else:
+            # Handle regular path-based cleaning
+            for path_str in item_info['paths']:
+                path = Path(path_str)
+                if path.exists():
+                    if path.is_file():
+                        size = path.stat().st_size
+                        existing_items.append({
+                            'type': item_type,
+                            'path': str(path),
+                            'size': size,
+                            'is_dir': False
+                        })
+                        total_size += size
+                    elif path.is_dir():
+                        # Calculate directory size
+                        dir_size = sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
+                        existing_items.append({
+                            'type': item_type,
+                            'path': str(path),
+                            'size': dir_size,
+                            'is_dir': True
+                        })
+                        total_size += dir_size
     
     if not existing_items:
         if not quiet:
@@ -511,7 +533,13 @@ def clean(
     errors = []
     
     for item in existing_items:
-        path = Path(item['path'])
+        if item['type'] == 'backups':
+            # Backup file paths are relative to project root
+            path = Path(config.project_root) / item['path']
+        else:
+            # Regular cleanup paths are absolute or relative to current directory
+            path = Path(item['path'])
+        
         try:
             if path.is_file():
                 path.unlink()

@@ -432,6 +432,9 @@ class UserConfig(BaseModel):
     # Optional logging configuration
     local_log: Optional[Path] = None
 
+    # Conflict resolution settings
+    backup_on_conflict: bool = Field(default=True, description="Create backup files during conflict resolution")
+
     # Optional security configs
     ssh: Optional[SSHUserConfig] = None
     rclone: Optional[RcloneUserConfig] = None

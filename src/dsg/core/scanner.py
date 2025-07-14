@@ -10,8 +10,10 @@ from __future__ import annotations
 # Standard library imports
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path, PurePosixPath
-from typing import Optional
+from typing import Optional, Final
+import re
 
 # Third-party imports
 import loguru
@@ -24,6 +26,15 @@ from dsg.data.manifest import Manifest, ManifestEntry, FileRef
 from dsg.data.filename_validation import validate_path
 
 logger = loguru.logger
+
+# Pre-compiled regex for backup file detection (immutable constant)
+BACKUP_FILE_REGEX: Final[re.Pattern[str]] = re.compile(r'~\d{8}T\d{6}-\d{4}~$')
+
+
+def generate_backup_suffix() -> str:
+    """Generate backup suffix in format ~YYYYMMDDTHHMMSS-ZZZZ~"""
+    now = datetime.now().astimezone()
+    return f"~{now.strftime('%Y%m%dT%H%M%S%z')}~"
 
 
 @dataclass
@@ -162,7 +173,8 @@ def _should_ignore_path(
     result = (
         posix_path in ignored_exact or
         filename in ignored_names or
-        full_path.suffix in ignored_suffixes
+        full_path.suffix in ignored_suffixes or
+        BACKUP_FILE_REGEX.search(filename) is not None  # System-level backup file exclusion
     )
 
     logger.debug(f"  _should_ignore_path result: {result}")
