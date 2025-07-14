@@ -727,6 +727,129 @@ def _parse_conflicts_txt(config: Config) -> dict[str, str]:
     return resolutions
 
 
+def _create_conflict_backups(
+    config: Config,
+    conflicts: list[str],
+    resolutions: dict[str, str]
+) -> dict[str, str]:
+    """
+    Create backup files for conflicts that will have local changes overwritten.
+    
+    Args:
+        config: DSG configuration
+        conflicts: List of conflicted file paths
+        resolutions: User's resolution choices
+        
+    Returns:
+        Dictionary mapping original file paths to backup file paths
+        
+    Raises:
+        SyncError: If backup creation fails
+    """
+    from pathlib import Path
+    import shutil
+    from dsg.core.scanner import generate_backup_suffix
+    
+    backup_map = {}
+    
+    # Only create backups if user has enabled backup_on_conflict
+    if not config.user.backup_on_conflict:
+        return backup_map
+    
+    for file_path, choice in resolutions.items():
+        source_file = Path(config.project_root) / file_path
+        
+        # Only backup when local file will be overwritten (choice is R or C)
+        if choice in ('R', 'C') and source_file.exists():
+            try:
+                # Generate backup filename with our tilde-timestamp pattern
+                backup_suffix = generate_backup_suffix()
+                backup_file = source_file.with_name(f"{source_file.name}{backup_suffix}")
+                
+                # Ensure backup doesn't already exist (very unlikely but possible)
+                if backup_file.exists():
+                    raise SyncError(
+                        f"Backup file already exists: {backup_file}. "
+                        f"This should not happen. Please try again."
+                    )
+                
+                # Create backup by copying current file
+                shutil.copy2(source_file, backup_file)
+                backup_map[file_path] = str(backup_file.relative_to(config.project_root))
+                
+            except Exception as e:
+                # Clean up any partial backups created so far
+                for created_backup_path in backup_map.values():
+                    created_backup_file = Path(config.project_root) / created_backup_path
+                    if created_backup_file.exists():
+                        try:
+                            created_backup_file.unlink()
+                        except Exception:
+                            pass  # Best effort cleanup
+                
+                raise SyncError(
+                    f"Failed to create backup for {file_path}: {e}. "
+                    f"No changes have been made. Please check disk space and permissions."
+                )
+    
+    return backup_map
+
+
+def _cleanup_conflict_backups(config: Config, backup_map: dict[str, str]) -> None:
+    """
+    Clean up backup files created during conflict resolution.
+    
+    Args:
+        config: DSG configuration
+        backup_map: Dictionary mapping original file paths to backup file paths
+    """
+    from pathlib import Path
+    
+    for original_path, backup_path in backup_map.items():
+        backup_file = Path(config.project_root) / backup_path
+        if backup_file.exists():
+            try:
+                backup_file.unlink()
+            except Exception as e:
+                # Log but don't fail - this is cleanup
+                logger = loguru.logger
+                logger.warning(f"Failed to clean up backup file {backup_file}: {e}")
+
+
+def _restore_from_conflict_backups(config: Config, backup_map: dict[str, str]) -> None:
+    """
+    Restore original files from backups in case of conflict resolution failure.
+    
+    Args:
+        config: DSG configuration  
+        backup_map: Dictionary mapping original file paths to backup file paths
+        
+    Raises:
+        SyncError: If restore fails
+    """
+    import shutil
+    from pathlib import Path
+    
+    restore_errors = []
+    
+    for original_path, backup_path in backup_map.items():
+        backup_file = Path(config.project_root) / backup_path
+        original_file = Path(config.project_root) / original_path
+        
+        if backup_file.exists():
+            try:
+                # Restore the original file from backup
+                shutil.copy2(backup_file, original_file)
+            except Exception as e:
+                restore_errors.append(f"{original_path}: {e}")
+    
+    if restore_errors:
+        raise SyncError(
+            f"Failed to restore {len(restore_errors)} files from backup: {restore_errors[:3]}... "
+            f"Manual recovery may be required. Check backup files with ~timestamp~ pattern."
+        )
+
+
 def _apply_conflict_resolutions(
     config: Config, 
     conflicts: list[str], 
@@ -752,6 +875,9 @@ def _apply_conflict_resolutions(
     # Parse user's resolution choices
     resolutions = _parse_conflicts_txt(config)
     
+    # Create backups before applying any resolutions (Phase 5)
+    backup_map = _create_conflict_backups(config, conflicts, resolutions)
+    
     # Validate that all conflicts have resolutions
     missing_resolutions = []
     for conflict_file in conflicts:
@@ -759,6 +885,8 @@ def _apply_conflict_resolutions(
             missing_resolutions.append(conflict_file)
     
     if missing_resolutions:
+        # Clean up any backups we created before failing
+        _cleanup_conflict_backups(config, backup_map)
         raise SyncError(
             f"Missing resolutions for {len(missing_resolutions)} files: {missing_resolutions[:3]}... "
             f"Please edit conflicts.txt to specify R, L, or C for all conflicted files."
@@ -771,39 +899,74 @@ def _apply_conflict_resolutions(
             unexpected_resolutions.append(file_path)
     
     if unexpected_resolutions:
+        # Clean up any backups we created before failing
+        _cleanup_conflict_backups(config, backup_map)
         raise SyncError(
             f"Found resolutions for files that aren't in conflict: {unexpected_resolutions[:3]}... "
             f"These files may have been resolved already. Run 'dsg sync' without --continue to regenerate conflicts.txt."
         )
     
-    # Create modified sync states based on user choices
-    new_sync_states = OrderedDict(status_result.sync_states)
-    
-    for file_path, choice in resolutions.items():
-        if choice == 'R':
-            # Use Remote version (download) - treat as if local needs update
-            new_sync_states[file_path] = SyncState.sLCR__L_eq_C_ne_R
-        elif choice == 'L':  
-            # Use Local version (upload) - treat as if remote needs update
-            new_sync_states[file_path] = SyncState.sLCR__C_eq_R_ne_L
-        elif choice == 'C':
-            # Use Cached version (restore) - both local and remote need update to match cache
-            # For simplicity, we'll implement this by updating local to cache state
-            # TODO: Full cache restoration needs more complex logic
-            new_sync_states[file_path] = SyncState.sLCR__L_eq_R_ne_C
-        else:
-            # This shouldn't happen due to validation in _parse_conflicts_txt
-            raise SyncError(f"Invalid resolution choice '{choice}' for file '{file_path}'")
-    
-    # Return modified status result
-    return SyncStatusResult(
-        sync_states=new_sync_states,
-        local_manifest=status_result.local_manifest,
-        cache_manifest=status_result.cache_manifest,
-        remote_manifest=status_result.remote_manifest,
-        include_remote=status_result.include_remote,
-        warnings=status_result.warnings
-    )
+    # Phase 6: Apply sync state modifications with comprehensive error handling
+    try:
+        # Create modified sync states based on user choices
+        new_sync_states = OrderedDict(status_result.sync_states)
+        
+        for file_path, choice in resolutions.items():
+            try:
+                if choice == 'R':
+                    # Use Remote version (download) - treat as if local needs update
+                    new_sync_states[file_path] = SyncState.sLCR__L_eq_C_ne_R
+                elif choice == 'L':  
+                    # Use Local version (upload) - treat as if remote needs update
+                    new_sync_states[file_path] = SyncState.sLCR__C_eq_R_ne_L
+                elif choice == 'C':
+                    # Use Cached version (restore) - both local and remote need update to match cache
+                    # For simplicity, we'll implement this by updating local to cache state
+                    # TODO: Full cache restoration needs more complex logic
+                    new_sync_states[file_path] = SyncState.sLCR__L_eq_R_ne_C
+                else:
+                    # This shouldn't happen due to validation in _parse_conflicts_txt
+                    raise SyncError(f"Invalid resolution choice '{choice}' for file '{file_path}'")
+                    
+            except Exception as e:
+                # Error applying individual resolution - restore backups and fail
+                _restore_from_conflict_backups(config, backup_map)
+                raise SyncError(
+                    f"Failed to apply resolution '{choice}' for file '{file_path}': {e}. "
+                    f"Original files have been restored from backup."
+                )
+        
+        # Create the modified status result
+        modified_result = SyncStatusResult(
+            sync_states=new_sync_states,
+            local_manifest=status_result.local_manifest,
+            cache_manifest=status_result.cache_manifest,
+            remote_manifest=status_result.remote_manifest,
+            include_remote=status_result.include_remote,
+            warnings=status_result.warnings
+        )
+        
+        # Success! Clean up backup files since we no longer need them
+        _cleanup_conflict_backups(config, backup_map)
+        
+        return modified_result
+        
+    except SyncError:
+        # Re-raise our custom sync errors (already handled above)
+        raise
+    except Exception as e:
+        # Unexpected error during conflict resolution application
+        try:
+            _restore_from_conflict_backups(config, backup_map)
+            error_msg = f"Unexpected error during conflict resolution: {e}. Original files restored from backup."
+        except Exception as restore_error:
+            error_msg = (
+                f"Critical error during conflict resolution: {e}. "
+                f"Additionally, failed to restore from backup: {restore_error}. "
+                f"Manual recovery may be required - check backup files with ~timestamp~ pattern."
+            )
+        
+        raise SyncError(error_msg)
 
 
 def _determine_sync_operation_type(local: Manifest, cache: Manifest, remote: Manifest, sync_states: dict) -> SyncOperationType:
