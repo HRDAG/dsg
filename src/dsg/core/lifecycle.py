@@ -43,7 +43,7 @@ except importlib.metadata.PackageNotFoundError:
 from dsg.config.manager import Config
 from dsg.storage.factory import create_backend
 from dsg.data.manifest import Manifest
-from dsg.core.operations import get_sync_status
+from dsg.core.operations import get_sync_status, SyncStatusResult
 from dsg.core.scanner import scan_directory, scan_directory_no_cfg
 from dsg.system.display import display_sync_dry_run_preview, display_normalization_preview
 from dsg.data.filename_validation import fix_problematic_path
@@ -442,12 +442,12 @@ def _validate_and_normalize_files(
         raise ValidationError(f"Normalization failed: {e}")
 
 
-def _check_sync_conflicts(config: Config) -> list[str]:
+def _check_sync_conflicts(config: Config) -> tuple[list[str], SyncStatusResult]:
     """
     Check for sync conflicts that require manual resolution.
     
     Returns:
-        list: File paths with conflicts
+        tuple: (File paths with conflicts, Full sync status result)
     """
     logger = loguru.logger
     logger.debug("Getting sync status to determine operations...")
@@ -467,16 +467,140 @@ def _check_sync_conflicts(config: Config) -> list[str]:
         if sync_state in conflict_states:
             conflicts.append(file_path)
     
-    return conflicts
+    return conflicts, status_result
 
 
-def _display_conflicts_and_exit(console: 'Console', conflicts: list[str]) -> None:
+def _generate_conflicts_txt(config: Config, conflicts: list[str], status_result: SyncStatusResult) -> None:
     """
-    Display conflict information and raise SyncError.
+    Generate conflicts.txt file with underscore-prefix suggestions for manual resolution.
+    
+    Args:
+        config: DSG configuration
+        conflicts: List of conflicted file paths  
+        status_result: Full sync status with manifests and states
+    """
+    from pathlib import Path
+    from datetime import datetime
+    from dsg.core.scanner import generate_backup_suffix
+    
+    conflicts_file = Path(config.project_root) / "conflicts.txt"
+    
+    # Check if user has backup_on_conflict enabled
+    backup_enabled = config.user.backup_on_conflict
+    
+    content_lines = []
+    content_lines.append("# DSG Conflict Resolution")
+    content_lines.append(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    content_lines.append(f"# User: {config.user.user_name} <{config.user.user_id}>")
+    content_lines.append(f"# Backup on conflict: {'enabled' if backup_enabled else 'disabled'}")
+    content_lines.append("")
+    content_lines.append("# Instructions:")
+    content_lines.append("# 1. For each file below, choose ONE option by removing the underscore prefix")
+    content_lines.append("# 2. Delete the other lines for that file") 
+    content_lines.append("# 3. Save this file and run 'dsg sync --continue'")
+    content_lines.append("")
+    content_lines.append("# Options:")
+    content_lines.append("#   _R = Use Remote version (download)")
+    content_lines.append("#   _L = Use Local version (upload)")
+    content_lines.append("#   _C = Use Cached version (restore)")
+    content_lines.append("")
+    
+    for file_path in conflicts:
+        sync_state = status_result.sync_states[file_path]
+        content_lines.append(f"# File: {file_path}")
+        content_lines.append(f"# Conflict: {sync_state.value}")
+        
+        # Determine smart defaults based on timestamps and conflict type
+        local_entry = status_result.local_manifest.entries.get(file_path)
+        remote_entry = status_result.remote_manifest.entries.get(file_path) if status_result.remote_manifest else None
+        cache_entry = status_result.cache_manifest.entries.get(file_path)
+        
+        # Generate underscore-prefix suggestions with smart ordering
+        suggestions = _generate_conflict_suggestions(sync_state, local_entry, remote_entry, cache_entry)
+        
+        for suggestion in suggestions:
+            content_lines.append(suggestion)
+        content_lines.append("")
+    
+    # Write conflicts.txt
+    conflicts_file.write_text("\n".join(content_lines), encoding="utf-8")
+
+
+def _generate_conflict_suggestions(sync_state: SyncState, local_entry, remote_entry, cache_entry) -> list[str]:
+    """
+    Generate underscore-prefix suggestions with smart defaults based on timestamps.
+    
+    Args:
+        sync_state: The conflict state
+        local_entry: Local manifest entry (can be None)
+        remote_entry: Remote manifest entry (can be None) 
+        cache_entry: Cache manifest entry (can be None)
+        
+    Returns:
+        List of suggestion lines with smart ordering
+    """
+    suggestions = []
+    
+    # Get timestamps where available - convert mtime strings to datetime for comparison
+    from dsg.data.manifest import parse_manifest_timestamp
+    
+    local_time = None
+    if local_entry and hasattr(local_entry, 'mtime'):
+        local_time = parse_manifest_timestamp(local_entry.mtime)
+    
+    remote_time = None
+    if remote_entry and hasattr(remote_entry, 'mtime'):
+        remote_time = parse_manifest_timestamp(remote_entry.mtime)
+    
+    cache_time = None  
+    if cache_entry and hasattr(cache_entry, 'mtime'):
+        cache_time = parse_manifest_timestamp(cache_entry.mtime)
+    
+    # Determine newest (smart default) based on conflict type and timestamps
+    if sync_state == SyncState.sLCR__all_ne:
+        # All three differ - prefer newest timestamp
+        times = [(local_time, '_L'), (remote_time, '_R'), (cache_time, '_C')]
+        times = [(t, opt) for t, opt in times if t is not None]
+        times.sort(key=lambda x: x[0], reverse=True)  # Sort by timestamp, newest first
+        
+        for _, option in times:
+            if option == '_L':
+                suggestions.append("_L  # Use Local version (upload)")
+            elif option == '_R':
+                suggestions.append("_R  # Use Remote version (download)")
+            elif option == '_C':
+                suggestions.append("_C  # Use Cached version (restore)")
+                
+    elif sync_state == SyncState.sLxCR__L_ne_R:
+        # Cache missing; local and remote differ - prefer remote (newest)
+        if remote_time and local_time:
+            if remote_time >= local_time:
+                suggestions.extend(["_R  # Use Remote version (download)", "_L  # Use Local version (upload)"])
+            else:
+                suggestions.extend(["_L  # Use Local version (upload)", "_R  # Use Remote version (download)"])
+        else:
+            suggestions.extend(["_R  # Use Remote version (download)", "_L  # Use Local version (upload)"])
+            
+    elif sync_state == SyncState.sxLCR__C_ne_R:
+        # Local missing; remote and cache differ - prefer remote (newest)
+        suggestions.extend(["_R  # Use Remote version (download)", "_C  # Use Cached version (restore)"])
+        
+    elif sync_state == SyncState.sLCxR__L_ne_C:
+        # Remote missing; local and cache differ - prefer local (newest)
+        suggestions.extend(["_L  # Use Local version (upload)", "_C  # Use Cached version (restore)"])
+    
+    return suggestions
+
+
+def _display_conflicts_and_exit(console: 'Console', conflicts: list[str], config: Config, status_result: SyncStatusResult) -> None:
+    """
+    Display conflict information, generate conflicts.txt, and raise SyncError.
     
     Args:
         console: Rich console for output
         conflicts: List of conflicted file paths
+        config: DSG configuration
+        status_result: Full sync status with manifests and states
         
     Raises:
         SyncError: Always raises to block sync
@@ -484,12 +608,16 @@ def _display_conflicts_and_exit(console: 'Console', conflicts: list[str]) -> Non
     logger = loguru.logger
     logger.error(f"Found {len(conflicts)} conflicts requiring manual resolution")
     
+    # Generate conflicts.txt file
+    _generate_conflicts_txt(config, conflicts, status_result)
+    
     console.print(f"[red]✗[/red] Sync blocked: {len(conflicts)} conflicts require manual resolution")
     for conflict_file in conflicts[:5]:  # Show first 5 conflicts
         console.print(f"  [red]{conflict_file}[/red]")
     if len(conflicts) > 5:
         console.print(f"  ... and {len(conflicts) - 5} more")
-    console.print("\nResolve conflicts manually, then run 'dsg sync --continue'")
+    console.print("\n[yellow]conflicts.txt[/yellow] has been created with resolution options.")
+    console.print("Edit the file to choose your preferred resolution, then run 'dsg sync --continue'")
     
     raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
 
@@ -858,9 +986,9 @@ def sync_repository(
         }
 
     # Step 3: Check for conflicts
-    conflicts = _check_sync_conflicts(config)
+    conflicts, status_result = _check_sync_conflicts(config)
     if conflicts:
-        _display_conflicts_and_exit(console, conflicts)
+        _display_conflicts_and_exit(console, conflicts, config, status_result)
 
     # Step 4: Execute sync operations
     _execute_sync_operations(config, console)
