@@ -213,7 +213,8 @@ def sync(
         config=config,
         console=console,
         dry_run=dry_run,
-        normalize=normalize
+        normalize=normalize,
+        continue_sync=continue_sync
     )
     
     if not quiet:

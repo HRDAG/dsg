@@ -622,6 +622,190 @@ def _display_conflicts_and_exit(console: 'Console', conflicts: list[str], config
     raise SyncError(f"Sync blocked by {len(conflicts)} conflicts")
 
 
+def _parse_conflicts_txt(config: Config) -> dict[str, str]:
+    """
+    Parse conflicts.txt file to extract user's resolution choices.
+    
+    Args:
+        config: DSG configuration containing project root
+        
+    Returns:
+        Dictionary mapping file paths to resolution choices ('R', 'L', 'C')
+        
+    Raises:
+        SyncError: If conflicts.txt doesn't exist, is malformed, or contains invalid choices
+    """
+    from pathlib import Path
+    
+    conflicts_file = Path(config.project_root) / "conflicts.txt"
+    
+    if not conflicts_file.exists():
+        raise SyncError(
+            "conflicts.txt not found. Run 'dsg sync' first to generate conflict resolution file."
+        )
+    
+    try:
+        content = conflicts_file.read_text(encoding="utf-8")
+    except Exception as e:
+        raise SyncError(f"Failed to read conflicts.txt: {e}")
+    
+    resolutions = {}
+    current_file = None
+    valid_choices = {'R', 'L', 'C'}
+    line_num = 0
+    
+    for line in content.split('\n'):
+        line_num += 1
+        line = line.strip()
+        
+        # Skip empty lines
+        if not line:
+            continue
+            
+        # Check for file header: "# File: path/to/file.ext"
+        if line.startswith('# File: '):
+            current_file = line[8:].strip()  # Remove "# File: " prefix
+            continue
+            
+        # Skip other comments
+        if line.startswith('#'):
+            continue
+            
+        # Check for resolution choice (R, L, or C)
+        if line in valid_choices:
+            if current_file is None:
+                raise SyncError(
+                    f"Line {line_num}: Found resolution '{line}' but no file specified. "
+                    f"Each resolution must follow a '# File: ...' line."
+                )
+            if current_file in resolutions:
+                raise SyncError(
+                    f"Line {line_num}: Duplicate resolution for file '{current_file}'. "
+                    f"Each file should have exactly one resolution choice."
+                )
+            resolutions[current_file] = line
+            current_file = None  # Reset for next file
+            continue
+            
+        # Check for underscore-prefix choices and convert them
+        if line.startswith('_'):
+            choice_part = line[1:2]  # Get character after underscore
+            if choice_part in valid_choices:
+                if current_file is None:
+                    raise SyncError(
+                        f"Line {line_num}: Found resolution '{line}' but no file specified. "
+                        f"Each resolution must follow a '# File: ...' line."
+                    )
+                if current_file in resolutions:
+                    raise SyncError(
+                        f"Line {line_num}: Duplicate resolution for file '{current_file}'. "
+                        f"Each file should have exactly one resolution choice."
+                    )
+                resolutions[current_file] = choice_part
+                current_file = None  # Reset for next file
+                continue
+            else:
+                # Invalid underscore choice
+                raise SyncError(
+                    f"Line {line_num}: Invalid resolution '{line}'. "
+                    f"Valid choices are: R, L, C, _R, _L, _C"
+                )
+        
+        # If we get here, it's an unrecognized line that's not a comment
+        if line and not line.startswith('#'):
+            raise SyncError(
+                f"Line {line_num}: Unrecognized line '{line}'. "
+                f"Expected: comment (#), file header (# File: ...), or resolution choice (R/L/C/_R/_L/_C)."
+            )
+    
+    if not resolutions:
+        raise SyncError(
+            "No resolution choices found in conflicts.txt. "
+            "Please edit the file to specify R, L, or C for each conflicted file."
+        )
+    
+    return resolutions
+
+
+def _apply_conflict_resolutions(
+    config: Config, 
+    conflicts: list[str], 
+    status_result: SyncStatusResult
+) -> SyncStatusResult:
+    """
+    Apply user's conflict resolutions from conflicts.txt to modify sync states.
+    
+    Args:
+        config: DSG configuration
+        conflicts: List of conflicted file paths
+        status_result: Original sync status result with conflicts
+        
+    Returns:
+        Modified SyncStatusResult with conflicts resolved according to user choices
+        
+    Raises:
+        SyncError: If parsing fails or not all conflicts are resolved
+    """
+    from collections import OrderedDict
+    from dsg.data.manifest_merger import SyncState
+    
+    # Parse user's resolution choices
+    resolutions = _parse_conflicts_txt(config)
+    
+    # Validate that all conflicts have resolutions
+    missing_resolutions = []
+    for conflict_file in conflicts:
+        if conflict_file not in resolutions:
+            missing_resolutions.append(conflict_file)
+    
+    if missing_resolutions:
+        raise SyncError(
+            f"Missing resolutions for {len(missing_resolutions)} files: {missing_resolutions[:3]}... "
+            f"Please edit conflicts.txt to specify R, L, or C for all conflicted files."
+        )
+    
+    # Check for unexpected resolutions (files that aren't actually in conflict)
+    unexpected_resolutions = []
+    for file_path in resolutions:
+        if file_path not in conflicts:
+            unexpected_resolutions.append(file_path)
+    
+    if unexpected_resolutions:
+        raise SyncError(
+            f"Found resolutions for files that aren't in conflict: {unexpected_resolutions[:3]}... "
+            f"These files may have been resolved already. Run 'dsg sync' without --continue to regenerate conflicts.txt."
+        )
+    
+    # Create modified sync states based on user choices
+    new_sync_states = OrderedDict(status_result.sync_states)
+    
+    for file_path, choice in resolutions.items():
+        if choice == 'R':
+            # Use Remote version (download) - treat as if local needs update
+            new_sync_states[file_path] = SyncState.sLCR__L_eq_C_ne_R
+        elif choice == 'L':  
+            # Use Local version (upload) - treat as if remote needs update
+            new_sync_states[file_path] = SyncState.sLCR__C_eq_R_ne_L
+        elif choice == 'C':
+            # Use Cached version (restore) - both local and remote need update to match cache
+            # For simplicity, we'll implement this by updating local to cache state
+            # TODO: Full cache restoration needs more complex logic
+            new_sync_states[file_path] = SyncState.sLCR__L_eq_R_ne_C
+        else:
+            # This shouldn't happen due to validation in _parse_conflicts_txt
+            raise SyncError(f"Invalid resolution choice '{choice}' for file '{file_path}'")
+    
+    # Return modified status result
+    return SyncStatusResult(
+        sync_states=new_sync_states,
+        local_manifest=status_result.local_manifest,
+        cache_manifest=status_result.cache_manifest,
+        remote_manifest=status_result.remote_manifest,
+        include_remote=status_result.include_remote,
+        warnings=status_result.warnings
+    )
+
+
 def _determine_sync_operation_type(local: Manifest, cache: Manifest, remote: Manifest, sync_states: dict) -> SyncOperationType:
     """
     Determine the type of sync operation needed based on manifest hashes and sync states.
@@ -935,7 +1119,8 @@ def sync_repository(
         config: Config,
         console: 'Console',
         dry_run: bool = False,
-        normalize: bool = False) -> dict[str, any]:
+        normalize: bool = False,
+        continue_sync: bool = False) -> dict[str, any]:
     """
     Synchronize local files with remote repository.
 
@@ -944,6 +1129,7 @@ def sync_repository(
         console: Rich console for output
         dry_run: If True, show what would be done without syncing
         normalize: If True, fix validation warnings automatically
+        continue_sync: If True, parse conflicts.txt and apply user's conflict resolutions
 
     Returns:
         Dictionary with sync results including normalization details for JSON output
@@ -985,10 +1171,39 @@ def sync_repository(
             'normalize_requested': normalize
         }
 
-    # Step 3: Check for conflicts
+    # Step 3: Check for conflicts and handle continue workflow
     conflicts, status_result = _check_sync_conflicts(config)
-    if conflicts:
-        _display_conflicts_and_exit(console, conflicts, config, status_result)
+    
+    if continue_sync:
+        # Continue workflow: parse conflicts.txt and apply resolutions
+        if not conflicts:
+            # No conflicts in current state, check if conflicts.txt exists
+            conflicts_file = config.project_root / "conflicts.txt"
+            if conflicts_file.exists():
+                console.print("[yellow]No conflicts found, but conflicts.txt exists.[/yellow]")
+                console.print("Removing conflicts.txt - run 'dsg sync' normally to proceed.")
+                conflicts_file.unlink()
+            console.print("[green]✓ No conflicts detected, proceeding with normal sync[/green]")
+        else:
+            # Apply conflict resolutions from conflicts.txt
+            console.print(f"[yellow]Applying conflict resolutions for {len(conflicts)} files...[/yellow]")
+            try:
+                status_result = _apply_conflict_resolutions(config, conflicts, status_result)
+                console.print("[green]✓ Conflict resolutions applied successfully[/green]")
+                
+                # Remove conflicts.txt after successful resolution
+                conflicts_file = config.project_root / "conflicts.txt"
+                if conflicts_file.exists():
+                    conflicts_file.unlink()
+                    console.print("[dim]Removed conflicts.txt[/dim]")
+                    
+            except SyncError as e:
+                console.print(f"[red]✗ Failed to apply conflict resolutions:[/red] {e}")
+                raise
+    else:
+        # Normal workflow: block on conflicts
+        if conflicts:
+            _display_conflicts_and_exit(console, conflicts, config, status_result)
 
     # Step 4: Execute sync operations
     _execute_sync_operations(config, console)
