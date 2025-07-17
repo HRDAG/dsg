@@ -35,12 +35,49 @@ class XFSOperations(SnapshotOperations):
 class ZFSOperations(SnapshotOperations):
     """ZFS operations using ZFS snapshots"""
 
-    def __init__(self, pool_name: str, repo_name: str, mount_base: str = "/var/repos/zsd") -> None:
+    def __init__(self, pool_name: str, repo_name: str, mount_path: str = "/var/repos/zsd") -> None:
         self.pool_name = pool_name
         self.repo_name = repo_name
-        self.mount_base = mount_base
-        self.dataset_name = f"{pool_name}/{repo_name}"
-        self.mount_path = f"{mount_base}/{repo_name}"
+        self.mount_path = mount_path
+        
+        # Determine dataset name from mount path
+        # For mount path like "/sdata/dsgtest/test-SV", we want dataset "sdata/dsgtest/test-SV"
+        # The pool_name is already extracted (e.g., "sdata"), so we need the relative path
+        from pathlib import Path
+        mount_path_obj = Path(mount_path)
+        
+        # Find the pool mountpoint to determine the dataset path
+        pool_mountpoint = self._get_pool_mountpoint(pool_name)
+        
+        if pool_mountpoint and mount_path.startswith(pool_mountpoint):
+            # Extract the relative path from pool mountpoint
+            relative_path = mount_path_obj.relative_to(Path(pool_mountpoint))
+            if relative_path == Path("."):
+                # Mount path is exactly the pool mountpoint
+                self.dataset_name = pool_name
+            else:
+                # Mount path is a subdirectory of the pool
+                self.dataset_name = f"{pool_name}/{relative_path}"
+        else:
+            # Fallback to original behavior if we can't determine pool mountpoint
+            self.dataset_name = f"{pool_name}/{repo_name}"
+
+    def _get_pool_mountpoint(self, pool_name: str) -> str | None:
+        """Get the mountpoint for a ZFS pool."""
+        import subprocess
+        try:
+            # Get the mountpoint for the pool
+            result = subprocess.run(
+                ['zfs', 'get', '-H', '-o', 'value', 'mountpoint', pool_name],
+                capture_output=True, text=True, check=False
+            )
+            if result.returncode == 0:
+                mountpoint = result.stdout.strip()
+                if mountpoint and mountpoint != "-":
+                    return mountpoint
+        except Exception:
+            pass
+        return None
 
     def init_repository(self, file_list: list[str], transport: 'Transport',
                        local_base: str, remote_base: str, force: bool = False) -> None:

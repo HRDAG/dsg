@@ -10,7 +10,9 @@ class TestOperationDetection:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
+        # Mock _get_pool_mountpoint to return test pool mountpoint
+        with patch.object(ZFSOperations, '_get_pool_mountpoint', return_value=ZFS_TEST_MOUNT_BASE):
+            return ZFSOperations(ZFS_TEST_POOL, "test-repo", f"{ZFS_TEST_MOUNT_BASE}/test-repo")
     
     def test_detect_init_when_dataset_missing(self, zfs_ops):
         """Test detection of init operation when main dataset doesn't exist."""
@@ -41,7 +43,9 @@ class TestInitPattern:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
+        # Mock _get_pool_mountpoint to return test pool mountpoint
+        with patch.object(ZFSOperations, '_get_pool_mountpoint', return_value=ZFS_TEST_MOUNT_BASE):
+            return ZFSOperations(ZFS_TEST_POOL, "test-repo", f"{ZFS_TEST_MOUNT_BASE}/test-repo")
     
     def test_begin_init_transaction(self, zfs_ops):
         """Test init transaction begin creates temp dataset correctly."""
@@ -101,7 +105,9 @@ class TestSyncPattern:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
+        # Mock _get_pool_mountpoint to return test pool mountpoint
+        with patch.object(ZFSOperations, '_get_pool_mountpoint', return_value=ZFS_TEST_MOUNT_BASE):
+            return ZFSOperations(ZFS_TEST_POOL, "test-repo", f"{ZFS_TEST_MOUNT_BASE}/test-repo")
     
     def test_begin_sync_transaction(self, zfs_ops):
         """Test sync transaction begin creates snapshot and clone."""
@@ -138,9 +144,10 @@ class TestSyncPattern:
         transaction_id = "tx-def456"
         
         with patch('dsg.system.execution.CommandExecutor.run_sudo') as mock_run:
-            mock_run.return_value.returncode = 0
-            
-            zfs_ops._commit_sync_transaction(transaction_id)
+            with patch('os.path.exists', return_value=True):  # Mock mount path exists
+                mock_run.return_value.returncode = 0
+                
+                zfs_ops._commit_sync_transaction(transaction_id)
             
             # Verify promote sequence
             calls = mock_run.call_args_list
@@ -199,7 +206,9 @@ class TestUnifiedInterface:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
+        # Mock _get_pool_mountpoint to return test pool mountpoint
+        with patch.object(ZFSOperations, '_get_pool_mountpoint', return_value=ZFS_TEST_MOUNT_BASE):
+            return ZFSOperations(ZFS_TEST_POOL, "test-repo", f"{ZFS_TEST_MOUNT_BASE}/test-repo")
     
     def test_begin_auto_detects_init(self, zfs_ops):
         """Test unified begin() auto-detects init operation."""
@@ -304,7 +313,9 @@ class TestErrorHandling:
     
     @pytest.fixture
     def zfs_ops(self):
-        return ZFSOperations(ZFS_TEST_POOL, "test-repo", ZFS_TEST_MOUNT_BASE)
+        # Mock _get_pool_mountpoint to return test pool mountpoint
+        with patch.object(ZFSOperations, '_get_pool_mountpoint', return_value=ZFS_TEST_MOUNT_BASE):
+            return ZFSOperations(ZFS_TEST_POOL, "test-repo", f"{ZFS_TEST_MOUNT_BASE}/test-repo")
     
     def test_begin_init_failure_cleanup(self, zfs_ops):
         """Test cleanup on init transaction begin failure."""
